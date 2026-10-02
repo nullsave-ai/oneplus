@@ -1,0 +1,61 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [ master, main ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Build Release APK
+        run: |
+          gradle assembleRelease --stacktrace
+
+          WORKSPACE_DIR=$PWD
+          mkdir -p "$WORKSPACE_DIR/dist"
+          
+          # Find and copy generated release APK
+          find app/build/outputs/apk/release/ -name "*.apk" -exec cp {} "$WORKSPACE_DIR/dist/OnePlus.apk" \;
+          ls -lh "$WORKSPACE_DIR/dist/"
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: OnePlus_apk
+          path: dist/*.apk
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main'
+        with:
+          tag_name: v1.0.${{ github.run_number }}
+          name: "OnePlus v1.0.${{ github.run_number }} (Release)"
+          body: |
+            ### تطبيق وان+ (OnePlus App - الإصدار المحدث مع نظام الألوان والسمات المتعددة):
+            * دعم اختيار وتبديل ألوان الواجهة والسمات (Accent Colors) مع تنقل سلس بين الألوان.
+            * شريط أدوات عائم ومتحول بحسب التمرير والبحث (**Morphing Floating Island**).
+            * نظام **OneKit** الزجاجي الخفيف ذو الأداء العالي.
+          files: dist/*.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
