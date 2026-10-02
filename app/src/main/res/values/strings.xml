@@ -1,0 +1,14 @@
+<resources>
+    <string name="app_name">وان+</string>
+    <string name="tab_home">الرئيسية</string>
+    <string name="tab_channels">القنوات</string>
+    <string name="tab_settings">الإعدادات</string>
+    <string name="sec_matches">المباريات</string>
+    <string name="sec_movies">الأفلام</string>
+    <string name="sec_channels">القنوات</string>
+    <string name="search_hint">ابحث</string>
+    <string name="settings_effects">تأثيرات الزجاج</string>
+    <string name="settings_theme">المظهر</string>
+    <string name="settings_theme_value">تلقائي</string>
+    <string name="settings_version">الإصدار</string>
+</resources>
