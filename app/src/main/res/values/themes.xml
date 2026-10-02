@@ -1,0 +1,3 @@
+<resources>
+    <style name="Theme.OnePlus" parent="android:Theme.Material.NoActionBar" />
+</resources>
