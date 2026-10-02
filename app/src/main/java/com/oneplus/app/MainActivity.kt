@@ -1,0 +1,33 @@
+package com.oneplus.app
+
+import android.os.Bundle
+import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
+import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.remember
+import com.oneplus.app.ui.OnePlusApp
+import com.oneplus.app.ui.system.OnePlusTheme
+import com.oneplus.app.ui.system.ThemeController
+import com.oneplus.app.ui.system.ThemeStore
+import com.oneplus.app.ui.system.resolveDark
+
+class MainActivity : ComponentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        enableEdgeToEdge() // edge-to-edge from the first frame; bar icon colors are then synced with the chosen theme below
+        setContent {
+            val theme = remember { ThemeController(ThemeStore(applicationContext)) }
+            val dark = theme.prefs.mode.resolveDark() // System / Light / Dark
+            DisposableEffect(dark) {
+                // Status/nav icon color must follow the app's theme, not the device's (they differ when the user forces a mode).
+                val clear = android.graphics.Color.TRANSPARENT
+                val style = if (dark) SystemBarStyle.dark(clear) else SystemBarStyle.light(clear, clear)
+                enableEdgeToEdge(statusBarStyle = style, navigationBarStyle = style)
+                onDispose { }
+            }
+            OnePlusTheme(theme.prefs, dark) { OnePlusApp(theme) }
+        }
+    }
+}
