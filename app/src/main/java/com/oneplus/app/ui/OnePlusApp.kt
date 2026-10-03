@@ -2,7 +2,6 @@ package com.oneplus.app.ui
 
 import android.app.ActivityManager
 import android.content.Context
-import android.net.Uri
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.spring
@@ -13,10 +12,13 @@ import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
@@ -56,19 +58,25 @@ fun OnePlusApp(theme: ThemeController, vm: MainViewModel = viewModel()) {
     var tab by rememberSaveable { mutableIntStateOf(0) }
     var movieId by rememberSaveable { mutableIntStateOf(-1) }
     var showMovies by rememberSaveable { mutableStateOf(false) }
-    var playKind by rememberSaveable { mutableIntStateOf(0) } // 0 none · 1 movie · 2 channel · 3 pasted link
+    var showMatches by rememberSaveable { mutableStateOf(false) }
+    val matchesP = remember { Animatable(if (showMatches) 1f else 0f) } // opening progress of the matches page (also drives the depth effect)
+    var playKind by rememberSaveable { mutableIntStateOf(0) } // 0 none · 1 movie · 2 channel
     var playId by rememberSaveable { mutableIntStateOf(-1) }
-    var playUrl by rememberSaveable { mutableStateOf("") } // kind 3: a link typed/pasted by the user
+    // The Channels page shows the channel picked during this session; a fresh launch (nothing picked yet) starts on the first channel.
+    var lastChannel by rememberSaveable { mutableIntStateOf(-1) }
+    val saveLast = { id: Int -> lastChannel = id }
     var fullscreen by rememberSaveable { mutableStateOf(true) }
     var slot by remember { mutableStateOf<Rect?>(null) } // where the Channels page wants the player drawn when it is not fullscreen
     val detail = remember { DetailState(movieId >= 0) }
     val homeList = rememberLazyListState()
+    val channelsList = rememberLazyListState()
+    val pages = rememberSaveableStateHolder() // each page keeps its own remembered state (expanded rows, inner scroll positions) while another tab is shown
     val settingsScroll = rememberScrollState()
     val range = with(LocalDensity.current) { 96.dp.toPx() }
     val progress = rememberToolbarProgress {
         when (tab) {
             0 -> scrollTarget(homeList.firstVisibleItemIndex, homeList.firstVisibleItemScrollOffset, range)
-            1 -> 0f // the channels page is a fixed player + two independent lists: the toolbar stays flat
+            1 -> scrollTarget(channelsList.firstVisibleItemIndex, channelsList.firstVisibleItemScrollOffset, range) // the player stays put; the channel list drives the toolbar
             else -> scrollTarget(0, settingsScroll.value, range)
         }
     }
@@ -79,19 +87,18 @@ fun OnePlusApp(theme: ThemeController, vm: MainViewModel = viewModel()) {
         }
     }
     // Only an id is persisted; the URL is always resolved from the catalogue (never stored or passed around as free text).
-    val source = remember(playKind, playId, playUrl, state.all) {
+    val source = remember(playKind, playId, state.all) {
         when (playKind) {
             1 -> state.all.movies.firstOrNull { it.id == playId }?.let { PlaySource(it.url, it.title, live = false, cacheable = true) }
             2 -> state.all.channels.firstOrNull { it.id == playId }?.let { PlaySource(it.url, it.name, live = true) }
-            3 -> if (playUrl.isNotBlank()) PlaySource(playUrl.trim(), runCatching { Uri.parse(playUrl.substringBefore('|').trim()).host }.getOrNull() ?: playUrl.take(32), live = false) else null
             else -> null
         }
     }
     LaunchedEffect(source, playKind, state.all) {
         if (playKind in 1..2 && source == null && state.all.movies.isNotEmpty()) playKind = 0
     }
-    val playFull = { kind: Int, id: Int -> playKind = kind; playId = id; fullscreen = true }
-    val playInline = { id: Int -> playKind = 2; playId = id; fullscreen = false } // from the Channels page: plays in place
+    val playFull = { kind: Int, id: Int -> if (kind == 2) saveLast(id); playKind = kind; playId = id; fullscreen = true }
+    val playInline = { id: Int -> saveLast(id); playKind = 2; playId = id; fullscreen = false } // from the Channels page: plays in place
     // Leaving the Channels page stops an in-place player.
     LaunchedEffect(tab) { if (tab != 1 && playKind == 2 && !fullscreen) playKind = 0 }
     // A stale id (e.g. the catalogue changed after process death) must never leave the page stuck in "depth" mode.
@@ -107,15 +114,17 @@ fun OnePlusApp(theme: ThemeController, vm: MainViewModel = viewModel()) {
             val portrait = maxHeight >= maxWidth
             // Main layer: recedes (scale + dim) while the details page is open or being pulled.
             Box(Modifier.fillMaxSize().graphicsLayer {
-                val d = detail.depth
+                val d = maxOf(detail.depth, matchesP.value)
                 val s = 1f - 0.06f * d
                 scaleX = s; scaleY = s
             }.drawWithContent {
                 drawContent()
                 // dim with a plain scrim: alpha on the whole tree would force an offscreen layer every frame of the transition
-                drawRect(Color.Black, alpha = 0.35f * detail.depth)
+                drawRect(Color.Black, alpha = 0.35f * maxOf(detail.depth, matchesP.value))
             }) {
                 Crossfade(tab, Modifier.fillMaxSize(), tween(180), label = "page") { t ->
+                    // each page keeps its remembered state (expanded rows, inner scrolls) while another tab is shown
+                    pages.SaveableStateProvider(t) {
                     when (t) {
                         0 -> HomeScreen(
                             state, homeList, wide, portrait,
@@ -123,9 +132,14 @@ fun OnePlusApp(theme: ThemeController, vm: MainViewModel = viewModel()) {
                             onChannel = { id -> playFull(2, id) },
                             onAllMovies = { focus.clearFocus(); showMovies = true },
                             onAllChannels = { tab = 1 },
+                            onMatches = { focus.clearFocus(); showMatches = true },
                         )
-                        1 -> ChannelsScreen(state.data.channels, state.query.isNotBlank(), if (playKind == 2) playId else -1, portrait, { slot = it }, playInline)
-                        else -> SettingsScreen(fx, { fx = it }, theme, settingsScroll) { link -> playUrl = link; playFull(3, -1) }
+                        1 -> ChannelsScreen(
+                            state.data.channels, state.query.isNotBlank(), if (playKind == 2) playId else -1, lastChannel,
+                            portrait, channelsList, { slot = it }, playInline,
+                        )
+                        else -> SettingsScreen(fx, { fx = it }, theme, settingsScroll)
+                    }
                     }
                 }
                 FloatingToolbar(
@@ -140,19 +154,24 @@ fun OnePlusApp(theme: ThemeController, vm: MainViewModel = viewModel()) {
                 MoviesHost(showMovies, state.all.movies, portrait, { id -> movieId = id }, { showMovies = false })
             }
             // Overlays are declared in z-order: each one's back handler takes priority over the ones before it.
+            MatchesHost(showMatches, matchesP, state.all.matches, wide) { showMatches = false }
             MovieDetailHost(detail, state.all.movies, movieId, { movieId = it }, { id -> playFull(1, id) }, { movieId = -1 })
             // The app's single player. Fullscreen = the whole screen; otherwise it is laid exactly over the Channels page's slot,
             // so switching between the two never rebuilds it (the stream keeps playing).
-            if (source != null) {
-                val r = slot
-                val inPlace = !fullscreen && playKind == 2 && tab == 1 && r != null
-                val box = if (inPlace && r != null) with(LocalDensity.current) {
+            // An in-place player exists only while the Channels page (and its slot) is on screen. Without this guard, the frame in
+            // which the tab had already changed (or the slot was not measured yet) drew it as FULLSCREEN, which forces landscape
+            // for a moment: that was the page "flipping" when entering or leaving Channels.
+            val wantsInPlace = playKind == 2 && !fullscreen
+            val r = if (tab == 1) slot else null
+            val inPlace = wantsInPlace && r != null
+            if (source != null && (!wantsInPlace || inPlace)) {
+                val box = if (r != null && inPlace) with(LocalDensity.current) {
                     Modifier.offset { IntOffset(r.left.roundToInt(), r.top.roundToInt()) }.size(r.width.toDp(), r.height.toDp())
                 } else Modifier.fillMaxSize()
-                Box(box) {
+                Box(box.then(if (inPlace) Modifier.clip(RoundedCornerShape(20.dp)) else Modifier)) {
                     PlayerScreen(
                         source, fullscreen = !inPlace,
-                        onToggleFullscreen = if (playKind == 2 && tab == 1 && r != null) ({ fullscreen = !fullscreen }) else null,
+                        onToggleFullscreen = if (playKind == 2 && r != null) ({ fullscreen = !fullscreen }) else null,
                         onClose = { playKind = 0; fullscreen = true },
                     )
                 }

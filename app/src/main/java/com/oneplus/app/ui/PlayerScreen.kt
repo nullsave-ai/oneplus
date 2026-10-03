@@ -5,8 +5,11 @@ import android.content.Context
 import android.content.ContextWrapper
 import android.content.pm.ActivityInfo
 import android.media.AudioManager
+import android.graphics.Outline
 import android.provider.Settings
 import android.view.SurfaceView
+import android.view.View
+import android.view.ViewOutlineProvider
 import android.view.WindowManager
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
@@ -52,6 +55,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
@@ -198,6 +202,7 @@ fun PlayerScreen(source: PlaySource, fullscreen: Boolean, onToggleFullscreen: ((
 
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         // 1) video
+        val corner = with(LocalDensity.current) { 20.dp.toPx() }
         if (pb != null) key(pb) {
             BoxWithConstraints(Modifier.fillMaxSize().clipToBounds(), Alignment.Center) {
                 val vs = pb.videoSize
@@ -207,7 +212,16 @@ fun PlayerScreen(source: PlaySource, fullscreen: Boolean, onToggleFullscreen: ((
                 val h: Dp
                 if (fit == containerWider) { h = maxHeight; w = maxHeight * ratio } else { w = maxWidth; h = maxWidth / ratio }
                 AndroidView(
-                    factory = { SurfaceView(it).also { sv -> pb.player.setVideoSurfaceView(sv) } },
+                    factory = {
+                        SurfaceView(it).also { sv ->
+                            pb.player.setVideoSurfaceView(sv)
+                            // in place (not fullscreen) the picture follows the page's rounded corners
+                            sv.outlineProvider = object : ViewOutlineProvider() {
+                                override fun getOutline(v: View, o: Outline) { o.setRoundRect(0, 0, v.width, v.height, corner) }
+                            }
+                        }
+                    },
+                    update = { sv -> sv.clipToOutline = !fullscreen },
                     modifier = Modifier.requiredSize(w, h),
                 )
             }

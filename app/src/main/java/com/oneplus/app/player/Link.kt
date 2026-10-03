@@ -80,16 +80,3 @@ private fun b64(hex: String): String? {
     val bytes = ByteArray(16) { h.substring(it * 2, it * 2 + 2).toInt(16).toByte() }
     return Base64.encodeToString(bytes, Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP)
 }
-
-/** Inverse of [parseLink]: builds `URL|User-Agent=..&Referer=..&drmScheme=..&drmLicense=..` from separate fields (values percent-encoded). */
-fun buildLink(url: String, userAgent: String, referer: String, drmScheme: String?, license: String): String {
-    val o = buildList {
-        if (userAgent.isNotBlank()) add("User-Agent=" + Uri.encode(userAgent.trim()))
-        if (referer.isNotBlank()) add("Referer=" + Uri.encode(referer.trim()))
-        if (drmScheme != null) {
-            add("drmScheme=$drmScheme")
-            if (license.isNotBlank()) add("drmLicense=" + Uri.encode(license.trim()))
-        }
-    }
-    return if (o.isEmpty()) url.trim() else url.trim() + "|" + o.joinToString("&")
-}

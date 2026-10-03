@@ -80,11 +80,16 @@ fun Modifier.glass(level: Int, radius: Dp): Modifier {
 
 /** Press physics (no ripple): scale down, spring back. */
 @Composable
-fun Modifier.press(onClick: () -> Unit): Modifier {
+fun Modifier.press(onClick: () -> Unit): Modifier = press(null, onClick)
+
+/** [press] with an extra long-press action (null = none). */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun Modifier.press(onLong: (() -> Unit)?, onClick: () -> Unit): Modifier {
     val src = remember { MutableInteractionSource() }
     val pressed by src.collectIsPressedAsState()
     val s by animateFloatAsState(if (pressed) 0.96f else 1f, spring(0.6f, 500f), label = "press")
-    return graphicsLayer { scaleX = s; scaleY = s }.clickable(src, null, onClick = onClick)
+    return graphicsLayer { scaleX = s; scaleY = s }.combinedClickable(src, null, onLongClick = onLong, onClick = onClick)
 }
 
 // ---- Icons (custom, 24dp grid, 1.75 stroke) ------------------------------
@@ -211,7 +216,7 @@ fun OneIconView(icon: OneIcon, modifier: Modifier = Modifier, tint: () -> Color)
                     if (i == 0) star.moveTo(x, y) else star.lineTo(x, y)
                 }
                 star.close()
-                drawPath(star, color); drawPath(star, color, style = Stroke(1.2f * k, join = StrokeJoin.Round))
+                drawPath(star, color, style = st) // outline like the rest of the set (a filled yellow star reads as an emoji)
             }
         }
     }

@@ -222,7 +222,7 @@ private fun Hero(m: Movie, duration: String, height: Dp, scroll: ScrollState) {
                     OneText(duration, OneType.Caption, c.dim)
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    OneIconView(OneIcon.Star) { c.warning }
+                    OneIconView(OneIcon.Star) { c.accent }
                     OneText(String.format(Locale.US, "%.1f", m.rating), OneType.Section, c.text)
                 }
             }

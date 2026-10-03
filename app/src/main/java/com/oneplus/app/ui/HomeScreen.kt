@@ -24,6 +24,8 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -36,17 +38,20 @@ import com.oneplus.app.ui.system.*
 @Composable
 fun HomeScreen(
     state: UiState, list: LazyListState, wide: Boolean, portrait: Boolean,
-    onMovie: (Int) -> Unit, onChannel: (Int) -> Unit, onAllMovies: () -> Unit, onAllChannels: () -> Unit,
+    onMovie: (Int) -> Unit, onChannel: (Int) -> Unit, onAllMovies: () -> Unit, onAllChannels: () -> Unit, onMatches: () -> Unit,
 ) {
     val bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 112.dp
     val d = state.data
+    val haptic = LocalHapticFeedback.current
     Box(Modifier.fillMaxSize(), Alignment.TopCenter) {
         LazyColumn(
             Modifier.widthIn(max = 880.dp).fillMaxSize(), list,
             PaddingValues(top = toolbarInset(), bottom = bottom),
             verticalArrangement = Arrangement.spacedBy(32.dp),
         ) {
-            if (d.matches.isNotEmpty()) item(key = "matches") { Block(R.string.sec_matches, null) { MatchSchedule(d.matches, wide) } }
+            if (d.matches.isNotEmpty()) item(key = "matches") { Block(R.string.sec_matches, null) {
+                MatchSchedule(d.matches.take(4), wide) { haptic.performHapticFeedback(HapticFeedbackType.LongPress); onMatches() } // a teaser: long-press opens the full page
+            } }
             if (d.movies.isNotEmpty()) item(key = "movies") {
                 Block(R.string.sec_movies, onAllMovies) {
                     LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -79,23 +84,24 @@ private fun Block(@StringRes title: Int, onAll: (() -> Unit)? = null, content: @
     }
 }
 
+/** The schedule table. Every row is also a long-press target ([onLong]), so the whole table opens the matches page. */
 @Composable
-private fun MatchSchedule(matches: List<Match>, wide: Boolean) {
+internal fun MatchSchedule(matches: List<Match>, wide: Boolean, onLong: (() -> Unit)?) {
     var open by rememberSaveable { mutableIntStateOf(-1) }
-    Column(Modifier.padding(horizontal = 20.dp).fillMaxWidth().glass(2, 22.dp).animateContentSize().padding(vertical = 8.dp)) {
+    Column(Modifier.padding(horizontal = 20.dp).fillMaxWidth().glass(2, 22.dp).animateContentSize()) {
         if (wide) matches.chunked(2).forEach { pair ->
             Row {
-                pair.forEach { m -> MatchRow(m, open == m.id, { open = if (open == m.id) -1 else m.id }, Modifier.weight(1f)) }
+                pair.forEach { m -> MatchRow(m, open == m.id, onLong, { open = if (open == m.id) -1 else m.id }, Modifier.weight(1f)) }
                 if (pair.size == 1) Spacer(Modifier.weight(1f))
             }
-        } else matches.forEach { m -> MatchRow(m, open == m.id, { open = if (open == m.id) -1 else m.id }, Modifier.fillMaxWidth()) }
+        } else matches.forEach { m -> MatchRow(m, open == m.id, onLong, { open = if (open == m.id) -1 else m.id }, Modifier.fillMaxWidth()) }
     }
 }
 
 @Composable
-private fun MatchRow(m: Match, expanded: Boolean, onClick: () -> Unit, modifier: Modifier) {
+private fun MatchRow(m: Match, expanded: Boolean, onLong: (() -> Unit)?, onClick: () -> Unit, modifier: Modifier) {
     val c = LocalColors.current
-    Column(modifier.press(onClick).padding(horizontal = 16.dp, vertical = 12.dp)) {
+    Column(modifier.press(onLong, onClick).padding(horizontal = 16.dp, vertical = 14.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.width(52.dp)) {
                 OneText(m.time, OneType.Section, c.text)

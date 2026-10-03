@@ -41,6 +41,8 @@
     <string name="unit_hour">س</string>
     <string name="unit_min">د</string>
 
+    <string name="day_today">اليوم</string>
+    <string name="day_tomorrow">غدًا</string>
     <string name="sec_all">الكل</string>
     <string name="unit_sec">ث</string>
 
@@ -73,11 +75,4 @@
     <string name="sample_caption">هذا نص تجريبي للترجمة</string>
     <string name="player_extracting">جارٍ جلب الفيديو…</string>
     <string name="resolve_failed">تعذّر جلب فيديو هذا المنشور</string>
-    <string name="link_title">مشغّل تجريبي</string>
-    <string name="link_url">رابط البث أو الفيديو</string>
-    <string name="link_license">رابط خادم الترخيص</string>
-    <string name="link_keys">المفاتيح kid:key أو رابط الخادم</string>
-    <string name="link_sample">بث تجريبي</string>
-    <string name="link_play">تشغيل</string>
-    <string name="drm_none">بدون تشفير</string>
 </resources>

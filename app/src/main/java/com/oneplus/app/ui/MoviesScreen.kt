@@ -18,12 +18,17 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.oneplus.app.R
@@ -66,12 +71,19 @@ private fun MoviesScreen(movies: List<Movie>, portrait: Boolean, onMovie: (Int) 
     var minRating by rememberSaveable { mutableIntStateOf(0) }  // 0 = all
     var sort by rememberSaveable { mutableIntStateOf(0) }       // index in SortLabels
     var panel by rememberSaveable { mutableStateOf(false) }
+    var q by rememberSaveable { mutableStateOf("") }
+    var searching by rememberSaveable { mutableStateOf(false) }
+    val focus = remember { FocusRequester() }
+    val fm = LocalFocusManager.current
+    val closeSearch = { fm.clearFocus(); q = ""; searching = false }
+    BackHandler(searching, closeSearch) // declared after the host's handler, so it wins: back closes the search first
+    LaunchedEffect(searching) { if (searching) focus.requestFocus() }
 
     val genres = remember(movies) { AllGenres.filter { g -> movies.any { g in it.genres } } }
     val years = remember(movies) { movies.map { it.year }.distinct().sortedDescending() }
-    val shown = remember(movies, genre, year, minRating, sort) {
+    val shown = remember(movies, genre, year, minRating, sort, q) {
         movies
-            .filter { m -> (genre == null || genre in m.genres) && (year == 0 || m.year == year) && (minRating == 0 || m.rating >= minRating) }
+            .filter { m -> (q.isBlank() || m.title.contains(q.trim(), ignoreCase = true)) && (genre == null || genre in m.genres) && (year == 0 || m.year == year) && (minRating == 0 || m.rating >= minRating) }
             .let { list ->
                 when (sort) {
                     0 -> list.sortedByDescending { it.year }
@@ -81,7 +93,7 @@ private fun MoviesScreen(movies: List<Movie>, portrait: Boolean, onMovie: (Int) 
             }
     }
     val extraFilters = (if (year != 0) 1 else 0) + (if (minRating != 0) 1 else 0) + (if (sort != 0) 1 else 0)
-    val reset = { genre = null; year = 0; minRating = 0; sort = 0 }
+    val reset = { genre = null; year = 0; minRating = 0; sort = 0; q = "" }
     val bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 24.dp
 
     Column(Modifier.fillMaxSize().statusBarsPadding(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -89,12 +101,26 @@ private fun MoviesScreen(movies: List<Movie>, portrait: Boolean, onMovie: (Int) 
         Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 12.dp), Arrangement.spacedBy(8.dp), Alignment.CenterVertically) {
             Box(Modifier.size(44.dp).press(onClose).glass(3, 22.dp), Alignment.Center) { OneIconView(OneIcon.Back) { c.text } }
             Box(Modifier.weight(1f).height(44.dp).glass(3, 22.dp), Alignment.Center) {
-                Row(Modifier.padding(horizontal = 16.dp), Arrangement.spacedBy(8.dp), Alignment.CenterVertically) {
+                if (searching) Row(Modifier.fillMaxSize().padding(start = 14.dp, end = 2.dp), Arrangement.spacedBy(8.dp), Alignment.CenterVertically) {
+                    OneIconView(OneIcon.Search) { c.accent }
+                    BasicTextField(
+                        q, { q = it.take(64) }, Modifier.weight(1f).focusRequester(focus), singleLine = true,
+                        textStyle = OneType.Body.copy(color = c.text), cursorBrush = SolidColor(c.accent),
+                        decorationBox = { inner ->
+                            Box(contentAlignment = Alignment.CenterStart) {
+                                if (q.isEmpty()) OneText(stringResource(R.string.search_hint), OneType.Body, c.dim)
+                                inner()
+                            }
+                        },
+                    )
+                    Box(Modifier.size(40.dp).press(closeSearch), Alignment.Center) { OneIconView(OneIcon.Close) { c.dim } }
+                } else Row(Modifier.padding(horizontal = 16.dp), Arrangement.spacedBy(8.dp), Alignment.CenterVertically) {
                     OneText(stringResource(R.string.movies_title), OneType.Section, c.text, maxLines = 1)
                     OneDot(c.dim)
                     OneText("${shown.size}", OneType.Section, c.dim)
                 }
             }
+            if (!searching) Box(Modifier.size(44.dp).press { searching = true }.glass(3, 22.dp), Alignment.Center) { OneIconView(OneIcon.Search) { c.text } }
             Box(Modifier.size(44.dp).press { panel = !panel }.glass(3, 22.dp), Alignment.Center) {
                 OneIconView(OneIcon.Filter) { if (panel || extraFilters > 0) c.accent else c.text }
                 if (extraFilters > 0) Box(Modifier.align(Alignment.TopEnd).padding(10.dp).size(8.dp).background(c.accent, CircleShape))
