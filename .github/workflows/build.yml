@@ -52,11 +52,10 @@ jobs:
           tag_name: v1.0.${{ github.run_number }}
           name: "OnePlus v1.0.${{ github.run_number }} (Release)"
           body: |
-            ### تطبيق وان+ (OnePlus App - الإصدار المحدث مع المسارات والترجمات ومحلل الروابط الذكي):
-            * محلل الروابط الذكي (`Resolver` + `yt-dlp`) لتشغيل روابط الفيديو الخارجية مباشرة.
-            * دعم مسارات الصوت المتعددة والترجمات (`SubtitleKit` + `TracksPanel`).
-            * مشغل فيديو متطور مدمج (`PlayerScreen` + `ExoPlayer 1.5.1`) مع دعم البث المباشر (HLS / DASH) و VOD.
-            * شاشة تصفح الأفلام وتفاصيلها المتطورة (`MoviesScreen` و `MovieDetailScreen`).
+            ### تطبيق وان+ (OnePlus App v7 - دعم الروابط المتقدمة والصيغ الشاملة):
+            * دعم تشغيل صيغ البث الموسعة (HLS, DASH, Smooth Streaming .ism, RTSP, MP4, MKV).
+            * دعم خيارات الروابط المتقدمة وتمرير الترويسات (User-Agent, Referer, Cookie) وتشفير DRM (Widevine, ClearKey).
+            * مشغل فيديو متطور وخفيف بالكامل مع دعم الترجمات ومسارات الصوت المتعددة.
           files: dist/*.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

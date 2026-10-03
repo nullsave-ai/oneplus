@@ -8,15 +8,11 @@ android {
     compileSdk = 35
     defaultConfig {
         applicationId = "com.oneplus.app"
-        minSdk = 24 // required by youtubedl-android 0.18.1
+        minSdk = 21
         targetSdk = 35
         versionCode = 1
         versionName = "1.0"
-        // yt-dlp ships Python + native code per ABI: keep only the phone ABIs (x86 emulators are dropped) to limit APK size
-        ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
     }
-    // The bundled Python/yt-dlp binaries are executed from the app's native-lib directory, so they must be extracted
-    packaging { jniLibs { useLegacyPackaging = true } }
     buildTypes {
         release {
             isMinifyEnabled = true
@@ -41,13 +37,13 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
 
-    // Player: only the three modules actually needed. No media3-ui (controls are drawn in Compose), no session/datasource-okhttp.
+    // Player: only the modules for the supported formats (progressive/HLS/DASH/SmoothStreaming/RTSP). No media3-ui (controls are drawn in Compose).
     // 1.5.x is the last line that supports minSdk 21 with the current AGP/compileSdk; newer lines need minSdk 23.
     val media3 = "1.5.1"
     implementation("androidx.media3:media3-exoplayer:$media3")
     implementation("androidx.media3:media3-exoplayer-hls:$media3")
     implementation("androidx.media3:media3-exoplayer-dash:$media3")
+    implementation("androidx.media3:media3-exoplayer-smoothstreaming:$media3") // .ism / Smooth Streaming
+    implementation("androidx.media3:media3-exoplayer-rtsp:$media3")            // rtsp://
 
-    // Extractor for page links (YouTube, X, ok.ru, ...): yt-dlp running on the device. GPL-3.0 licensed (see SECURITY_AUDIT.md).
-    implementation("io.github.junkfood02.youtubedl-android:library:0.18.1")
 }

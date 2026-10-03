@@ -27,13 +27,15 @@ fun TracksPanel(
     pb: Playback, tab: Int, onTab: (Int) -> Unit, style: SubStyle, onStyle: (SubStyle) -> Unit, onStyleDone: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val c = LocalColors.current
     val rows = when (tab) { 0 -> pb.qualities; 1 -> pb.audios; else -> pb.texts }
-    Column(modifier.vGlass(28.dp).padding(14.dp), Arrangement.spacedBy(12.dp)) {
+    // Same surface language as the rest of the app: an opaque base (video must not show through) + glass tint, sheen and hairline.
+    Column(modifier.background(c.bg, RoundedCornerShape(28.dp)).glass(4, 28.dp).padding(14.dp), Arrangement.spacedBy(12.dp)) {
         OneSegmented(
             listOf(R.string.tab_quality, R.string.tab_audio, R.string.tab_subs).map { stringResource(it) }, tab, onTab,
         )
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), Arrangement.spacedBy(6.dp)) {
-            if (rows.isEmpty()) OneText(stringResource(R.string.track_none), OneType.Body, Color.White.copy(alpha = 0.55f), Modifier.padding(8.dp))
+            if (rows.isEmpty()) OneText(stringResource(R.string.track_none), OneType.Body, c.dim, Modifier.padding(8.dp))
             rows.forEach { OptionRow(it) }
             if (tab == 2) SubtitleStyleEditor(style, onStyle, onStyleDone)
         }
@@ -46,14 +48,14 @@ private fun OptionRow(o: Opt) {
     val shape = RoundedCornerShape(14.dp)
     Row(
         Modifier.fillMaxWidth().press(o.onSelect).clip(shape)
-            .background(if (o.selected) c.accentSoft else Color.White.copy(alpha = 0.06f))
+            .background(if (o.selected) c.accentSoft else c.dim.copy(alpha = 0.10f))
             .border(0.5.dp, if (o.selected) c.accent.copy(alpha = 0.55f) else Color.Transparent, shape)
             .padding(horizontal = 14.dp, vertical = 12.dp),
         Arrangement.SpaceBetween, Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {
-            OneText(o.label, OneType.Body, Color.White, maxLines = 1)
-            o.hint?.let { OneText(it, OneType.Caption, Color.White.copy(alpha = 0.55f), maxLines = 1) }
+            OneText(o.label, OneType.Body, if (o.selected) c.accent else c.text, maxLines = 1)
+            o.hint?.let { OneText(it, OneType.Caption, c.dim, maxLines = 1) }
         }
         if (o.selected) OneIconView(OneIcon.Check, Modifier.size(20.dp)) { c.accent }
     }

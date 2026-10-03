@@ -31,10 +31,17 @@ import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.dash.DashMediaSource
+import androidx.media3.exoplayer.drm.DefaultDrmSessionManager
+import androidx.media3.exoplayer.drm.DrmSessionManagerProvider
+import androidx.media3.exoplayer.drm.FrameworkMediaDrm
+import androidx.media3.exoplayer.drm.HttpMediaDrmCallback
+import androidx.media3.exoplayer.drm.LocalMediaDrmCallback
+import androidx.media3.exoplayer.drm.MediaDrmCallback
+import androidx.media3.exoplayer.rtsp.RtspMediaSource
+import androidx.media3.exoplayer.smoothstreaming.DefaultSsChunkSource
+import androidx.media3.exoplayer.smoothstreaming.SsMediaSource
 import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.exoplayer.source.MediaSource
-import androidx.media3.exoplayer.source.MergingMediaSource
-import androidx.media3.exoplayer.source.SingleSampleMediaSource
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import com.oneplus.app.R
 import java.io.File
@@ -45,16 +52,6 @@ data class PlaySource(val url: String, val title: String, val live: Boolean, val
 
 /** One row in the quality / audio / subtitle menus. */
 class Opt(val label: String, val hint: String?, val selected: Boolean, val onSelect: () -> Unit)
-
-/**
- * The only way a URL reaches the player. Catalogue data is untrusted: anything other than http(s) with a host
- * (file://, content://, data:, android.resource:// ...) is rejected, so a poisoned entry can't make the app read local content.
- */
-fun PlaySource.toUriOrNull(): Uri? {
-    val uri = runCatching { Uri.parse(url.trim()) }.getOrNull() ?: return null
-    val scheme = uri.scheme?.lowercase()
-    return if ((scheme == "http" || scheme == "https") && !uri.host.isNullOrBlank()) uri else null
-}
 
 /** One small LRU disk cache, used for progressive (MP4) VODs only. Live streams and HLS/DASH never touch it. */
 internal object MediaCache {
@@ -102,6 +99,17 @@ class Playback(
         .setReadTimeoutMs(10_000)
         .setAllowCrossProtocolRedirects(true) // IPTV links commonly bounce http -> https
 
+    // DRM (Widevine / PlayReady via a license server, ClearKey via server or keys given in the link). License requests
+    // go through the same HTTP factory, so they carry the link's User-Agent and headers too.
+    private val drmProvider: DrmSessionManagerProvider? = res.drm?.let { d ->
+        val callback: MediaDrmCallback = d.local?.let { LocalMediaDrmCallback(it) } ?: HttpMediaDrmCallback(d.licenseUrl, http)
+        val manager = DefaultDrmSessionManager.Builder()
+            .setUuidAndExoMediaDrmProvider(d.uuid, FrameworkMediaDrm.DEFAULT_PROVIDER)
+            .setMultiSession(true)
+            .build(callback)
+        DrmSessionManagerProvider { manager }
+    }
+
     private val kind = kindOf(res.url)
     private var triedHls = false
 
@@ -134,32 +142,30 @@ class Playback(
     private fun src(url: String, type: Int): MediaSource {
         val item = MediaItem.Builder().setUri(url)
             .setMediaMetadata(MediaMetadata.Builder().setTitle(source.title).build()).build()
+        val drm = drmProvider
         return when (type) {
-            C.CONTENT_TYPE_HLS -> HlsMediaSource.Factory(http).setAllowChunklessPreparation(true).createMediaSource(item)
-            C.CONTENT_TYPE_DASH -> DashMediaSource.Factory(http).createMediaSource(item)
-            else -> {
+            C.CONTENT_TYPE_HLS -> HlsMediaSource.Factory(http).setAllowChunklessPreparation(true)
+                .apply { drm?.let { setDrmSessionManagerProvider(it) } }.createMediaSource(item)
+            C.CONTENT_TYPE_DASH -> DashMediaSource.Factory(http)
+                .apply { drm?.let { setDrmSessionManagerProvider(it) } }.createMediaSource(item)
+            C.CONTENT_TYPE_SS -> SsMediaSource.Factory(DefaultSsChunkSource.Factory(http), http)
+                .apply { drm?.let { setDrmSessionManagerProvider(it) } }.createMediaSource(item)
+            C.CONTENT_TYPE_RTSP -> RtspMediaSource.Factory()
+                .setUserAgent(res.headers.entries.firstOrNull { it.key.equals("user-agent", true) }?.value ?: "OnePlus/1.0")
+                .createMediaSource(item)
+            else -> { // mp4, mkv, webm, ts, flv, mp3, aac, ogg, flac, wav ... (the extractor sniffs the container)
                 val factory: DataSource.Factory = if (cache != null) {
                     CacheDataSource.Factory().setCache(cache).setUpstreamDataSourceFactory(http)
                         .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
                 } else http
-                ProgressiveMediaSource.Factory(factory).createMediaSource(item)
+                ProgressiveMediaSource.Factory(factory).apply { drm?.let { setDrmSessionManagerProvider(it) } }.createMediaSource(item)
             }
         }
     }
 
-    /** Main stream (+ separate audio) (+ external subtitles), merged into one source. */
     private fun build(forced: Int? = null): MediaSource {
-        val v = res.variants.getOrNull(variant)
-        val url = v?.url ?: res.url
-        val main = src(url, forced ?: kindOf(url))
-        val audio = (v?.audio ?: res.audio)?.let { src(it, C.CONTENT_TYPE_OTHER) }
-        val subs = res.subs.map { s ->
-            SingleSampleMediaSource.Factory(http).createMediaSource(
-                MediaItem.SubtitleConfiguration.Builder(Uri.parse(s.url)).setMimeType(s.mime).setLanguage(s.lang).build(), C.TIME_UNSET,
-            )
-        }
-        val all = listOfNotNull(main, audio) + subs
-        return if (all.size == 1) main else MergingMediaSource(*all.toTypedArray())
+        val url = res.variants.getOrNull(variant)?.url ?: res.url
+        return src(url, forced ?: kindOf(url))
     }
 
     // ---- controls ----

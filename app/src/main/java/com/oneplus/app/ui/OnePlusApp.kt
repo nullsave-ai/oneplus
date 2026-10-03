@@ -79,7 +79,7 @@ fun OnePlusApp(theme: ThemeController, vm: MainViewModel = viewModel()) {
         when (playKind) {
             1 -> state.all.movies.firstOrNull { it.id == playId }?.let { PlaySource(it.url, it.title, live = false, cacheable = true) }
             2 -> state.all.channels.firstOrNull { it.id == playId }?.let { PlaySource(it.url, it.name, live = true) }
-            3 -> if (playUrl.isNotBlank()) PlaySource(playUrl.trim(), runCatching { Uri.parse(playUrl.trim()).host }.getOrNull() ?: playUrl.take(32), live = false) else null
+            3 -> if (playUrl.isNotBlank()) PlaySource(playUrl.trim(), runCatching { Uri.parse(playUrl.substringBefore('|').trim()).host }.getOrNull() ?: playUrl.take(32), live = false) else null
             else -> null
         }
     }

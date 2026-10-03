@@ -66,7 +66,7 @@ import com.oneplus.app.player.PlaySource
 import com.oneplus.app.player.Playback
 import com.oneplus.app.player.Resolved
 import com.oneplus.app.player.Resolver
-import com.oneplus.app.player.toUriOrNull
+import com.oneplus.app.player.parseLink
 import com.oneplus.app.ui.system.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -120,18 +120,18 @@ fun PlayerScreen(source: PlaySource, onClose: () -> Unit) {
         }
     }
 
-    // Plain media links play directly; known page hosts (YouTube, X, ok.ru...) go straight to the extractor, and a link the
-    // player can't read falls back to it once. The player is created off the first frame and released as soon as the screen leaves.
-    val uri = remember(source.url) { source.toUriOrNull() }
-    var attempt by remember(source) { mutableIntStateOf(if (uri != null && Resolver.needsExtractor(uri)) 1 else 0) } // 0 direct · 1 extractor
+    // Every link is played as is (headers / DRM from its |options|); only an X post needs one lookup first.
+    // The player is created off the first frame and released as soon as the screen leaves.
+    val link = remember(source.url) { parseLink(source.url) }
+    var attempt by remember(source) { mutableIntStateOf(if (link != null && Resolver.needsExtractor(link.url)) 1 else 0) } // 0 direct · 1 X lookup
     var retryKey by remember { mutableIntStateOf(0) }
     var resolveFailed by remember(source) { mutableStateOf(false) }
     var playback by remember { mutableStateOf<Playback?>(null) }
     LaunchedEffect(source, attempt, retryKey) {
-        if (uri == null) return@LaunchedEffect
+        if (link == null) return@LaunchedEffect
         playback = null
         resolveFailed = false
-        val res = if (attempt == 0) Resolved(source.url, source.live) else Resolver.resolve(app, source.url)
+        val res = if (attempt == 0) Resolved(link.url, source.live, link.headers, link.drm) else Resolver.resolve(link.url)?.copy(headers = link.headers)
         if (res == null) { resolveFailed = true; return@LaunchedEffect }
         val cache = if (attempt == 0 && source.cacheable) withContext(Dispatchers.IO) { MediaCache.get(app) } else null
         playback = Playback(app, source, res, cache)
@@ -144,8 +144,7 @@ fun PlayerScreen(source: PlaySource, onClose: () -> Unit) {
     BackHandler { if (panelOpen) panelOpen = false else onClose() }
 
     val pb = playback
-    LaunchedEffect(pb?.failed) { if (pb?.failed == true && attempt == 0) attempt = 1 }
-    val failed = uri == null || resolveFailed || (pb?.failed == true && attempt > 0)
+    val failed = link == null || resolveFailed || pb?.failed == true
     var show by remember { mutableStateOf(true) }
     var tick by remember { mutableIntStateOf(0) } // bumped on every interaction to restart the auto-hide timer
     var scrub by remember { mutableStateOf<Float?>(null) }
@@ -213,7 +212,7 @@ fun PlayerScreen(source: PlaySource, onClose: () -> Unit) {
                         onDoubleTap = { o ->
                             val p = playback ?: return@detectTapGestures
                             val side = when { o.x < size.width / 3f -> -1; o.x > size.width * 2f / 3f -> 1; else -> 0 }
-                            if (side == 0) { p.toggle(); tick++ }
+                            if (side == 0) { if (!p.live) { p.toggle(); tick++ } }
                             else if (p.seekable) {
                                 p.seekBy(side * 10_000L)
                                 val h = hud
@@ -284,16 +283,16 @@ fun PlayerScreen(source: PlaySource, onClose: () -> Unit) {
 
         // 5) loading / error
         val controlsA by animateFloatAsState(if (show) 1f else 0f, tween(220), label = "controls")
-        if ((pb == null || pb.buffering || !pb.firstFrame) && !failed && controlsA < 0.5f) {
+        if ((pb == null || pb.buffering || !pb.firstFrame) && !failed && (controlsA < 0.5f || pb?.live == true)) {
             Spinner(c.accent, Modifier.align(Alignment.Center).size(44.dp))
             if (pb == null && attempt > 0) OneText(stringResource(R.string.player_extracting), OneType.Caption, Color.White.copy(alpha = 0.7f), Modifier.align(Alignment.Center).padding(top = 84.dp))
         }
         if (failed) Column(Modifier.align(Alignment.Center), Arrangement.spacedBy(16.dp), Alignment.CenterHorizontally) {
             OneText(
-                stringResource(if (uri == null) R.string.player_bad_link else if (resolveFailed) R.string.resolve_failed else R.string.player_error),
+                stringResource(if (link == null) R.string.player_bad_link else if (resolveFailed) R.string.resolve_failed else R.string.player_error),
                 OneType.Section, Color.White,
             )
-            if (uri != null) OneButton(
+            if (link != null) OneButton(
                 stringResource(R.string.player_retry), OneIcon.Forward,
                 { val p = playback; if (p == null || resolveFailed) retryKey++ else p.retry() }, Modifier.width(220.dp),
             )
@@ -332,7 +331,7 @@ fun PlayerScreen(source: PlaySource, onClose: () -> Unit) {
                     GlassBtn({ fit = !fit; tick++ }) { OneIconView(if (fit) OneIcon.Fit else OneIcon.Fill) { Color.White } }
                 }
 
-                if (pb != null && !failed) {
+                if (pb != null && !failed && !pb.live) { // a live stream has nothing to pause: no center transport at all
                     // center transport (physical order: back · play · forward, independent of RTL)
                     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
                         Row(Modifier.align(Alignment.Center), Arrangement.spacedBy(28.dp), Alignment.CenterVertically) {

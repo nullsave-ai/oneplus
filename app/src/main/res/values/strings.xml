@@ -71,8 +71,8 @@
     <string name="style_size">الحجم</string>
     <string name="style_lift">الارتفاع</string>
     <string name="sample_caption">هذا نص تجريبي للترجمة</string>
-    <string name="player_extracting">جارٍ استخراج الرابط…</string>
-    <string name="resolve_failed">تعذّر استخراج الفيديو من هذا الرابط</string>
+    <string name="player_extracting">جارٍ جلب الفيديو…</string>
+    <string name="resolve_failed">تعذّر جلب فيديو هذا المنشور</string>
     <string name="link_title">تشغيل رابط</string>
     <string name="link_hint">الصق رابط فيديو أو بث</string>
 </resources>

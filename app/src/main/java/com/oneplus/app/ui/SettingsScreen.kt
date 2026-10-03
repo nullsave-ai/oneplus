@@ -140,7 +140,7 @@ private fun SettingRow(title: String, modifier: Modifier = Modifier, trailing: @
     }
 }
 
-/** Paste any link (direct media or a page from a supported site) and play it. Length is capped; validation happens in the player. */
+/** Paste any media link, optionally with |User-Agent=..&drmScheme=..&drmLicense=.. options (see LINK_FORMAT.md). Length is capped; validation happens in the player. */
 @Composable
 private fun LinkRow(onPlay: (String) -> Unit) {
     val c = LocalColors.current
@@ -150,7 +150,7 @@ private fun LinkRow(onPlay: (String) -> Unit) {
         Box(Modifier.weight(1f).height(44.dp).clip(RoundedCornerShape(14.dp)).background(c.dim.copy(alpha = 0.12f)).padding(horizontal = 12.dp), Alignment.CenterStart) {
             if (link.isEmpty()) OneText(stringResource(R.string.link_hint), OneType.Body, c.dim, maxLines = 1)
             BasicTextField(
-                link, { link = it.take(2048) }, Modifier.fillMaxWidth(), singleLine = true,
+                link, { link = it.take(4096) }, Modifier.fillMaxWidth(), singleLine = true,
                 textStyle = OneType.Body.copy(color = c.text, textDirection = TextDirection.Ltr),
                 cursorBrush = SolidColor(c.accent),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Go),

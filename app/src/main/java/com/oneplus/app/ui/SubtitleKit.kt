@@ -64,23 +64,23 @@ fun CaptionText(text: String, s: SubStyle, accent: Color, onAccent: Color, modif
 @Composable
 fun SubtitleStyleEditor(s: SubStyle, onChange: (SubStyle) -> Unit, onDone: () -> Unit) {
     val c = LocalColors.current
-    val track = Brush.horizontalGradient(listOf(Color.White.copy(alpha = 0.15f), Color.White.copy(alpha = 0.45f)))
+    val track = Brush.horizontalGradient(listOf(c.dim.copy(alpha = 0.25f), c.accent))
     Column(Modifier.padding(top = 10.dp), Arrangement.spacedBy(8.dp)) {
-        OneText(stringResource(R.string.subs_style), OneType.Caption, Color.White.copy(alpha = 0.6f))
+        OneText(stringResource(R.string.subs_style), OneType.Caption, c.dim)
         Row(Modifier.fillMaxWidth(), Arrangement.spacedBy(8.dp)) {
             repeat(4) { i ->
                 val shape = RoundedCornerShape(12.dp)
                 Box(
                     Modifier.weight(1f).height(52.dp).press { onChange(s.copy(preset = i)); onDone() }.clip(shape)
-                        .background(Color.White.copy(alpha = 0.08f))
-                        .border(if (s.preset == i) 1.5.dp else 0.5.dp, if (s.preset == i) c.accent else Color.White.copy(alpha = 0.16f), shape),
+                        .background(Color(0xFF0B1220))
+                        .border(if (s.preset == i) 1.5.dp else 0.5.dp, if (s.preset == i) c.accent else c.border, shape),
                     Alignment.Center,
                 ) { CaptionText("Aa", SubStyle(i, 0.15f), c.accent, c.onAccent) }
             }
         }
-        OneText(stringResource(R.string.style_size), OneType.Caption, Color.White.copy(alpha = 0.6f))
+        OneText(stringResource(R.string.style_size), OneType.Caption, c.dim)
         OneSlider(s.size, { onChange(s.copy(size = it)) }, onDone, track)
-        OneText(stringResource(R.string.style_lift), OneType.Caption, Color.White.copy(alpha = 0.6f))
+        OneText(stringResource(R.string.style_lift), OneType.Caption, c.dim)
         OneSlider(s.lift, { onChange(s.copy(lift = it)) }, onDone, track)
     }
 }
