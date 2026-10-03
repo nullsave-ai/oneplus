@@ -17,13 +17,18 @@ interface HomeRepository { val data: Flow<HomeData> }
 val AllGenres = listOf("أكشن", "دراما", "جريمة", "إثارة", "رعب", "كوميديا", "خيال علمي", "مغامرة", "عائلي")
 
 // Public test streams (HLS / DASH / MP4). Placeholders: replace with the real catalogue URLs.
+// A url may carry player options after "|" (see PlaySource.parse), e.g.
+//   https://host/live.m3u8|User-Agent=VLC/3.0|Referer=https://site/|Origin=https://site|Cookie=a%3Db
+//   https://host/manifest.mpd|drm=widevine|license_key=https%3A%2F%2Flic.example%2Fgetlicense
+//   https://host/manifest.mpd|drm=clearkey|license_key=<kid hex>:<key hex>
+//   https://host/movie.mp4|sub=https%3A%2F%2Fhost%2Far.vtt|sub=https%3A%2F%2Fhost%2Fen.srt
 private val SampleVod = listOf(
     "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
     "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8",
     "https://dash.akamaized.net/akamai/bbb_30fps/bbb_30fps.mpd",
     "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4",
 )
-private const val SampleLive = "https://alkatlanhd.xmax1tv.com/live/2.m3u8" // test live stream (HLS)
+private const val SampleLive = "https://cph-p2p-msl.akamaized.net/hls/live/2000341/test/master.m3u8"
 private const val SampleSynopsis =
     "تدور الأحداث حول مجموعة من الأصدقاء تتغيّر حياتهم بعد حدث غير متوقع، لتبدأ رحلة مليئة بالتشويق والمفاجآت " +
     "والقرارات الصعبة. نص تجريبي يُستبدل بوصف الفيلم الحقيقي القادم من الخادم."
@@ -48,7 +53,8 @@ class SampleRepository : HomeRepository {
                 url = SampleVod[i % SampleVod.size],
             )
         },
-        channels = listOf("الإخبارية", "الرياضية", "السينما", "الوثائقية", "الأطفال", "الموسيقى",
-            "المنوعات", "الدراما", "الطبخ", "الثقافية").mapIndexed { i, n -> Channel(i, n, SampleLive) },
+        channels = listOf(Channel(0, "beIN 1", "https://null-stream.nullsave-ai.workers.dev/live/bein1.m3u8")) +
+            listOf("الإخبارية", "الرياضية", "السينما", "الوثائقية", "الأطفال", "الموسيقى",
+                "المنوعات", "الدراما", "الطبخ", "الثقافية").mapIndexed { i, n -> Channel(i + 1, n, SampleLive) },
     ))
 }

@@ -216,11 +216,11 @@ private fun Hero(m: Movie, duration: String, height: Dp, scroll: ScrollState) {
             )
             Column(Modifier.weight(1f).padding(bottom = 4.dp), Arrangement.spacedBy(6.dp)) {
                 OneText(m.title, OneType.Title, c.text, maxLines = 2)
-                OneText("${m.year}  ·  $duration", OneType.Caption, c.dim)
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    OneIconView(OneIcon.Star) { c.warning }
-                    OneText(String.format(Locale.US, "%.1f", m.rating), OneType.Section, c.text)
-                }
+                OneText("${m.year}  |  $duration", OneType.Caption, c.dim)
+                OneText(
+                    String.format(Locale.US, "%.1f", m.rating), OneType.Section, c.warning,
+                    Modifier.background(c.accentSoft, RoundedCornerShape(12.dp)).padding(horizontal = 12.dp, vertical = 4.dp),
+                )
             }
         }
     }

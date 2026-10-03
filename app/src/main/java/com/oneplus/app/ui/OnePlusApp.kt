@@ -2,7 +2,6 @@ package com.oneplus.app.ui
 
 import android.app.ActivityManager
 import android.content.Context
-import android.net.Uri
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.spring
@@ -53,9 +52,8 @@ fun OnePlusApp(theme: ThemeController, vm: MainViewModel = viewModel()) {
     var tab by rememberSaveable { mutableIntStateOf(0) }
     var movieId by rememberSaveable { mutableIntStateOf(-1) }
     var showMovies by rememberSaveable { mutableStateOf(false) }
-    var playKind by rememberSaveable { mutableIntStateOf(0) } // 0 none · 1 movie · 2 channel · 3 pasted link
+    var playKind by rememberSaveable { mutableIntStateOf(0) } // 0 none · 1 movie · 2 channel
     var playId by rememberSaveable { mutableIntStateOf(-1) }
-    var playUrl by rememberSaveable { mutableStateOf("") } // kind 3: a link typed/pasted by the user
     val detail = remember { DetailState(movieId >= 0) }
     val homeList = rememberLazyListState()
     val grid = rememberLazyGridState()
@@ -75,16 +73,15 @@ fun OnePlusApp(theme: ThemeController, vm: MainViewModel = viewModel()) {
         }
     }
     // Only an id is persisted; the URL is always resolved from the catalogue (never stored or passed around as free text).
-    val source = remember(playKind, playId, playUrl, state.all) {
+    val source = remember(playKind, playId, state.all) {
         when (playKind) {
-            1 -> state.all.movies.firstOrNull { it.id == playId }?.let { PlaySource(it.url, it.title, live = false, cacheable = true) }
+            1 -> state.all.movies.firstOrNull { it.id == playId }?.let { PlaySource(it.url, it.title, live = false) }
             2 -> state.all.channels.firstOrNull { it.id == playId }?.let { PlaySource(it.url, it.name, live = true) }
-            3 -> if (playUrl.isNotBlank()) PlaySource(playUrl.trim(), runCatching { Uri.parse(playUrl.substringBefore('|').trim()).host }.getOrNull() ?: playUrl.take(32), live = false) else null
             else -> null
         }
     }
     LaunchedEffect(source, playKind, state.all) {
-        if (playKind in 1..2 && source == null && state.all.movies.isNotEmpty()) playKind = 0
+        if (playKind != 0 && source == null && state.all.movies.isNotEmpty()) playKind = 0
     }
     val playChannel = { id: Int -> playKind = 2; playId = id }
     // A stale id (e.g. the catalogue changed after process death) must never leave the page stuck in "depth" mode.
@@ -115,7 +112,7 @@ fun OnePlusApp(theme: ThemeController, vm: MainViewModel = viewModel()) {
                             onAllChannels = { tab = 1 },
                         )
                         1 -> ChannelsScreen(state.data.channels, grid, portrait, playChannel)
-                        else -> SettingsScreen(fx, { fx = it }, theme, settingsScroll) { link -> playUrl = link; playKind = 3 }
+                        else -> SettingsScreen(fx, { fx = it }, theme, settingsScroll)
                     }
                 }
                 FloatingToolbar(

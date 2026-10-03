@@ -8,7 +8,7 @@ android {
     compileSdk = 35
     defaultConfig {
         applicationId = "com.oneplus.app"
-        minSdk = 21
+        minSdk = 21 // older / 32-bit devices; no native libs until a real need exists
         targetSdk = 35
         versionCode = 1
         versionName = "1.0"
@@ -37,13 +37,12 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
 
-    // Player: only the modules for the supported formats (progressive/HLS/DASH/SmoothStreaming/RTSP). No media3-ui (controls are drawn in Compose).
+    // Player: only the modules actually needed (HLS, DASH, Smooth, RTSP). No media3-ui (controls are drawn in Compose), no session/datasource-okhttp.
     // 1.5.x is the last line that supports minSdk 21 with the current AGP/compileSdk; newer lines need minSdk 23.
     val media3 = "1.5.1"
     implementation("androidx.media3:media3-exoplayer:$media3")
     implementation("androidx.media3:media3-exoplayer-hls:$media3")
     implementation("androidx.media3:media3-exoplayer-dash:$media3")
-    implementation("androidx.media3:media3-exoplayer-smoothstreaming:$media3") // .ism / Smooth Streaming
-    implementation("androidx.media3:media3-exoplayer-rtsp:$media3")            // rtsp://
-
+    implementation("androidx.media3:media3-exoplayer-smoothstreaming:$media3")
+    implementation("androidx.media3:media3-exoplayer-rtsp:$media3")
 }

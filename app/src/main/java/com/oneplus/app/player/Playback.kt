@@ -5,20 +5,22 @@ package com.oneplus.app.player
 import android.app.ActivityManager
 import android.content.Context
 import android.net.Uri
+import android.util.Base64
 import androidx.compose.runtime.*
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
+import androidx.media3.common.Format
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
+import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
-import androidx.media3.common.Format
+import androidx.media3.common.Player
+import androidx.media3.common.Timeline
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.TrackSelectionParameters
 import androidx.media3.common.Tracks
-import androidx.media3.common.text.CueGroup
-import androidx.media3.common.Player
-import androidx.media3.common.Timeline
 import androidx.media3.common.VideoSize
+import androidx.media3.common.text.CueGroup
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.common.util.Util
 import androidx.media3.database.StandaloneDatabaseProvider
@@ -30,28 +32,105 @@ import androidx.media3.datasource.cache.SimpleCache
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.exoplayer.dash.DashMediaSource
 import androidx.media3.exoplayer.drm.DefaultDrmSessionManager
+import androidx.media3.exoplayer.drm.DefaultDrmSessionManagerProvider
 import androidx.media3.exoplayer.drm.DrmSessionManagerProvider
 import androidx.media3.exoplayer.drm.FrameworkMediaDrm
-import androidx.media3.exoplayer.drm.HttpMediaDrmCallback
 import androidx.media3.exoplayer.drm.LocalMediaDrmCallback
-import androidx.media3.exoplayer.drm.MediaDrmCallback
-import androidx.media3.exoplayer.rtsp.RtspMediaSource
-import androidx.media3.exoplayer.smoothstreaming.DefaultSsChunkSource
-import androidx.media3.exoplayer.smoothstreaming.SsMediaSource
-import androidx.media3.exoplayer.hls.HlsMediaSource
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.source.MediaSource
-import androidx.media3.exoplayer.source.ProgressiveMediaSource
-import com.oneplus.app.R
 import java.io.File
 import java.util.Locale
+import java.util.UUID
 
-/** What to play. [live] = channel (no seeking); [cacheable] = a plain movie file that may use the disk cache. */
-data class PlaySource(val url: String, val title: String, val live: Boolean, val cacheable: Boolean = false)
+/** What to play. [live] = channel (no cache, no seeking); otherwise a movie (cache + seeking). */
+data class PlaySource(val url: String, val title: String, val live: Boolean)
 
-/** One row in the quality / audio / subtitle menus. */
-class Opt(val label: String, val hint: String?, val selected: Boolean, val onSelect: () -> Unit)
+/** DRM for one stream: [url] = license server, [keys] = ready-made ClearKey license (when the link carries kid:key pairs). */
+class Drm(val uuid: UUID, val url: String?, val keys: ByteArray?)
+
+/** A validated, ready-to-play link: address + request headers + DRM + external subtitles. */
+class Stream(val uri: Uri, val ua: String, val headers: Map<String, String>, val drm: Drm?, val subs: List<Uri>)
+
+private const val DefaultUa = "OnePlus/1.0"
+private val Schemes = setOf("http", "https", "rtsp")
+private val HeaderName = Regex("[A-Za-z0-9-]{1,40}")
+private val BlockedHeaders = setOf("host", "content-length", "connection", "transfer-encoding", "upgrade", "te")
+private val Hex32 = Regex("[0-9a-fA-F]{32}")
+
+private fun webUri(s: String): Uri? = runCatching { Uri.parse(s.trim()) }.getOrNull()
+    ?.takeIf { (it.scheme.equals("http", true) || it.scheme.equals("https", true)) && !it.host.isNullOrBlank() }
+
+/** "kid:key,kid:key" (hex) -> ClearKey license JSON, or null when malformed. */
+private fun clearKeyJson(spec: String): ByteArray? {
+    val pairs = spec.split(',').map { it.trim().split(':') }
+    if (pairs.isEmpty() || pairs.any { it.size != 2 || !Hex32.matches(it[0].replace("-", "")) || !Hex32.matches(it[1]) }) return null
+    fun b64(hex: String) = Base64.encodeToString(
+        hex.replace("-", "").chunked(2).map { it.toInt(16).toByte() }.toByteArray(),
+        Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP,
+    )
+    val keys = pairs.joinToString(",") { "{\"kty\":\"oct\",\"k\":\"${b64(it[1])}\",\"kid\":\"${b64(it[0])}\"}" }
+    return "{\"type\":\"temporary\",\"keys\":[$keys]}".toByteArray()
+}
+
+/**
+ * The only way a URL reaches the player. Catalogue data is untrusted: only http(s)/rtsp with a host is accepted
+ * (file://, content://, data:, android.resource:// ... are rejected), header names/values are sanitised, license
+ * servers and subtitles must be http(s).
+ *
+ * Extra keys ride on the link, Kodi style: `url|User-Agent=..|Referer=..|Origin=..|Cookie=..|Authorization=..`
+ * (any other `Name=value` becomes a request header; `&` also separates; percent-encode `&` and `|` inside values), plus
+ *   drm=widevine|playready|clearkey   license_key=<license url | kid:key[,kid:key]>   sub=<subtitle url> (repeatable)
+ */
+fun PlaySource.parse(): Stream? {
+    val parts = url.trim().split('|')
+    val uri = runCatching { Uri.parse(parts[0].trim()) }.getOrNull() ?: return null
+    val scheme = uri.scheme?.lowercase() ?: return null
+    if (scheme !in Schemes || uri.host.isNullOrBlank()) return null
+
+    var ua = DefaultUa
+    var drmType: String? = null
+    var license: String? = null
+    val headers = linkedMapOf<String, String>()
+    val subs = mutableListOf<Uri>()
+    for (kv in parts.drop(1).flatMap { it.split('&') }) {
+        val i = kv.indexOf('=')
+        if (i <= 0) continue
+        val k = kv.substring(0, i).trim()
+        val v = Uri.decode(kv.substring(i + 1)).trim()
+        when (k.lowercase().replace('_', '-')) {
+            "user-agent", "useragent", "ua" -> if (v.none { it < ' ' }) ua = v
+            "drm", "drm-scheme", "license-type" -> drmType = v.lowercase()
+            "license-key", "drm-license", "license" -> license = v
+            "sub", "subtitle" -> webUri(v)?.let { if (subs.size < 8) subs += it }
+            else -> {
+                val name = if (k.equals("referrer", true)) "Referer" else k
+                if (HeaderName.matches(name) && name.lowercase() !in BlockedHeaders && v.length <= 2048 &&
+                    v.none { it < ' ' } && headers.size < 16
+                ) headers[name] = v
+            }
+        }
+    }
+
+    val lic = license
+    val drm = if (drmType == null && lic == null) null else {
+        val t = drmType.orEmpty()
+        val uuid = when {
+            "clear" in t -> C.CLEARKEY_UUID
+            "play" in t -> C.PLAYREADY_UUID
+            "wide" in t -> C.WIDEVINE_UUID
+            lic?.startsWith("http", true) == true -> C.WIDEVINE_UUID
+            else -> C.CLEARKEY_UUID
+        }
+        when {
+            lic == null -> Drm(uuid, null, null)
+            lic.startsWith("http", true) -> Drm(uuid, (webUri(lic) ?: return null).toString(), null)
+            uuid == C.CLEARKEY_UUID -> Drm(uuid, null, clearKeyJson(lic) ?: return null)
+            else -> return null
+        }
+    }
+    return Stream(uri, ua, headers, drm, subs)
+}
 
 /** One small LRU disk cache, used for progressive (MP4) VODs only. Live streams and HLS/DASH never touch it. */
 internal object MediaCache {
@@ -65,17 +144,25 @@ internal object MediaCache {
     }
 }
 
+/** One selectable track entry. [label] null = the "automatic" (video) / "off" (text) entry. */
+class TrackOpt(val label: String?, val on: Boolean, val pick: () -> Unit)
+
+private val Sniffable = setOf(
+    PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED, PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED,
+    PlaybackException.ERROR_CODE_PARSING_MANIFEST_MALFORMED, PlaybackException.ERROR_CODE_PARSING_MANIFEST_UNSUPPORTED,
+)
+
+private class T(val g: Tracks.Group, val i: Int) {
+    val f: Format get() = g.getTrackFormat(i)
+    val sel: Boolean get() = g.isTrackSelected(i)
+}
+
 /**
  * Owns one ExoPlayer and exposes its state as Compose state. Created when the player screen opens and
  * [release]d the moment it closes, so nothing (decoders, sockets, buffers) outlives the screen.
- *
- * Quality / audio / subtitles come straight from the player's track list (HLS, DASH, MKV...) and, for resolved
- * progressive streams, from [Resolved.variants]. The UI only ever sees [Opt] rows.
  */
 @Stable
-class Playback(
-    private val app: Context, val source: PlaySource, private val res: Resolved, private val cache: SimpleCache?,
-) : Player.Listener {
+class Playback(app: Context, val source: PlaySource, private val stream: Stream, private val cache: SimpleCache?) : Player.Listener {
 
     var wantsPlay by mutableStateOf(true); private set
     var buffering by mutableStateOf(true); private set
@@ -84,34 +171,44 @@ class Playback(
     var failed by mutableStateOf(false); private set
     var videoSize by mutableStateOf(VideoSize.UNKNOWN); private set
     var durationMs by mutableLongStateOf(0L); private set
-    var live by mutableStateOf(source.live || res.live); private set
+    var live by mutableStateOf(source.live); private set
     var seekable by mutableStateOf(false); private set
-    var caption by mutableStateOf(""); private set
-    private var tracks by mutableStateOf(Tracks.EMPTY)
-    private var params by mutableStateOf(TrackSelectionParameters.DEFAULT_WITHOUT_CONTEXT)
-    private var variant by mutableIntStateOf(res.defaultVariant)
+    var tracks by mutableStateOf(Tracks.EMPTY); private set
+    var params by mutableStateOf(TrackSelectionParameters.DEFAULT_WITHOUT_CONTEXT); private set
+    /** Text of the subtitle cues currently on screen (empty = none). */
+    var cues by mutableStateOf(""); private set
 
+    // One factory for everything: UA + custom headers apply to manifests, segments, keys and DRM license requests.
     private val http = DefaultHttpDataSource.Factory()
-        .setUserAgent(res.headers.entries.firstOrNull { it.key.equals("user-agent", true) }?.value ?: "OnePlus/1.0")
-        // extractor headers (Referer, Origin...) minus the ones that would break the player's own handling
-        .setDefaultRequestProperties(res.headers.filterKeys { !it.equals("user-agent", true) && !it.equals("accept-encoding", true) })
+        .setUserAgent(stream.ua)
+        .setDefaultRequestProperties(stream.headers)
         .setConnectTimeoutMs(8_000)
         .setReadTimeoutMs(10_000)
         .setAllowCrossProtocolRedirects(true) // IPTV links commonly bounce http -> https
 
-    // DRM (Widevine / PlayReady via a license server, ClearKey via server or keys given in the link). License requests
-    // go through the same HTTP factory, so they carry the link's User-Agent and headers too.
-    private val drmProvider: DrmSessionManagerProvider? = res.drm?.let { d ->
-        val callback: MediaDrmCallback = d.local?.let { LocalMediaDrmCallback(it) } ?: HttpMediaDrmCallback(d.licenseUrl, http)
+    private val drm: DrmSessionManagerProvider = stream.drm?.keys?.let { json ->
         val manager = DefaultDrmSessionManager.Builder()
-            .setUuidAndExoMediaDrmProvider(d.uuid, FrameworkMediaDrm.DEFAULT_PROVIDER)
+            .setUuidAndExoMediaDrmProvider(C.CLEARKEY_UUID, FrameworkMediaDrm.DEFAULT_PROVIDER)
             .setMultiSession(true)
-            .build(callback)
+            .build(LocalMediaDrmCallback(json))
         DrmSessionManagerProvider { manager }
-    }
+    } ?: DefaultDrmSessionManagerProvider().also { it.setDrmHttpDataSourceFactory(http) }
 
-    private val kind = kindOf(res.url)
-    private var triedHls = false
+    private val uri = stream.uri
+
+    /** Declared type from the address, or sniffed from the text of an extension-less / query-style link (Xtream etc.). */
+    private val kind = Util.inferContentType(uri).let { k ->
+        if (k != C.CONTENT_TYPE_OTHER) k else uri.toString().lowercase().let { u ->
+            when {
+                "m3u8" in u -> C.CONTENT_TYPE_HLS
+                ".mpd" in u -> C.CONTENT_TYPE_DASH
+                ".ism" in u -> C.CONTENT_TYPE_SS
+                else -> k
+            }
+        }
+    }
+    /** Unknown links that fail to parse are retried as these formats, one by one. */
+    private val sniff = ArrayDeque(listOf(C.CONTENT_TYPE_HLS, C.CONTENT_TYPE_DASH, C.CONTENT_TYPE_SS))
 
     val player: ExoPlayer
 
@@ -120,7 +217,7 @@ class Playback(
         // Modest buffers: enough to ride out jitter, small enough not to burn data/RAM. ABR (default selector) adapts quality.
         val load = DefaultLoadControl.Builder()
             .setBufferDurationsMs(if (lowRam) 10_000 else 15_000, if (lowRam) 20_000 else 30_000, 1_500, 3_000)
-            .setBackBuffer(if (live) 0 else 10_000, false)
+            .setBackBuffer(if (source.live) 0 else 10_000, false)
             .setPrioritizeTimeOverSizeThresholds(true)
             .build()
         player = ExoPlayer.Builder(app, DefaultRenderersFactory(app).setEnableDecoderFallback(true))
@@ -130,42 +227,46 @@ class Playback(
             )
             .setHandleAudioBecomingNoisy(true)
             .build()
-        params = player.trackSelectionParameters
         player.addListener(this)
-        player.setMediaSource(build())
+        player.setMediaSource(mediaSource(kind))
         player.prepare()
         player.playWhenReady = true
     }
 
-    private fun kindOf(url: String) = Util.inferContentType(Uri.parse(url))
-
-    private fun src(url: String, type: Int): MediaSource {
-        val item = MediaItem.Builder().setUri(url)
-            .setMediaMetadata(MediaMetadata.Builder().setTitle(source.title).build()).build()
-        val drm = drmProvider
-        return when (type) {
-            C.CONTENT_TYPE_HLS -> HlsMediaSource.Factory(http).setAllowChunklessPreparation(true)
-                .apply { drm?.let { setDrmSessionManagerProvider(it) } }.createMediaSource(item)
-            C.CONTENT_TYPE_DASH -> DashMediaSource.Factory(http)
-                .apply { drm?.let { setDrmSessionManagerProvider(it) } }.createMediaSource(item)
-            C.CONTENT_TYPE_SS -> SsMediaSource.Factory(DefaultSsChunkSource.Factory(http), http)
-                .apply { drm?.let { setDrmSessionManagerProvider(it) } }.createMediaSource(item)
-            C.CONTENT_TYPE_RTSP -> RtspMediaSource.Factory()
-                .setUserAgent(res.headers.entries.firstOrNull { it.key.equals("user-agent", true) }?.value ?: "OnePlus/1.0")
-                .createMediaSource(item)
-            else -> { // mp4, mkv, webm, ts, flv, mp3, aac, ogg, flac, wav ... (the extractor sniffs the container)
-                val factory: DataSource.Factory = if (cache != null) {
-                    CacheDataSource.Factory().setCache(cache).setUpstreamDataSourceFactory(http)
-                        .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
-                } else http
-                ProgressiveMediaSource.Factory(factory).apply { drm?.let { setDrmSessionManagerProvider(it) } }.createMediaSource(item)
-            }
-        }
-    }
-
-    private fun build(forced: Int? = null): MediaSource {
-        val url = res.variants.getOrNull(variant)?.url ?: res.url
-        return src(url, forced ?: kindOf(url))
+    /** HLS / DASH / SmoothStreaming / RTSP / progressive (mp4, mkv, ts, webm, mp3, aac, ogg, flac ...) all go through one factory. */
+    private fun mediaSource(type: Int): MediaSource {
+        val item = MediaItem.Builder().setUri(uri)
+            .setMimeType(when (type) {
+                C.CONTENT_TYPE_HLS -> MimeTypes.APPLICATION_M3U8
+                C.CONTENT_TYPE_DASH -> MimeTypes.APPLICATION_MPD
+                C.CONTENT_TYPE_SS -> MimeTypes.APPLICATION_SS
+                else -> null
+            })
+            .setMediaMetadata(MediaMetadata.Builder().setTitle(source.title).build())
+            .setSubtitleConfigurations(stream.subs.map {
+                val path = it.path.orEmpty().lowercase()
+                MediaItem.SubtitleConfiguration.Builder(it).setMimeType(when {
+                    path.endsWith(".vtt") -> MimeTypes.TEXT_VTT
+                    path.endsWith(".ass") || path.endsWith(".ssa") -> MimeTypes.TEXT_SSA
+                    path.endsWith(".ttml") || path.endsWith(".xml") || path.endsWith(".dfxp") -> MimeTypes.APPLICATION_TTML
+                    else -> MimeTypes.APPLICATION_SUBRIP
+                }).build()
+            })
+            .apply {
+                // Widevine / PlayReady / ClearKey-by-URL. (ClearKey with kid:key is answered locally by [drm].)
+                stream.drm?.takeIf { it.keys == null }?.let { d ->
+                    setDrmConfiguration(
+                        MediaItem.DrmConfiguration.Builder(d.uuid).setLicenseUri(d.url)
+                            .setForceDefaultLicenseUri(d.url != null).setMultiSession(true).build(),
+                    )
+                }
+            }.build()
+        // Only progressive VODs use the disk cache: manifests and live segments must never be served stale.
+        val data: DataSource.Factory = if (type == C.CONTENT_TYPE_OTHER && cache != null) {
+            CacheDataSource.Factory().setCache(cache).setUpstreamDataSourceFactory(http)
+                .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
+        } else http
+        return DefaultMediaSourceFactory(data).setDrmSessionManagerProvider(drm).createMediaSource(item)
     }
 
     // ---- controls ----
@@ -197,68 +298,39 @@ class Playback(
     val position: Long get() = player.currentPosition
     val bufferedPosition: Long get() = player.bufferedPosition
 
-    // ---- tracks -> menu rows ----
-    private fun setParams(change: TrackSelectionParameters.Builder.() -> TrackSelectionParameters.Builder) {
-        player.trackSelectionParameters = player.trackSelectionParameters.buildUpon().change().build()
-    }
-
-    private fun choose(g: Tracks.Group, idx: List<Int>) =
-        setParams { setTrackTypeDisabled(g.type, false).setOverrideForType(TrackSelectionOverride(g.mediaTrackGroup, idx)) }
-
-    private fun pickVariant(i: Int) {
-        if (i == variant) return
-        val pos = player.currentPosition
-        variant = i
-        player.setMediaSource(build(), pos)
-        player.prepare()
+    // ---- tracks: quality / audio / subtitles ----
+    private fun select(type: Int, t: T? = null, off: Boolean = false) {
+        player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+            .clearOverridesOfType(type).setTrackTypeDisabled(type, off)
+            .apply { if (t != null) addOverride(TrackSelectionOverride(t.g.mediaTrackGroup, t.i)) }
+            .build()
     }
 
     private fun Format.title(n: Int): String {
-        label?.let { return it }
-        language?.takeIf { it != C.LANGUAGE_UNDETERMINED }?.let { tag ->
-            val name = Locale.forLanguageTag(tag).getDisplayLanguage(Locale("ar"))
-            if (name.isNotBlank()) return name
-        }
-        return "${app.getString(R.string.track_n)} ${n + 1}"
+        val lang = language?.takeIf { it != "und" }?.let { Locale.forLanguageTag(it).displayLanguage }?.takeIf { it.isNotBlank() }
+        return label ?: lang ?: "${n + 1}"
     }
 
-    private fun mbps(bitrate: Int) = if (bitrate > 0) String.format(Locale.US, "%.1f", bitrate / 1e6) + " Mbps" else null
-
-    /** "تلقائي" + one row per distinct height (adaptive streams), or one row per resolved variant. */
-    val qualities: List<Opt>
-        get() {
-            if (res.variants.size > 1) return res.variants.mapIndexed { i, v -> Opt("${v.height}p", null, i == variant) { pickVariant(i) } }
-            val best = tracks.groups.filter { it.type == C.TRACK_TYPE_VIDEO }
-                .flatMap { g -> (0 until g.length).filter { g.isTrackSupported(it) && g.getTrackFormat(it).height > 0 }.map { g to it } }
-                .groupBy { (g, i) -> g.getTrackFormat(i).height }
-                .values.map { l -> l.maxBy { (g, i) -> g.getTrackFormat(i).bitrate } }
-                .sortedByDescending { (g, i) -> g.getTrackFormat(i).height }
-            if (best.size < 2) return emptyList()
-            val auto = params.overrides.values.none { it.type == C.TRACK_TYPE_VIDEO }
-            return listOf(Opt(app.getString(R.string.track_auto), null, auto) { setParams { clearOverridesOfType(C.TRACK_TYPE_VIDEO) } }) +
-                best.map { (g, i) ->
-                    val f = g.getTrackFormat(i)
-                    Opt("${f.height}p", mbps(f.bitrate), !auto && g.isTrackSelected(i)) { choose(g, listOf(i)) }
-                }
-        }
-
-    val audios: List<Opt>
-        get() = tracks.groups.filter { it.type == C.TRACK_TYPE_AUDIO && it.isSupported }.mapIndexed { n, g ->
-            val f = g.getTrackFormat(0)
-            Opt(f.title(n), if (f.channelCount > 2) "5.1" else null, g.isSelected) {
-                choose(g, (0 until g.length).filter { g.isTrackSupported(it) })
+    /** Entries for [C.TRACK_TYPE_VIDEO] (auto + heights), [C.TRACK_TYPE_AUDIO] or [C.TRACK_TYPE_TEXT] (off + tracks); empty = nothing to choose. */
+    fun options(type: Int): List<TrackOpt> {
+        val all = tracks.groups.filter { it.type == type }
+            .flatMap { g -> (0 until g.length).filter { g.isTrackSupported(it) }.map { T(g, it) } }
+        return when (type) {
+            C.TRACK_TYPE_VIDEO -> {
+                val manual = params.overrides.keys.any { it.type == type }
+                fun name(t: T) = if (t.f.height > 0) "${t.f.height}p" else "${t.f.bitrate / 1000} kbps"
+                val best = all.sortedWith(compareByDescending<T> { it.f.height }.thenByDescending { it.f.bitrate }).distinctBy { name(it) }
+                if (best.size < 2) emptyList()
+                else listOf(TrackOpt(null, !manual) { select(type) }) +
+                    best.map { t -> TrackOpt(name(t), manual && all.any { it.sel && name(it) == name(t) }) { select(type, t) } }
             }
+            C.TRACK_TYPE_AUDIO -> if (all.size < 2) emptyList()
+                else all.mapIndexed { n, t -> TrackOpt(t.f.title(n), t.sel) { select(type, t) } }
+            else -> if (all.isEmpty()) emptyList()
+                else listOf(TrackOpt(null, all.none { it.sel }) { select(type, off = true) }) +
+                    all.mapIndexed { n, t -> TrackOpt(t.f.title(n), t.sel) { select(type, t) } }
         }
-
-    /** First row is always "إيقاف" (off); empty list when the stream has no subtitles. */
-    val texts: List<Opt>
-        get() {
-            val g = tracks.groups.filter { it.type == C.TRACK_TYPE_TEXT && it.isSupported }
-            if (g.isEmpty()) return emptyList()
-            val on = !params.disabledTrackTypes.contains(C.TRACK_TYPE_TEXT) && g.any { it.isSelected }
-            return listOf(Opt(app.getString(R.string.track_off), null, !on) { setParams { setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true) } }) +
-                g.mapIndexed { n, t -> Opt(t.getTrackFormat(0).title(n), null, on && t.isSelected) { choose(t, listOf(0)) } }
-        }
+    }
 
     // ---- Player.Listener ----
     override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) { wantsPlay = playWhenReady }
@@ -271,22 +343,18 @@ class Playback(
     }
 
     override fun onTimelineChanged(timeline: Timeline, reason: Int) = refresh()
-    override fun onTracksChanged(tracks: Tracks) { this.tracks = tracks }
-    override fun onTrackSelectionParametersChanged(parameters: TrackSelectionParameters) { params = parameters }
-    override fun onCues(cueGroup: CueGroup) { caption = cueGroup.cues.mapNotNull { it.text?.toString() }.joinToString("\n") }
     override fun onVideoSizeChanged(videoSize: VideoSize) { this.videoSize = videoSize }
     override fun onRenderedFirstFrame() { firstFrame = true }
+    override fun onTracksChanged(tracks: Tracks) { this.tracks = tracks }
+    override fun onTrackSelectionParametersChanged(parameters: TrackSelectionParameters) { params = parameters }
+    override fun onCues(cueGroup: CueGroup) { cues = cueGroup.cues.mapNotNull { it.text?.toString() }.joinToString("\n") }
 
     override fun onPlayerError(error: PlaybackException) {
         when {
             error.errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW -> { player.seekToDefaultPosition(); player.prepare() }
-            // A link without an extension that is really an HLS playlist: sniff once, then retry as HLS.
-            !triedHls && kind == C.CONTENT_TYPE_OTHER && res.variants.isEmpty() && (
-                error.errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED ||
-                    error.errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED
-                ) -> {
-                triedHls = true
-                player.setMediaSource(build(C.CONTENT_TYPE_HLS))
+            // A link with no recognisable extension that is really a playlist / manifest: retry as HLS, DASH, then Smooth.
+            kind == C.CONTENT_TYPE_OTHER && error.errorCode in Sniffable && sniff.isNotEmpty() -> {
+                player.setMediaSource(mediaSource(sniff.removeFirst()))
                 player.prepare()
             }
             else -> { failed = true; buffering = false }
@@ -294,7 +362,7 @@ class Playback(
     }
 
     private fun refresh() {
-        live = source.live || res.live || player.isCurrentMediaItemLive
+        live = source.live || player.isCurrentMediaItemLive
         val d = player.duration
         durationMs = if (d == C.TIME_UNSET || d < 0) 0L else d
         seekable = !live && player.isCurrentMediaItemSeekable && durationMs > 0
