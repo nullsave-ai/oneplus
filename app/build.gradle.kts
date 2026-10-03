@@ -8,7 +8,7 @@ android {
     compileSdk = 35
     defaultConfig {
         applicationId = "com.oneplus.app"
-        minSdk = 21 // if the yt-dlp library's manifest merge complains about its minSdk, raise this to the value it asks for
+        minSdk = 24 // required by youtubedl-android 0.18.1
         targetSdk = 35
         versionCode = 1
         versionName = "1.0"
