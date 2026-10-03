@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.oneplus.app.R
+import com.oneplus.app.player.PlaySource
 import com.oneplus.app.ui.system.*
 import kotlin.math.abs
 import kotlinx.coroutines.launch
@@ -50,6 +51,9 @@ fun OnePlusApp(theme: ThemeController, vm: MainViewModel = viewModel()) {
     var fx by rememberSaveable { mutableStateOf(!(ctx.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager).isLowRamDevice) }
     var tab by rememberSaveable { mutableIntStateOf(0) }
     var movieId by rememberSaveable { mutableIntStateOf(-1) }
+    var showMovies by rememberSaveable { mutableStateOf(false) }
+    var playKind by rememberSaveable { mutableIntStateOf(0) } // 0 none · 1 movie · 2 channel
+    var playId by rememberSaveable { mutableIntStateOf(-1) }
     val detail = remember { DetailState(movieId >= 0) }
     val homeList = rememberLazyListState()
     val grid = rememberLazyGridState()
@@ -68,6 +72,18 @@ fun OnePlusApp(theme: ThemeController, vm: MainViewModel = viewModel()) {
             homeList.canScrollBackward && info.visibleItemsInfo.any { it.key == "channels" && it.offset < info.viewportSize.height / 2 }
         }
     }
+    // Only an id is persisted; the URL is always resolved from the catalogue (never stored or passed around as free text).
+    val source = remember(playKind, playId, state.all) {
+        when (playKind) {
+            1 -> state.all.movies.firstOrNull { it.id == playId }?.let { PlaySource(it.url, it.title, live = false) }
+            2 -> state.all.channels.firstOrNull { it.id == playId }?.let { PlaySource(it.url, it.name, live = true) }
+            else -> null
+        }
+    }
+    LaunchedEffect(source, playKind, state.all) {
+        if (playKind != 0 && source == null && state.all.movies.isNotEmpty()) playKind = 0
+    }
+    val playChannel = { id: Int -> playKind = 2; playId = id }
     // A stale id (e.g. the catalogue changed after process death) must never leave the page stuck in "depth" mode.
     LaunchedEffect(movieId, state.all.movies) {
         if (movieId >= 0 && state.all.movies.isNotEmpty() && state.all.movies.none { it.id == movieId }) {
@@ -88,8 +104,14 @@ fun OnePlusApp(theme: ThemeController, vm: MainViewModel = viewModel()) {
             }) {
                 Crossfade(tab, Modifier.fillMaxSize(), tween(180), label = "page") { t ->
                     when (t) {
-                        0 -> HomeScreen(state, homeList, wide, portrait) { id -> focus.clearFocus(); movieId = id }
-                        1 -> ChannelsScreen(state.data.channels, grid, portrait)
+                        0 -> HomeScreen(
+                            state, homeList, wide, portrait,
+                            onMovie = { id -> focus.clearFocus(); movieId = id },
+                            onChannel = playChannel,
+                            onAllMovies = { focus.clearFocus(); showMovies = true },
+                            onAllChannels = { tab = 1 },
+                        )
+                        1 -> ChannelsScreen(state.data.channels, grid, portrait, playChannel)
                         else -> SettingsScreen(fx, { fx = it }, theme, settingsScroll)
                     }
                 }
@@ -101,9 +123,12 @@ fun OnePlusApp(theme: ThemeController, vm: MainViewModel = viewModel()) {
                         .padding(start = 16.dp, end = 16.dp, top = 12.dp),
                 )
                 LiquidNav(tab, { tab = it }, Modifier.align(Alignment.BottomCenter))
+                // Inside the receding layer so it also steps back when a details page opens over it.
+                MoviesHost(showMovies, state.all.movies, portrait, { id -> movieId = id }, { showMovies = false })
             }
-            // Declared after the toolbar so its back handler takes priority over search-close.
-            MovieDetailHost(detail, state.all.movies, movieId, { movieId = it }, { movieId = -1 })
+            // Overlays are declared in z-order: each one's back handler takes priority over the ones before it.
+            MovieDetailHost(detail, state.all.movies, movieId, { movieId = it }, { id -> playKind = 1; playId = id }, { movieId = -1 })
+            if (source != null) PlayerScreen(source) { playKind = 0 }
         }
     }
 }

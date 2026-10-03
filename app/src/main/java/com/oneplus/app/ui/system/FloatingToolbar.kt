@@ -7,7 +7,6 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -17,6 +16,13 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.RoundRect
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.ClipOp
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.TransformOrigin
@@ -53,7 +59,25 @@ fun rememberToolbarProgress(target: () -> Float): () -> Float {
 @Composable
 fun toolbarInset(): Dp = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 84.dp
 
-private val Pill = RoundedCornerShape(24.dp)
+/**
+ * Drop shadow painted only OUTSIDE the pill. A platform elevation shadow is drawn underneath the whole outline and
+ * shows through translucent glass as a dark rectangle; clipping the pill out of the shadow avoids that entirely.
+ */
+private fun DrawScope.softShadow(r: CornerRadius, e: Float) {
+    if (e < 0.01f) return
+    val hole = Path().apply { addRoundRect(RoundRect(0f, 0f, size.width, size.height, r)) }
+    clipPath(hole, ClipOp.Difference) {
+        val layers = 6
+        for (i in 1..layers) {
+            val grow = i * 1.6.dp.toPx()
+            drawRoundRect(
+                Color.Black.copy(alpha = 0.06f * e * (1f - i / (layers + 1f))),
+                Offset(-grow, -grow + 4.dp.toPx()), Size(size.width + grow * 2f, size.height + grow * 2f),
+                CornerRadius(r.x + grow),
+            )
+        }
+    }
+}
 
 /** One floating island: width/height/opacity/border/shadow/title scale are all driven by progress and search morph. */
 @Composable
@@ -85,16 +109,12 @@ fun FloatingToolbar(
                 val pl = m.measure(Constraints.fixed(w, h))
                 layout(full, h) { pl.place((full - w) / 2, 0) }
             }
-            .graphicsLayer {
-                shadowElevation = 8.dp.toPx() * max(progress(), morph)
-                shape = Pill
-                ambientShadowColor = Color.Black.copy(alpha = 0.18f)
-                spotShadowColor = Color.Black.copy(alpha = 0.18f)
-            }
             .drawBehind {
                 val e = max(progress(), morph)
                 val r = CornerRadius(24.dp.toPx())
-                drawRoundRect(tint.copy(alpha = if (fx) lerp(0.05f, 0.72f, e) else lerp(0f, 0.94f, e)), cornerRadius = r)
+                // Fully transparent at rest; the glass only exists once the page has scrolled / search is open.
+                softShadow(r, e)
+                drawRoundRect(tint.copy(alpha = e * (if (fx) 0.72f else 0.94f)), cornerRadius = r)
                 if (fx) drawRoundRect(Sheen, cornerRadius = r, alpha = e * 0.9f)
                 drawRoundRect(c.border.copy(alpha = c.border.alpha * e), cornerRadius = r, style = Stroke(0.5.dp.toPx()))
             }

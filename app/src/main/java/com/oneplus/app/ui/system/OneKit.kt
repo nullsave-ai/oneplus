@@ -86,7 +86,7 @@ fun Modifier.press(onClick: () -> Unit): Modifier {
 }
 
 // ---- Icons (custom, 24dp grid, 1.75 stroke) ------------------------------
-enum class OneIcon { Home, Channels, Settings, Search, Close, Back, Play, Plus, Check, Star }
+enum class OneIcon { Home, Channels, Settings, Search, Close, Back, Next, Play, Pause, Plus, Check, Star, Replay, Forward, Sun, Volume, Mute, Fit, Fill, Filter }
 
 @Composable
 fun OneIconView(icon: OneIcon, modifier: Modifier = Modifier, tint: () -> Color) {
@@ -117,6 +117,67 @@ fun OneIconView(icon: OneIcon, modifier: Modifier = Modifier, tint: () -> Color)
                 fun mx(x: Float) = (if (rtl) 24f - x else x) * k
                 drawPath(Path().apply { moveTo(mx(15f), 5.5f * k); lineTo(mx(8.5f), 12f * k); lineTo(mx(15f), 18.5f * k) }, color, style = st)
             }
+            OneIcon.Next -> { // chevron pointing "forward" for the current layout direction
+                fun mx(x: Float) = (if (rtl) x else 24f - x) * k
+                drawPath(Path().apply { moveTo(mx(15f), 5.5f * k); lineTo(mx(8.5f), 12f * k); lineTo(mx(15f), 18.5f * k) }, color, style = st)
+            }
+            OneIcon.Pause -> {
+                drawRoundRect(color, o(6.6f, 5.5f), Size(3.8f * k, 13f * k), CornerRadius(1.4f * k))
+                drawRoundRect(color, o(13.6f, 5.5f), Size(3.8f * k, 13f * k), CornerRadius(1.4f * k))
+            }
+            OneIcon.Replay, OneIcon.Forward -> { // open circle arrow (counter-clockwise / clockwise)
+                val mirror = icon == OneIcon.Replay
+                fun px(x: Float) = (if (mirror) 24f - x else x) * k
+                val cx = 12f; val cy = 12.8f; val r = 7.6f
+                val arc = Path()
+                var a = 315f
+                while (a <= 585f) {
+                    val rad = Math.toRadians(a.toDouble())
+                    val x = cx + r * cos(rad).toFloat(); val y = cy + r * sin(rad).toFloat()
+                    if (a == 315f) arc.moveTo(px(x), y * k) else arc.lineTo(px(x), y * k)
+                    a += 15f
+                }
+                drawPath(arc, color, style = st)
+                val ae = Math.toRadians(225.0)
+                val tipX = cx + r * cos(ae).toFloat(); val tipY = cy + r * sin(ae).toFloat()
+                val tx = -sin(ae).toFloat(); val ty = cos(ae).toFloat() // clockwise tangent at the tip
+                val nx = cos(ae).toFloat(); val ny = sin(ae).toFloat()  // radial direction
+                val d = 3.4f
+                drawPath(Path().apply {
+                    moveTo(px(tipX - tx * d + nx * d), (tipY - ty * d + ny * d) * k)
+                    lineTo(px(tipX), tipY * k)
+                    lineTo(px(tipX - tx * d - nx * d), (tipY - ty * d - ny * d) * k)
+                }, color, style = st)
+            }
+            OneIcon.Sun -> {
+                drawCircle(color, 3.4f * k, o(12f, 12f), style = st)
+                for (i in 0 until 8) {
+                    val rad = Math.toRadians(i * 45.0)
+                    val c1 = cos(rad).toFloat(); val s1 = sin(rad).toFloat()
+                    line(12f + 6.5f * c1, 12f + 6.5f * s1, 12f + 8.8f * c1, 12f + 8.8f * s1)
+                }
+            }
+            OneIcon.Volume, OneIcon.Mute -> {
+                drawPath(Path().apply {
+                    moveTo(4f * k, 9.5f * k); lineTo(8f * k, 9.5f * k); lineTo(12.5f * k, 5.8f * k)
+                    lineTo(12.5f * k, 18.2f * k); lineTo(8f * k, 14.5f * k); lineTo(4f * k, 14.5f * k); close()
+                }, color, style = st)
+                if (icon == OneIcon.Volume) {
+                    drawArc(color, -48f, 96f, false, o(8.3f, 7.8f), Size(8.4f * k, 8.4f * k), style = st)
+                    drawArc(color, -48f, 96f, false, o(4.9f, 4.4f), Size(15.2f * k, 15.2f * k), style = st)
+                } else { line(15.5f, 9.5f, 20.5f, 14.5f); line(20.5f, 9.5f, 15.5f, 14.5f) }
+            }
+            OneIcon.Fit -> drawRoundRect(color, o(4f, 7f), Size(16f * k, 10f * k), CornerRadius(2.5f * k), st)
+            OneIcon.Fill -> {
+                fun corner(x1: Float, y1: Float, x2: Float, y2: Float, x3: Float, y3: Float) =
+                    drawPath(Path().apply { moveTo(x1 * k, y1 * k); lineTo(x2 * k, y2 * k); lineTo(x3 * k, y3 * k) }, color, style = st)
+                corner(4f, 9f, 4f, 4f, 9f, 4f); corner(15f, 4f, 20f, 4f, 20f, 9f)
+                corner(20f, 15f, 20f, 20f, 15f, 20f); corner(9f, 20f, 4f, 20f, 4f, 15f)
+            }
+            OneIcon.Filter -> drawPath(Path().apply {
+                moveTo(4f * k, 6f * k); lineTo(20f * k, 6f * k); lineTo(14f * k, 13f * k)
+                lineTo(14f * k, 19f * k); lineTo(10f * k, 17f * k); lineTo(10f * k, 13f * k); close()
+            }, color, style = st)
             OneIcon.Play -> {
                 val tri = Path().apply { moveTo(8f * k, 5.5f * k); lineTo(19f * k, 12f * k); lineTo(8f * k, 18.5f * k); close() }
                 drawPath(tri, color); drawPath(tri, color, style = st) // fill + round join = softened corners
@@ -244,4 +305,19 @@ fun OneButton(text: String, icon: OneIcon?, onClick: () -> Unit, modifier: Modif
         if (icon != null) OneIconView(icon) { fg }
         OneText(text, OneType.Section, fg, maxLines = 1)
     }
+}
+
+// ---- Chip (single-select filter / tag) ----
+@Composable
+fun OneChip(text: String, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val c = LocalColors.current
+    val p by animateFloatAsState(if (selected) 1f else 0f, tween(180), label = "chip")
+    val shape = RoundedCornerShape(14.dp)
+    Box(
+        modifier.height(36.dp).press(onClick).clip(shape)
+            .drawBehind { drawRect(lerp(c.dim.copy(alpha = 0.10f), c.selection, p)) }
+            .border(0.5.dp, lerp(c.border, c.accent.copy(alpha = 0.5f), p), shape)
+            .padding(horizontal = 14.dp),
+        Alignment.Center,
+    ) { OneText(text, OneType.Body, lerp(c.dim, c.accent, p), maxLines = 1) }
 }

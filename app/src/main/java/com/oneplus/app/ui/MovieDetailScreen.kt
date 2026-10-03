@@ -23,6 +23,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -69,7 +70,7 @@ class DetailState(isOpen: Boolean) {
  * the back button, or by pulling down while the content is at its top (release past 14% or flick to dismiss).
  */
 @Composable
-fun MovieDetailHost(state: DetailState, movies: List<Movie>, movieId: Int, onOpen: (Int) -> Unit, onClosed: () -> Unit) {
+fun MovieDetailHost(state: DetailState, movies: List<Movie>, movieId: Int, onOpen: (Int) -> Unit, onPlay: (Int) -> Unit, onClosed: () -> Unit) {
     val scope = rememberCoroutineScope()
     val open = movieId >= 0
     val close: () -> Unit = { scope.launch { state.enter.animateTo(0f, DetailSpring); onClosed(); state.drag = 0f } }
@@ -125,13 +126,13 @@ fun MovieDetailHost(state: DetailState, movies: List<Movie>, movieId: Int, onOpe
             .pointerInput(Unit) { detectTapGestures { } } // the page underneath must not receive touches
     ) {
         Crossfade(movie, Modifier.fillMaxSize(), tween(220), label = "movie") { m ->
-            MovieDetail(m, movies, close, onOpen)
+            MovieDetail(m, movies, close, onOpen, onPlay)
         }
     }
 }
 
 @Composable
-private fun MovieDetail(m: Movie, all: List<Movie>, onBack: () -> Unit, onOpen: (Int) -> Unit) {
+private fun MovieDetail(m: Movie, all: List<Movie>, onBack: () -> Unit, onOpen: (Int) -> Unit, onPlay: (Int) -> Unit) {
     val c = LocalColors.current
     val scroll = rememberScrollState()
     val heroH = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 330.dp
@@ -151,7 +152,7 @@ private fun MovieDetail(m: Movie, all: List<Movie>, onBack: () -> Unit, onOpen: 
             Box(Modifier.fillMaxWidth(), Alignment.TopCenter) {
                 Column(Modifier.widthIn(max = 720.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(24.dp)) {
                     Row(Modifier.padding(horizontal = 20.dp), Arrangement.spacedBy(12.dp)) {
-                        OneButton(stringResource(R.string.movie_play), OneIcon.Play, { /* hook the player here */ }, Modifier.weight(1.4f))
+                        OneButton(stringResource(R.string.movie_play), OneIcon.Play, { onPlay(m.id) }, Modifier.weight(1.4f))
                         OneButton(
                             stringResource(R.string.movie_list), if (added) OneIcon.Check else OneIcon.Plus,
                             { added = !added }, Modifier.weight(1f), primary = false,
@@ -167,13 +168,13 @@ private fun MovieDetail(m: Movie, all: List<Movie>, onBack: () -> Unit, onOpen: 
                     Section(R.string.movie_details) {
                         Column(Modifier.padding(horizontal = 20.dp).fillMaxWidth().glass(2, 22.dp).padding(vertical = 4.dp)) {
                             InfoRow(R.string.movie_director, m.director)
-                            InfoRow(R.string.movie_year, m.year)
+                            InfoRow(R.string.movie_year, m.year.toString())
                             InfoRow(R.string.movie_duration, duration)
                         }
                     }
                     if (similar.isNotEmpty()) Section(R.string.movie_similar) {
                         LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            items(similar, key = { it.id }) { s -> Poster(s, 124.dp) { onOpen(s.id) } }
+                            items(similar, key = { it.id }) { s -> Poster(s, Modifier.width(124.dp)) { onOpen(s.id) } }
                         }
                     }
                 }
@@ -190,7 +191,8 @@ private fun Hero(m: Movie, duration: String, height: Dp, scroll: ScrollState) {
     val banner = remember(c) { Brush.linearGradient(listOf(c.accent.copy(alpha = 0.55f), c.dim.copy(alpha = 0.20f))) }
     val poster = remember(c) { Brush.linearGradient(listOf(c.accent.copy(alpha = 0.40f), c.dim.copy(alpha = 0.22f))) }
     val fade = remember(c) { Brush.verticalGradient(0.45f to c.bg.copy(alpha = 0f), 1f to c.bg) }
-    Box(Modifier.fillMaxWidth().height(height)) {
+    // clipToBounds: the parallax banner is translated downwards and must never paint over the content below the hero.
+    Box(Modifier.fillMaxWidth().height(height).clipToBounds()) {
         Box(
             Modifier.matchParentSize().graphicsLayer { translationY = scroll.value * 0.4f }.background(banner)
                 .drawWithCache {
@@ -209,7 +211,8 @@ private fun Hero(m: Movie, duration: String, height: Dp, scroll: ScrollState) {
             Box(
                 Modifier.width(112.dp).aspectRatio(2f / 3f)
                     .graphicsLayer { shadowElevation = 12.dp.toPx(); shape = RoundedCornerShape(16.dp) }
-                    .clip(RoundedCornerShape(16.dp)).background(poster)
+                    // opaque base first: an elevation shadow shows through a translucent fill
+                    .clip(RoundedCornerShape(16.dp)).background(c.bg).background(poster)
             )
             Column(Modifier.weight(1f).padding(bottom = 4.dp), Arrangement.spacedBy(6.dp)) {
                 OneText(m.title, OneType.Title, c.text, maxLines = 2)

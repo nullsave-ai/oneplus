@@ -16,7 +16,7 @@ import com.oneplus.app.ui.system.*
 
 /** Portrait: exactly two columns. Landscape / tablets: as many 200dp columns as fit. */
 @Composable
-fun ChannelsScreen(channels: List<Channel>, grid: LazyGridState, portrait: Boolean) {
+fun ChannelsScreen(channels: List<Channel>, grid: LazyGridState, portrait: Boolean, onChannel: (Int) -> Unit) {
     val bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 112.dp
     Box(Modifier.fillMaxSize(), Alignment.TopCenter) {
         LazyVerticalGrid(
@@ -24,16 +24,16 @@ fun ChannelsScreen(channels: List<Channel>, grid: LazyGridState, portrait: Boole
             contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = toolbarInset(), bottom = bottom),
             horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            items(channels, key = { it.id }) { ch -> ChannelCard(ch) }
+            items(channels, key = { it.id }) { ch -> ChannelCard(ch) { onChannel(ch.id) } }
         }
     }
 }
 
 /** One channel cell. Shared by the Channels page and the Home section so both look identical. */
 @Composable
-internal fun ChannelCard(ch: Channel, modifier: Modifier = Modifier) {
+internal fun ChannelCard(ch: Channel, modifier: Modifier = Modifier, onClick: () -> Unit) {
     val c = LocalColors.current
-    Row(modifier.fillMaxWidth().press { }.glass(1, 18.dp).padding(12.dp), Arrangement.spacedBy(12.dp), Alignment.CenterVertically) {
+    Row(modifier.fillMaxWidth().press(onClick).glass(1, 18.dp).padding(12.dp), Arrangement.spacedBy(12.dp), Alignment.CenterVertically) {
         Box(Modifier.size(40.dp).background(c.accentSoft, RoundedCornerShape(14.dp)), Alignment.Center) {
             OneText(ch.name.take(1), OneType.Section, c.accent)
         }

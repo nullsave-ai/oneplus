@@ -36,4 +36,11 @@ dependencies {
     implementation("androidx.activity:activity-compose:1.9.3")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
+
+    // Player: only the three modules actually needed. No media3-ui (controls are drawn in Compose), no session/datasource-okhttp.
+    // 1.5.x is the last line that supports minSdk 21 with the current AGP/compileSdk; newer lines need minSdk 23.
+    val media3 = "1.5.1"
+    implementation("androidx.media3:media3-exoplayer:$media3")
+    implementation("androidx.media3:media3-exoplayer-hls:$media3")
+    implementation("androidx.media3:media3-exoplayer-dash:$media3")
 }

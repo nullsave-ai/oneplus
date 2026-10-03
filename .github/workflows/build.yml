@@ -52,10 +52,11 @@ jobs:
           tag_name: v1.0.${{ github.run_number }}
           name: "OnePlus v1.0.${{ github.run_number }} (Release)"
           body: |
-            ### تطبيق وان+ (OnePlus App - الإصدار المحدث مع MovieDetailScreen والتدقيق الأمني):
+            ### تطبيق وان+ (OnePlus App - الإصدار المحدث مع ExoPlayer ومكتبة الأفلام):
+            * مشغل فيديو متطور مدمج (`PlayerScreen` + `ExoPlayer 1.5.1`) مع دعم البث المباشر (HLS / DASH) و VOD.
+            * شاشة تصفح الأفلام الكاملة (`MoviesScreen`) مع تصنيف وفلاتر وترتيب متقدم.
             * شاشة تفاصيل الأفلام المتطورة (`MovieDetailScreen`) مع تفاعلات السحب والحركات الفيزيائية.
-            * تدقيق أمني وحماية البيانات (`SECURITY_AUDIT`).
-            * نظام السمات والألوان التفاعلية وشريط الأدوات العائم.
+            * تدقيق أمني وحماية البيانات ومسارات التشغيل.
           files: dist/*.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

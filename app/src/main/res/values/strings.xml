@@ -40,4 +40,23 @@
     <string name="movie_duration">المدة</string>
     <string name="unit_hour">س</string>
     <string name="unit_min">د</string>
+
+    <string name="sec_all">الكل</string>
+    <string name="unit_sec">ث</string>
+
+    <string name="player_live">مباشر</string>
+    <string name="player_error">تعذّر تشغيل الفيديو</string>
+    <string name="player_bad_link">رابط التشغيل غير صالح</string>
+    <string name="player_retry">إعادة المحاولة</string>
+
+    <string name="movies_title">الأفلام</string>
+    <string name="filter_all">الكل</string>
+    <string name="filter_year">السنة</string>
+    <string name="filter_rating">التقييم</string>
+    <string name="filter_sort">الترتيب</string>
+    <string name="sort_new">الأحدث</string>
+    <string name="sort_rating">الأعلى تقييمًا</string>
+    <string name="sort_name">الاسم</string>
+    <string name="movies_empty">لا توجد نتائج مطابقة</string>
+    <string name="movies_reset">إعادة الضبط</string>
 </resources>

@@ -5,16 +5,25 @@ import kotlinx.coroutines.flow.flowOf
 
 data class Match(val id: Int, val time: String, val live: Boolean, val status: String, val home: String,
                  val away: String, val competition: String, val channel: String)
-data class Movie(val id: Int, val title: String, val year: String, val rating: Float, val durationMin: Int,
-                 val genres: List<String>, val synopsis: String, val director: String, val cast: List<String>)
-data class Channel(val id: Int, val name: String)
+data class Movie(val id: Int, val title: String, val year: Int, val rating: Float, val durationMin: Int,
+                 val genres: List<String>, val synopsis: String, val director: String, val cast: List<String>,
+                 val url: String)
+data class Channel(val id: Int, val name: String, val url: String)
 data class HomeData(val matches: List<Match>, val movies: List<Movie>, val channels: List<Channel>)
 
 interface HomeRepository { val data: Flow<HomeData> }
 
-private val SampleGenres = listOf(
-    listOf("دراما", "تشويق"), listOf("أكشن", "مغامرة"), listOf("كوميديا", "عائلي"), listOf("خيال علمي", "إثارة"),
+/** Genres offered by the movies filter, in display order. */
+val AllGenres = listOf("أكشن", "دراما", "جريمة", "إثارة", "رعب", "كوميديا", "خيال علمي", "مغامرة", "عائلي")
+
+// Public test streams (HLS / DASH / MP4). Placeholders: replace with the real catalogue URLs.
+private val SampleVod = listOf(
+    "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
+    "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8",
+    "https://dash.akamaized.net/akamai/bbb_30fps/bbb_30fps.mpd",
+    "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4",
 )
+private const val SampleLive = "https://cph-p2p-msl.akamaized.net/hls/live/2000341/test/master.m3u8"
 private const val SampleSynopsis =
     "تدور الأحداث حول مجموعة من الأصدقاء تتغيّر حياتهم بعد حدث غير متوقع، لتبدأ رحلة مليئة بالتشويق والمفاجآت " +
     "والقرارات الصعبة. نص تجريبي يُستبدل بوصف الفيلم الحقيقي القادم من الخادم."
@@ -28,15 +37,18 @@ class SampleRepository : HomeRepository {
             Match(3, "23:30", false, "قريبًا", "ليفربول", "مانشستر سيتي", "الدوري الإنجليزي", "الرياضية 3"),
             Match(4, "01:00", false, "قريبًا", "الأهلي", "الاتحاد", "دوري روشن", "الرياضية 1"),
         ),
-        movies = List(8) { i ->
+        movies = List(24) { i ->
+            val g1 = AllGenres[i % AllGenres.size]
+            val g2 = AllGenres[(i * 4 + 3) % AllGenres.size].let { if (it == g1) AllGenres[(i + 1) % AllGenres.size] else it }
             Movie(
-                id = i, title = "فيلم ${i + 1}", year = "${2018 + i}",
-                rating = 6.8f + (i % 5) * 0.4f, durationMin = 95 + i * 7,
-                genres = SampleGenres[i % SampleGenres.size], synopsis = SampleSynopsis,
+                id = i, title = "فيلم ${i + 1}", year = 2014 + (i * 7) % 12,
+                rating = 5.5f + ((i * 37) % 40) / 10f, durationMin = 85 + (i * 11) % 60,
+                genres = listOf(g1, g2), synopsis = SampleSynopsis,
                 director = "المخرج ${i + 1}", cast = List(5) { "ممثل ${it + 1}" },
+                url = SampleVod[i % SampleVod.size],
             )
         },
         channels = listOf("الإخبارية", "الرياضية", "السينما", "الوثائقية", "الأطفال", "الموسيقى",
-            "المنوعات", "الدراما", "الطبخ", "الثقافية").mapIndexed { i, n -> Channel(i, n) },
+            "المنوعات", "الدراما", "الطبخ", "الثقافية").mapIndexed { i, n -> Channel(i, n, SampleLive) },
     ))
 }
