@@ -22,8 +22,9 @@ private val SampleVod = listOf(
     "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8",
     "https://dash.akamaized.net/akamai/bbb_30fps/bbb_30fps.mpd",
     "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4",
+    "https://www.youtube.com/watch?v=aqz-KE-bpKQ", // a page link: goes through the extractor
 )
-private const val SampleLive = "https://cph-p2p-msl.akamaized.net/hls/live/2000341/test/master.m3u8"
+private const val SampleLive = "https://alkatlanhd.xmax1tv.com/live/2.m3u8" // test live stream (HLS)
 private const val SampleSynopsis =
     "تدور الأحداث حول مجموعة من الأصدقاء تتغيّر حياتهم بعد حدث غير متوقع، لتبدأ رحلة مليئة بالتشويق والمفاجآت " +
     "والقرارات الصعبة. نص تجريبي يُستبدل بوصف الفيلم الحقيقي القادم من الخادم."

@@ -3,3 +3,6 @@
 -keepclassmembers class * extends androidx.lifecycle.ViewModel {
     <init>(...);
 }
+-keep class com.yausername.youtubedl_android.** { *; }
+-keep class io.github.junkfood02.youtubedl_android.** { *; }
+

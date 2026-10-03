@@ -7,6 +7,15 @@ import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -23,7 +32,7 @@ import com.oneplus.app.ui.system.*
 private const val SwatchesPerRow = 4
 
 @Composable
-fun SettingsScreen(effects: Boolean, onEffects: (Boolean) -> Unit, theme: ThemeController, scroll: ScrollState) {
+fun SettingsScreen(effects: Boolean, onEffects: (Boolean) -> Unit, theme: ThemeController, scroll: ScrollState, onLink: (String) -> Unit) {
     val c = LocalColors.current
     val dark = LocalDarkTheme.current
     val p = theme.prefs
@@ -63,6 +72,8 @@ fun SettingsScreen(effects: Boolean, onEffects: (Boolean) -> Unit, theme: ThemeC
                 }
                 SettingRow(stringResource(R.string.settings_effects)) { OneSwitch(effects, onEffects) }
             }
+            OneText(stringResource(R.string.link_title), OneType.Section, c.text, Modifier.padding(start = 4.dp, top = 8.dp))
+            LinkRow(onLink)
             Column(Modifier.fillMaxWidth().glass(2, 22.dp)) {
                 SettingRow(stringResource(R.string.settings_version)) { OneText("1.0", OneType.Body, c.dim) }
             }
@@ -126,5 +137,26 @@ private fun SettingRow(title: String, modifier: Modifier = Modifier, trailing: @
     ) {
         OneText(title, OneType.Body, LocalColors.current.text)
         trailing()
+    }
+}
+
+/** Paste any link (direct media or a page from a supported site) and play it. Length is capped; validation happens in the player. */
+@Composable
+private fun LinkRow(onPlay: (String) -> Unit) {
+    val c = LocalColors.current
+    var link by rememberSaveable { mutableStateOf("") }
+    val go = { if (link.isNotBlank()) onPlay(link.trim()) }
+    Row(Modifier.fillMaxWidth().glass(2, 22.dp).padding(12.dp), Arrangement.spacedBy(10.dp), Alignment.CenterVertically) {
+        Box(Modifier.weight(1f).height(44.dp).clip(RoundedCornerShape(14.dp)).background(c.dim.copy(alpha = 0.12f)).padding(horizontal = 12.dp), Alignment.CenterStart) {
+            if (link.isEmpty()) OneText(stringResource(R.string.link_hint), OneType.Body, c.dim, maxLines = 1)
+            BasicTextField(
+                link, { link = it.take(2048) }, Modifier.fillMaxWidth(), singleLine = true,
+                textStyle = OneType.Body.copy(color = c.text, textDirection = TextDirection.Ltr),
+                cursorBrush = SolidColor(c.accent),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Go),
+                keyboardActions = KeyboardActions(onGo = { go() }),
+            )
+        }
+        Box(Modifier.size(44.dp).press { go() }.clip(CircleShape).background(c.accent), Alignment.Center) { OneIconView(OneIcon.Play) { c.onAccent } }
     }
 }

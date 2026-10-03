@@ -13,6 +13,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
@@ -20,6 +21,8 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -61,6 +64,8 @@ import com.oneplus.app.R
 import com.oneplus.app.player.MediaCache
 import com.oneplus.app.player.PlaySource
 import com.oneplus.app.player.Playback
+import com.oneplus.app.player.Resolved
+import com.oneplus.app.player.Resolver
 import com.oneplus.app.player.toUriOrNull
 import com.oneplus.app.ui.system.*
 import kotlinx.coroutines.Dispatchers
@@ -115,21 +120,32 @@ fun PlayerScreen(source: PlaySource, onClose: () -> Unit) {
         }
     }
 
-    // The player is created off the first frame (cache init does disk IO) and released the moment the screen leaves composition.
+    // Plain media links play directly; known page hosts (YouTube, X, ok.ru...) go straight to the extractor, and a link the
+    // player can't read falls back to it once. The player is created off the first frame and released as soon as the screen leaves.
     val uri = remember(source.url) { source.toUriOrNull() }
+    var attempt by remember(source) { mutableIntStateOf(if (uri != null && Resolver.needsExtractor(uri)) 1 else 0) } // 0 direct · 1 extractor
+    var retryKey by remember { mutableIntStateOf(0) }
+    var resolveFailed by remember(source) { mutableStateOf(false) }
     var playback by remember { mutableStateOf<Playback?>(null) }
-    LaunchedEffect(source) {
-        if (uri != null) {
-            val cache = if (source.live) null else withContext(Dispatchers.IO) { MediaCache.get(app) }
-            playback = Playback(app, source, uri, cache)
-        }
+    LaunchedEffect(source, attempt, retryKey) {
+        if (uri == null) return@LaunchedEffect
+        playback = null
+        resolveFailed = false
+        val res = if (attempt == 0) Resolved(source.url, source.live) else Resolver.resolve(app, source.url)
+        if (res == null) { resolveFailed = true; return@LaunchedEffect }
+        val cache = if (attempt == 0 && source.cacheable) withContext(Dispatchers.IO) { MediaCache.get(app) } else null
+        playback = Playback(app, source, res, cache)
     }
     DisposableEffect(playback) { val p = playback; onDispose { p?.release() } }
     LifecycleEventEffect(Lifecycle.Event.ON_STOP) { playback?.pause() }
-    BackHandler { onClose() }
+    var panelOpen by remember { mutableStateOf(false) }
+    var tab by remember { mutableIntStateOf(0) } // 0 quality · 1 audio · 2 subtitles
+    var style by remember { mutableStateOf(SubStyle.load(app)) }
+    BackHandler { if (panelOpen) panelOpen = false else onClose() }
 
     val pb = playback
-    val failed = uri == null || pb?.failed == true
+    LaunchedEffect(pb?.failed) { if (pb?.failed == true && attempt == 0) attempt = 1 }
+    val failed = uri == null || resolveFailed || (pb?.failed == true && attempt > 0)
     var show by remember { mutableStateOf(true) }
     var tick by remember { mutableIntStateOf(0) } // bumped on every interaction to restart the auto-hide timer
     var scrub by remember { mutableStateOf<Float?>(null) }
@@ -144,8 +160,8 @@ fun PlayerScreen(source: PlaySource, onClose: () -> Unit) {
         if (pb == null) return@LaunchedEffect
         while (show) { pos = pb.position; buf = pb.bufferedPosition; delay(400) }
     }
-    LaunchedEffect(show, tick, pb?.wantsPlay, scrub != null, failed) {
-        if (show && pb?.wantsPlay == true && scrub == null && !failed) { delay(3500); show = false }
+    LaunchedEffect(show, tick, pb?.wantsPlay, scrub != null, failed, panelOpen) {
+        if (show && pb?.wantsPlay == true && scrub == null && !failed && !panelOpen) { delay(3500); show = false }
     }
     LaunchedEffect(pb?.ended) { if (pb?.ended == true) show = true }
     LaunchedEffect(hud) { if (hud != null) { lastHud = hud; delay(900); hud = null } }
@@ -193,7 +209,7 @@ fun PlayerScreen(source: PlaySource, onClose: () -> Unit) {
             Modifier.fillMaxSize()
                 .pointerInput(playback) {
                     detectTapGestures(
-                        onTap = { show = !show; tick++ },
+                        onTap = { if (panelOpen) panelOpen = false else { show = !show; tick++ } },
                         onDoubleTap = { o ->
                             val p = playback ?: return@detectTapGestures
                             val side = when { o.x < size.width / 3f -> -1; o.x > size.width * 2f / 3f -> 1; else -> 0 }
@@ -258,14 +274,29 @@ fun PlayerScreen(source: PlaySource, onClose: () -> Unit) {
             if (h != null) CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) { HudView(h, c.accent) }
         }
 
+        // 4b) captions: drawn by us (own style), lifted above the seek island while the controls are visible
+        val sample = stringResource(R.string.sample_caption)
+        val cap = pb?.caption.orEmpty().ifEmpty { if (panelOpen && tab == 2) sample else "" }
+        val lifted by animateDpAsState(if (show && pb?.seekable == true) 76.dp else 0.dp, tween(220), label = "capLift")
+        if (cap.isNotEmpty()) Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing), Alignment.BottomCenter) {
+            CaptionText(cap, style, c.accent, c.onAccent, Modifier.padding(bottom = 12.dp + lifted + (style.lift * 120f).dp).widthIn(max = 640.dp))
+        }
+
         // 5) loading / error
         val controlsA by animateFloatAsState(if (show) 1f else 0f, tween(220), label = "controls")
         if ((pb == null || pb.buffering || !pb.firstFrame) && !failed && controlsA < 0.5f) {
             Spinner(c.accent, Modifier.align(Alignment.Center).size(44.dp))
+            if (pb == null && attempt > 0) OneText(stringResource(R.string.player_extracting), OneType.Caption, Color.White.copy(alpha = 0.7f), Modifier.align(Alignment.Center).padding(top = 84.dp))
         }
         if (failed) Column(Modifier.align(Alignment.Center), Arrangement.spacedBy(16.dp), Alignment.CenterHorizontally) {
-            OneText(stringResource(if (uri == null) R.string.player_bad_link else R.string.player_error), OneType.Section, Color.White)
-            if (uri != null) OneButton(stringResource(R.string.player_retry), OneIcon.Forward, { playback?.retry() }, Modifier.width(220.dp))
+            OneText(
+                stringResource(if (uri == null) R.string.player_bad_link else if (resolveFailed) R.string.resolve_failed else R.string.player_error),
+                OneType.Section, Color.White,
+            )
+            if (uri != null) OneButton(
+                stringResource(R.string.player_retry), OneIcon.Forward,
+                { val p = playback; if (p == null || resolveFailed) retryKey++ else p.retry() }, Modifier.width(220.dp),
+            )
         }
 
         // 6) controls
@@ -281,7 +312,7 @@ fun PlayerScreen(source: PlaySource, onClose: () -> Unit) {
             Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(horizontal = 16.dp, vertical = 12.dp)) {
                 // top: back · title (+ live) · aspect
                 Row(Modifier.align(Alignment.TopCenter).fillMaxWidth(), Arrangement.spacedBy(8.dp), Alignment.CenterVertically) {
-                    Box(Modifier.size(44.dp).press { onClose() }.vGlass(22.dp), Alignment.Center) { OneIconView(OneIcon.Back) { Color.White } }
+                    GlassBtn(onClose) { OneIconView(OneIcon.Back) { Color.White } }
                     Row(
                         Modifier.weight(1f).height(44.dp).vGlass(22.dp).padding(horizontal = 16.dp),
                         Arrangement.spacedBy(10.dp), Alignment.CenterVertically,
@@ -289,9 +320,16 @@ fun PlayerScreen(source: PlaySource, onClose: () -> Unit) {
                         OneText(source.title, OneType.Section, Color.White, Modifier.weight(1f), 1)
                         if (pb?.live ?: source.live) LiveChip(c.accent)
                     }
-                    Box(Modifier.size(44.dp).press { fit = !fit; tick++ }.vGlass(22.dp), Alignment.Center) {
-                        OneIconView(if (fit) OneIcon.Fit else OneIcon.Fill) { Color.White }
-                    }
+                    val texts = pb?.texts.orEmpty()
+                    val audios = pb?.audios.orEmpty()
+                    val qualities = pb?.qualities.orEmpty()
+                    fun open(t: Int) { tab = t; panelOpen = true; tick++ }
+                    if (texts.isNotEmpty()) GlassBtn({ open(2) }) { OneIconView(OneIcon.Cc) { if (texts.drop(1).any { it.selected }) c.accent else Color.White } }
+                    if (audios.size > 1) GlassBtn({ open(1) }) { OneIconView(OneIcon.Wave) { Color.White } }
+                    if (qualities.size > 1) Box(
+                        Modifier.height(44.dp).press { open(0) }.vGlass(22.dp).padding(horizontal = 14.dp), Alignment.Center,
+                    ) { OneText(qualities.firstOrNull { it.selected }?.label ?: "", OneType.Caption, Color.White, maxLines = 1) }
+                    GlassBtn({ fit = !fit; tick++ }) { OneIconView(if (fit) OneIcon.Fit else OneIcon.Fill) { Color.White } }
                 }
 
                 if (pb != null && !failed) {
@@ -334,6 +372,22 @@ fun PlayerScreen(source: PlaySource, onClose: () -> Unit) {
                 }
             }
         }
+
+        // 7) quality / audio / subtitles panel: pinned to the physical right edge whatever the UI direction
+        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+            AnimatedVisibility(
+                panelOpen && pb != null, Modifier.align(Alignment.CenterEnd),
+                enter = slideInHorizontally(tween(260)) { it } + fadeIn(tween(200)),
+                exit = slideOutHorizontally(tween(200)) { it } + fadeOut(tween(150)),
+            ) {
+                CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+                    if (pb != null) TracksPanel(
+                        pb, tab, { tab = it }, style, { style = it }, { style.save(app) },
+                        Modifier.windowInsetsPadding(WindowInsets.safeDrawing).padding(12.dp).width(300.dp).fillMaxHeight(),
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -341,10 +395,15 @@ fun PlayerScreen(source: PlaySource, onClose: () -> Unit) {
 
 /** Dark floating glass: reads on any video regardless of the app's day/night theme. */
 @Composable
-private fun Modifier.vGlass(radius: Dp): Modifier {
+internal fun Modifier.vGlass(radius: Dp): Modifier {
     val fx = LocalGlassEffects.current
     val shape = RoundedCornerShape(radius)
     return clip(shape).background(Color.Black.copy(alpha = if (fx) 0.42f else 0.72f)).border(0.5.dp, Color.White.copy(alpha = 0.16f), shape)
+}
+
+@Composable
+private fun GlassBtn(onClick: () -> Unit, content: @Composable BoxScope.() -> Unit) {
+    Box(Modifier.size(44.dp).press(onClick).vGlass(22.dp), Alignment.Center, content = content)
 }
 
 @Composable

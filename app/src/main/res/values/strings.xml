@@ -59,4 +59,20 @@
     <string name="sort_name">الاسم</string>
     <string name="movies_empty">لا توجد نتائج مطابقة</string>
     <string name="movies_reset">إعادة الضبط</string>
+
+    <string name="tab_quality">الجودة</string>
+    <string name="tab_audio">الصوت</string>
+    <string name="tab_subs">الترجمة</string>
+    <string name="track_auto">تلقائي</string>
+    <string name="track_off">إيقاف</string>
+    <string name="track_n">مسار</string>
+    <string name="track_none">غير متاح لهذا المحتوى</string>
+    <string name="subs_style">تخصيص الترجمة</string>
+    <string name="style_size">الحجم</string>
+    <string name="style_lift">الارتفاع</string>
+    <string name="sample_caption">هذا نص تجريبي للترجمة</string>
+    <string name="player_extracting">جارٍ استخراج الرابط…</string>
+    <string name="resolve_failed">تعذّر استخراج الفيديو من هذا الرابط</string>
+    <string name="link_title">تشغيل رابط</string>
+    <string name="link_hint">الصق رابط فيديو أو بث</string>
 </resources>

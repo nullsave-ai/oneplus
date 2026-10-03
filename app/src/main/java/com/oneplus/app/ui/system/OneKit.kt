@@ -86,7 +86,7 @@ fun Modifier.press(onClick: () -> Unit): Modifier {
 }
 
 // ---- Icons (custom, 24dp grid, 1.75 stroke) ------------------------------
-enum class OneIcon { Home, Channels, Settings, Search, Close, Back, Next, Play, Pause, Plus, Check, Star, Replay, Forward, Sun, Volume, Mute, Fit, Fill, Filter }
+enum class OneIcon { Home, Channels, Settings, Search, Close, Back, Next, Play, Pause, Plus, Check, Star, Replay, Forward, Sun, Volume, Mute, Fit, Fill, Filter, Cc, Wave }
 
 @Composable
 fun OneIconView(icon: OneIcon, modifier: Modifier = Modifier, tint: () -> Color) {
@@ -173,6 +173,15 @@ fun OneIconView(icon: OneIcon, modifier: Modifier = Modifier, tint: () -> Color)
                     drawPath(Path().apply { moveTo(x1 * k, y1 * k); lineTo(x2 * k, y2 * k); lineTo(x3 * k, y3 * k) }, color, style = st)
                 corner(4f, 9f, 4f, 4f, 9f, 4f); corner(15f, 4f, 20f, 4f, 20f, 9f)
                 corner(20f, 15f, 20f, 20f, 15f, 20f); corner(9f, 20f, 4f, 20f, 4f, 15f)
+            }
+            OneIcon.Cc -> {
+                drawRoundRect(color, o(3f, 5.5f), Size(18f * k, 13f * k), CornerRadius(3f * k), st)
+                drawArc(color, 40f, 280f, false, o(6.4f, 9.4f), Size(5.2f * k, 5.2f * k), style = st)
+                drawArc(color, 40f, 280f, false, o(13.4f, 9.4f), Size(5.2f * k, 5.2f * k), style = st)
+            }
+            OneIcon.Wave -> {
+                val h = floatArrayOf(3f, 6f, 9f, 6f, 3f)
+                for (i in h.indices) line(5f + i * 3.5f, 12f - h[i], 5f + i * 3.5f, 12f + h[i])
             }
             OneIcon.Filter -> drawPath(Path().apply {
                 moveTo(4f * k, 6f * k); lineTo(20f * k, 6f * k); lineTo(14f * k, 13f * k)

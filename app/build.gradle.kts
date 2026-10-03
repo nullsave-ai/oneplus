@@ -8,11 +8,15 @@ android {
     compileSdk = 35
     defaultConfig {
         applicationId = "com.oneplus.app"
-        minSdk = 21 // older / 32-bit devices; no native libs until a real need exists
+        minSdk = 21 // if the yt-dlp library's manifest merge complains about its minSdk, raise this to the value it asks for
         targetSdk = 35
         versionCode = 1
         versionName = "1.0"
+        // yt-dlp ships Python + native code per ABI: keep only the phone ABIs (x86 emulators are dropped) to limit APK size
+        ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
     }
+    // The bundled Python/yt-dlp binaries are executed from the app's native-lib directory, so they must be extracted
+    packaging { jniLibs { useLegacyPackaging = true } }
     buildTypes {
         release {
             isMinifyEnabled = true
@@ -43,4 +47,7 @@ dependencies {
     implementation("androidx.media3:media3-exoplayer:$media3")
     implementation("androidx.media3:media3-exoplayer-hls:$media3")
     implementation("androidx.media3:media3-exoplayer-dash:$media3")
+
+    // Extractor for page links (YouTube, X, ok.ru, ...): yt-dlp running on the device. GPL-3.0 licensed (see SECURITY_AUDIT.md).
+    implementation("io.github.junkfood02.youtubedl-android:library:0.18.1")
 }
