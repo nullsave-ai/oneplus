@@ -5,8 +5,18 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -18,12 +28,14 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.oneplus.app.R
+import com.oneplus.app.data.TestStreamUrl
+import com.oneplus.app.player.buildLink
 import com.oneplus.app.ui.system.*
 
 private const val SwatchesPerRow = 4
 
 @Composable
-fun SettingsScreen(effects: Boolean, onEffects: (Boolean) -> Unit, theme: ThemeController, scroll: ScrollState) {
+fun SettingsScreen(effects: Boolean, onEffects: (Boolean) -> Unit, theme: ThemeController, scroll: ScrollState, onLink: (String) -> Unit) {
     val c = LocalColors.current
     val dark = LocalDarkTheme.current
     val p = theme.prefs
@@ -63,6 +75,8 @@ fun SettingsScreen(effects: Boolean, onEffects: (Boolean) -> Unit, theme: ThemeC
                 }
                 SettingRow(stringResource(R.string.settings_effects)) { OneSwitch(effects, onEffects) }
             }
+            OneText(stringResource(R.string.link_title), OneType.Section, c.text, Modifier.padding(start = 4.dp, top = 8.dp))
+            TestPlayerCard(onLink)
             Column(Modifier.fillMaxWidth().glass(2, 22.dp)) {
                 SettingRow(stringResource(R.string.settings_version)) { OneText("1.0", OneType.Body, c.dim) }
             }
@@ -126,5 +140,54 @@ private fun SettingRow(title: String, modifier: Modifier = Modifier, trailing: @
     ) {
         OneText(title, OneType.Body, LocalColors.current.text)
         trailing()
+    }
+}
+
+/**
+ * Test bench for the player: a link plus everything a stream may need (User-Agent, Referer, DRM scheme, license / keys).
+ * The fields are folded into one `URL|option=value&...` string (see [buildLink]); the player parses it back, so this is the
+ * same path real catalogue links take.
+ */
+@Composable
+private fun TestPlayerCard(onPlay: (String) -> Unit) {
+    var url by rememberSaveable { mutableStateOf("") }
+    var ua by rememberSaveable { mutableStateOf("") }
+    var ref by rememberSaveable { mutableStateOf("") }
+    var drm by rememberSaveable { mutableIntStateOf(0) } // 0 none · 1 widevine · 2 playready · 3 clearkey
+    var lic by rememberSaveable { mutableStateOf("") }
+    val schemes = listOf(null, "widevine", "playready", "clearkey")
+    val names = listOf(stringResource(R.string.drm_none), "Widevine", "PlayReady", "ClearKey")
+    Column(Modifier.fillMaxWidth().glass(2, 22.dp).padding(12.dp), Arrangement.spacedBy(10.dp)) {
+        Field(stringResource(R.string.link_url), url) { url = it }
+        Field("User-Agent", ua) { ua = it }
+        Field("Referer", ref) { ref = it }
+        Row(Modifier.horizontalScroll(rememberScrollState()), Arrangement.spacedBy(8.dp)) {
+            names.forEachIndexed { i, n -> OneChip(n, drm == i, { drm = i }) }
+        }
+        if (drm > 0) Field(stringResource(if (drm == 3) R.string.link_keys else R.string.link_license), lic) { lic = it }
+        Row(Modifier.fillMaxWidth(), Arrangement.spacedBy(10.dp)) {
+            OneButton(stringResource(R.string.link_sample), null, { url = TestStreamUrl }, Modifier.weight(1f), primary = false)
+            OneButton(
+                stringResource(R.string.link_play), OneIcon.Play,
+                { if (url.isNotBlank()) onPlay(buildLink(url, ua, ref, schemes[drm], lic)) }, Modifier.weight(1f),
+            )
+        }
+    }
+}
+
+@Composable
+private fun Field(hint: String, value: String, onChange: (String) -> Unit) {
+    val c = LocalColors.current
+    Box(
+        Modifier.fillMaxWidth().height(44.dp).clip(RoundedCornerShape(14.dp)).background(c.dim.copy(alpha = 0.12f)).padding(horizontal = 12.dp),
+        Alignment.CenterStart,
+    ) {
+        if (value.isEmpty()) OneText(hint, OneType.Body, c.dim, maxLines = 1)
+        BasicTextField(
+            value, { onChange(it.take(4096)) }, Modifier.fillMaxWidth(), singleLine = true,
+            textStyle = OneType.Body.copy(color = c.text, textDirection = TextDirection.Ltr),
+            cursorBrush = SolidColor(c.accent),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Next),
+        )
     }
 }

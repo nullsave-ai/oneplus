@@ -200,7 +200,7 @@ private fun Hero(m: Movie, duration: String, height: Dp, scroll: ScrollState) {
                         listOf(c.accent.copy(alpha = 0.35f), c.accent.copy(alpha = 0f)),
                         Offset(size.width * 0.82f, size.height * 0.18f), size.maxDimension * 0.6f,
                     )
-                    onDrawBehind { drawRect(glow) }
+                    onDrawBehind { drawRect(glow); drawDither() }
                 }
         )
         Box(Modifier.matchParentSize().background(fade))
@@ -216,11 +216,15 @@ private fun Hero(m: Movie, duration: String, height: Dp, scroll: ScrollState) {
             )
             Column(Modifier.weight(1f).padding(bottom = 4.dp), Arrangement.spacedBy(6.dp)) {
                 OneText(m.title, OneType.Title, c.text, maxLines = 2)
-                OneText("${m.year}  |  $duration", OneType.Caption, c.dim)
-                OneText(
-                    String.format(Locale.US, "%.1f", m.rating), OneType.Section, c.warning,
-                    Modifier.background(c.accentSoft, RoundedCornerShape(12.dp)).padding(horizontal = 12.dp, vertical = 4.dp),
-                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    OneText("${m.year}", OneType.Caption, c.dim)
+                    OneDot(c.dim)
+                    OneText(duration, OneType.Caption, c.dim)
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    OneIconView(OneIcon.Star) { c.warning }
+                    OneText(String.format(Locale.US, "%.1f", m.rating), OneType.Section, c.text)
+                }
             }
         }
     }

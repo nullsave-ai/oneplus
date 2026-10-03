@@ -2,6 +2,7 @@ package com.oneplus.app.ui
 
 import android.app.ActivityManager
 import android.content.Context
+import android.net.Uri
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.spring
@@ -11,7 +12,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.ui.platform.LocalDensity
@@ -27,6 +27,10 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalLayoutDirection
@@ -52,17 +56,19 @@ fun OnePlusApp(theme: ThemeController, vm: MainViewModel = viewModel()) {
     var tab by rememberSaveable { mutableIntStateOf(0) }
     var movieId by rememberSaveable { mutableIntStateOf(-1) }
     var showMovies by rememberSaveable { mutableStateOf(false) }
-    var playKind by rememberSaveable { mutableIntStateOf(0) } // 0 none · 1 movie · 2 channel
+    var playKind by rememberSaveable { mutableIntStateOf(0) } // 0 none · 1 movie · 2 channel · 3 pasted link
     var playId by rememberSaveable { mutableIntStateOf(-1) }
+    var playUrl by rememberSaveable { mutableStateOf("") } // kind 3: a link typed/pasted by the user
+    var fullscreen by rememberSaveable { mutableStateOf(true) }
+    var slot by remember { mutableStateOf<Rect?>(null) } // where the Channels page wants the player drawn when it is not fullscreen
     val detail = remember { DetailState(movieId >= 0) }
     val homeList = rememberLazyListState()
-    val grid = rememberLazyGridState()
     val settingsScroll = rememberScrollState()
     val range = with(LocalDensity.current) { 96.dp.toPx() }
     val progress = rememberToolbarProgress {
         when (tab) {
             0 -> scrollTarget(homeList.firstVisibleItemIndex, homeList.firstVisibleItemScrollOffset, range)
-            1 -> scrollTarget(grid.firstVisibleItemIndex, grid.firstVisibleItemScrollOffset, range)
+            1 -> 0f // the channels page is a fixed player + two independent lists: the toolbar stays flat
             else -> scrollTarget(0, settingsScroll.value, range)
         }
     }
@@ -73,17 +79,21 @@ fun OnePlusApp(theme: ThemeController, vm: MainViewModel = viewModel()) {
         }
     }
     // Only an id is persisted; the URL is always resolved from the catalogue (never stored or passed around as free text).
-    val source = remember(playKind, playId, state.all) {
+    val source = remember(playKind, playId, playUrl, state.all) {
         when (playKind) {
-            1 -> state.all.movies.firstOrNull { it.id == playId }?.let { PlaySource(it.url, it.title, live = false) }
+            1 -> state.all.movies.firstOrNull { it.id == playId }?.let { PlaySource(it.url, it.title, live = false, cacheable = true) }
             2 -> state.all.channels.firstOrNull { it.id == playId }?.let { PlaySource(it.url, it.name, live = true) }
+            3 -> if (playUrl.isNotBlank()) PlaySource(playUrl.trim(), runCatching { Uri.parse(playUrl.substringBefore('|').trim()).host }.getOrNull() ?: playUrl.take(32), live = false) else null
             else -> null
         }
     }
     LaunchedEffect(source, playKind, state.all) {
-        if (playKind != 0 && source == null && state.all.movies.isNotEmpty()) playKind = 0
+        if (playKind in 1..2 && source == null && state.all.movies.isNotEmpty()) playKind = 0
     }
-    val playChannel = { id: Int -> playKind = 2; playId = id }
+    val playFull = { kind: Int, id: Int -> playKind = kind; playId = id; fullscreen = true }
+    val playInline = { id: Int -> playKind = 2; playId = id; fullscreen = false } // from the Channels page: plays in place
+    // Leaving the Channels page stops an in-place player.
+    LaunchedEffect(tab) { if (tab != 1 && playKind == 2 && !fullscreen) playKind = 0 }
     // A stale id (e.g. the catalogue changed after process death) must never leave the page stuck in "depth" mode.
     LaunchedEffect(movieId, state.all.movies) {
         if (movieId >= 0 && state.all.movies.isNotEmpty() && state.all.movies.none { it.id == movieId }) {
@@ -100,19 +110,22 @@ fun OnePlusApp(theme: ThemeController, vm: MainViewModel = viewModel()) {
                 val d = detail.depth
                 val s = 1f - 0.06f * d
                 scaleX = s; scaleY = s
-                alpha = 1f - 0.35f * d
+            }.drawWithContent {
+                drawContent()
+                // dim with a plain scrim: alpha on the whole tree would force an offscreen layer every frame of the transition
+                drawRect(Color.Black, alpha = 0.35f * detail.depth)
             }) {
                 Crossfade(tab, Modifier.fillMaxSize(), tween(180), label = "page") { t ->
                     when (t) {
                         0 -> HomeScreen(
                             state, homeList, wide, portrait,
                             onMovie = { id -> focus.clearFocus(); movieId = id },
-                            onChannel = playChannel,
+                            onChannel = { id -> playFull(2, id) },
                             onAllMovies = { focus.clearFocus(); showMovies = true },
                             onAllChannels = { tab = 1 },
                         )
-                        1 -> ChannelsScreen(state.data.channels, grid, portrait, playChannel)
-                        else -> SettingsScreen(fx, { fx = it }, theme, settingsScroll)
+                        1 -> ChannelsScreen(state.data.channels, state.query.isNotBlank(), if (playKind == 2) playId else -1, portrait, { slot = it }, playInline)
+                        else -> SettingsScreen(fx, { fx = it }, theme, settingsScroll) { link -> playUrl = link; playFull(3, -1) }
                     }
                 }
                 FloatingToolbar(
@@ -127,8 +140,23 @@ fun OnePlusApp(theme: ThemeController, vm: MainViewModel = viewModel()) {
                 MoviesHost(showMovies, state.all.movies, portrait, { id -> movieId = id }, { showMovies = false })
             }
             // Overlays are declared in z-order: each one's back handler takes priority over the ones before it.
-            MovieDetailHost(detail, state.all.movies, movieId, { movieId = it }, { id -> playKind = 1; playId = id }, { movieId = -1 })
-            if (source != null) PlayerScreen(source) { playKind = 0 }
+            MovieDetailHost(detail, state.all.movies, movieId, { movieId = it }, { id -> playFull(1, id) }, { movieId = -1 })
+            // The app's single player. Fullscreen = the whole screen; otherwise it is laid exactly over the Channels page's slot,
+            // so switching between the two never rebuilds it (the stream keeps playing).
+            if (source != null) {
+                val r = slot
+                val inPlace = !fullscreen && playKind == 2 && tab == 1 && r != null
+                val box = if (inPlace && r != null) with(LocalDensity.current) {
+                    Modifier.offset { IntOffset(r.left.roundToInt(), r.top.roundToInt()) }.size(r.width.toDp(), r.height.toDp())
+                } else Modifier.fillMaxSize()
+                Box(box) {
+                    PlayerScreen(
+                        source, fullscreen = !inPlace,
+                        onToggleFullscreen = if (playKind == 2 && tab == 1 && r != null) ({ fullscreen = !fullscreen }) else null,
+                        onClose = { playKind = 0; fullscreen = true },
+                    )
+                }
+            }
         }
     }
 }

@@ -89,7 +89,11 @@ private fun MoviesScreen(movies: List<Movie>, portrait: Boolean, onMovie: (Int) 
         Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 12.dp), Arrangement.spacedBy(8.dp), Alignment.CenterVertically) {
             Box(Modifier.size(44.dp).press(onClose).glass(3, 22.dp), Alignment.Center) { OneIconView(OneIcon.Back) { c.text } }
             Box(Modifier.weight(1f).height(44.dp).glass(3, 22.dp), Alignment.Center) {
-                OneText("${stringResource(R.string.movies_title)}  ·  ${shown.size}", OneType.Section, c.text, Modifier.padding(horizontal = 16.dp), 1)
+                Row(Modifier.padding(horizontal = 16.dp), Arrangement.spacedBy(8.dp), Alignment.CenterVertically) {
+                    OneText(stringResource(R.string.movies_title), OneType.Section, c.text, maxLines = 1)
+                    OneDot(c.dim)
+                    OneText("${shown.size}", OneType.Section, c.dim)
+                }
             }
             Box(Modifier.size(44.dp).press { panel = !panel }.glass(3, 22.dp), Alignment.Center) {
                 OneIconView(OneIcon.Filter) { if (panel || extraFilters > 0) c.accent else c.text }

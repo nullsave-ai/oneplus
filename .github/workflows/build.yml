@@ -52,10 +52,10 @@ jobs:
           tag_name: v1.0.${{ github.run_number }}
           name: "OnePlus v1.0.${{ github.run_number }} (Release)"
           body: |
-            ### تطبيق وان+ (OnePlus App v7 - دعم الروابط المتقدمة والصيغ الشاملة):
-            * دعم تشغيل صيغ البث الموسعة (HLS, DASH, Smooth Streaming .ism, RTSP, MP4, MKV).
-            * دعم خيارات الروابط المتقدمة وتمرير الترويسات (User-Agent, Referer, Cookie) وتشفير DRM (Widevine, ClearKey).
-            * مشغل فيديو متطور وخفيف بالكامل مع دعم الترجمات ومسارات الصوت المتعددة.
+            ### تطبيق وان+ (OnePlus App - تحديث تحسين الرسم ومعالجة التدرجات Dither):
+            * معالجة تدرجات الألوان ومنع التقطيع اللوني (Color Banding) بطبقة ضجيج Dither دقيقة وسريعة.
+            * إصلاح شفافية الظلال وتأثير الزجاج (Glass effect) ومنع الهالات الرمادية.
+            * تحسين أداء وسلاسة التنقل بين الشاشات واستقرار تشغيل البث.
           files: dist/*.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

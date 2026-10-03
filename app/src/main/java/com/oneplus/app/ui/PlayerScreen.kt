@@ -21,17 +21,21 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.text.BasicText
+import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
@@ -43,7 +47,6 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
@@ -51,28 +54,23 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.res.stringArrayResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
-import androidx.media3.common.C
 import com.oneplus.app.R
 import com.oneplus.app.player.MediaCache
 import com.oneplus.app.player.PlaySource
 import com.oneplus.app.player.Playback
-import com.oneplus.app.player.TrackOpt
-import com.oneplus.app.player.parse
+import com.oneplus.app.player.Resolved
+import com.oneplus.app.player.Resolver
+import com.oneplus.app.player.parseLink
 import com.oneplus.app.ui.system.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -87,10 +85,6 @@ private sealed interface Hud {
     data class Skip(val forward: Boolean, val seconds: Int) : Hud
 }
 
-private val SubSizes = listOf(14, 18, 22, 28)
-private val SubColors = listOf(Color.White, Color(0xFFFFE066), Color(0xFF7DE3FF), Color(0xFF8BE28B))
-private val SubBgs = listOf(0f, 0.45f, 0.85f)
-
 private tailrec fun Context.findActivity(): Activity? = when (this) {
     is Activity -> this
     is ContextWrapper -> baseContext.findActivity()
@@ -98,14 +92,15 @@ private tailrec fun Context.findActivity(): Activity? = when (this) {
 }
 
 /**
- * Full-screen player. Video is a plain SurfaceView (cheapest path, no media3-ui); every control is drawn here.
+ * The app's only player. [fullscreen] = immersive landscape; otherwise it fills whatever box it is placed in (Channels page).
+ * Video is a plain SurfaceView (cheapest path, no media3-ui); every control is drawn here.
  *
  * Gestures: tap = show/hide controls · double-tap left/right third = -10s/+10s (repeat to accumulate), middle = play/pause ·
  * drag horizontally = scrub (VOD) · drag vertically on the left half = brightness, right half = volume.
  * Controls are floating dark glass and hide themselves 3.5s after the last interaction while playing.
  */
 @Composable
-fun PlayerScreen(source: PlaySource, onClose: () -> Unit) {
+fun PlayerScreen(source: PlaySource, fullscreen: Boolean, onToggleFullscreen: (() -> Unit)?, onClose: () -> Unit) {
     val c = LocalColors.current
     val view = LocalView.current
     val ctx = LocalContext.current
@@ -114,36 +109,56 @@ fun PlayerScreen(source: PlaySource, onClose: () -> Unit) {
     val window = activity?.window
     val audio = remember(app) { app.getSystemService(Context.AUDIO_SERVICE) as AudioManager }
 
-    // Immersive landscape + screen on while the player is open; everything is restored on exit.
-    DisposableEffect(activity) {
+    // Screen stays on while the player exists; brightness changed by gesture is given back on exit.
+    DisposableEffect(view) {
+        view.keepScreenOn = true
+        onDispose {
+            view.keepScreenOn = false
+            window?.let { w -> val lp = w.attributes; lp.screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE; w.attributes = lp }
+        }
+    }
+    // Immersive landscape only in fullscreen; restored when leaving it (or the player).
+    DisposableEffect(activity, fullscreen) {
+        if (!fullscreen) return@DisposableEffect onDispose { }
         val controller = window?.let { WindowCompat.getInsetsController(it, view) }
         val oldOrientation = activity?.requestedOrientation ?: ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
-        view.keepScreenOn = true
         activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
         controller?.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         controller?.hide(WindowInsetsCompat.Type.systemBars())
         onDispose {
-            view.keepScreenOn = false
             controller?.show(WindowInsetsCompat.Type.systemBars())
             activity?.requestedOrientation = oldOrientation
-            window?.let { w -> val lp = w.attributes; lp.screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE; w.attributes = lp }
         }
     }
+    // Insets only matter when the player really covers the screen; in place it sits below the status bar already.
+    val safe: Modifier = if (fullscreen) Modifier.windowInsetsPadding(WindowInsets.safeDrawing) else Modifier
 
-    // The player is created off the first frame (cache init does disk IO) and released the moment the screen leaves composition.
-    val stream = remember(source.url) { source.parse() }
+    // Every link is played as is (headers / DRM from its |options|); only an X post needs one lookup first.
+    // The player is created off the first frame and released as soon as the screen leaves.
+    val link = remember(source.url) { parseLink(source.url) }
+    var attempt by remember(source) { mutableIntStateOf(if (link != null && Resolver.needsExtractor(link.url)) 1 else 0) } // 0 direct · 1 X lookup
+    var retryKey by remember { mutableIntStateOf(0) }
+    var resolveFailed by remember(source) { mutableStateOf(false) }
     var playback by remember { mutableStateOf<Playback?>(null) }
-    LaunchedEffect(source) {
-        if (stream != null) {
-            val cache = if (source.live) null else withContext(Dispatchers.IO) { MediaCache.get(app) }
-            playback = Playback(app, source, stream, cache)
-        }
+    LaunchedEffect(source, attempt, retryKey) {
+        if (link == null) return@LaunchedEffect
+        playback = null
+        resolveFailed = false
+        val res = if (attempt == 0) Resolved(link.url, source.live, link.headers, link.drm) else Resolver.resolve(link.url)?.copy(headers = link.headers)
+        if (res == null) { resolveFailed = true; return@LaunchedEffect }
+        val cache = if (attempt == 0 && source.cacheable) withContext(Dispatchers.IO) { MediaCache.get(app) } else null
+        playback = Playback(app, source, res, cache)
     }
     DisposableEffect(playback) { val p = playback; onDispose { p?.release() } }
     LifecycleEventEffect(Lifecycle.Event.ON_STOP) { playback?.pause() }
+    LifecycleEventEffect(Lifecycle.Event.ON_START) { playback?.resumeLive() } // live comes back at the live edge by itself
+    var panelOpen by remember { mutableStateOf(false) }
+    var tab by remember { mutableIntStateOf(0) } // 0 quality · 1 audio · 2 subtitles
+    var style by remember { mutableStateOf(SubStyle.load(app)) }
+    BackHandler(fullscreen || panelOpen) { if (panelOpen) panelOpen = false else if (onToggleFullscreen != null) onToggleFullscreen() else onClose() }
 
     val pb = playback
-    val failed = stream == null || pb?.failed == true
+    val failed = link == null || resolveFailed || pb?.failed == true
     var show by remember { mutableStateOf(true) }
     var tick by remember { mutableIntStateOf(0) } // bumped on every interaction to restart the auto-hide timer
     var scrub by remember { mutableStateOf<Float?>(null) }
@@ -152,36 +167,15 @@ fun PlayerScreen(source: PlaySource, onClose: () -> Unit) {
     var lastHud by remember { mutableStateOf<Hud?>(null) }
     var pos by remember { mutableLongStateOf(0L) }
     var buf by remember { mutableLongStateOf(0L) }
-    var panel by remember { mutableStateOf(false) }
-    BackHandler { if (panel) panel = false else onClose() }
-
-    // Subtitle look (size / colour / background) is remembered between sessions.
-    val prefs = remember(app) { app.getSharedPreferences("player", Context.MODE_PRIVATE) }
-    var sz by remember { mutableIntStateOf(prefs.getInt("sz", 1).coerceIn(0, SubSizes.lastIndex)) }
-    var co by remember { mutableIntStateOf(prefs.getInt("co", 0).coerceIn(0, SubColors.lastIndex)) }
-    var bg by remember { mutableIntStateOf(prefs.getInt("bg", 1).coerceIn(0, SubBgs.lastIndex)) }
-    fun cycle(key: String, v: Int, n: Int): Int = ((v + 1) % n).also { prefs.edit().putInt(key, it).apply() }
-    val styleChips = listOf(
-        stringResource(R.string.sub_size, stringArrayResource(R.array.sub_sizes)[sz]) to { sz = cycle("sz", sz, SubSizes.size) },
-        stringResource(R.string.sub_color, stringArrayResource(R.array.sub_colors)[co]) to { co = cycle("co", co, SubColors.size) },
-        stringResource(R.string.sub_bg, stringArrayResource(R.array.sub_bgs)[bg]) to { bg = cycle("bg", bg, SubBgs.size) },
-    )
-    // Only groups that actually offer a choice are listed (a plain MP4 has none, so no button is shown).
-    val groups = if (pb == null || failed) emptyList() else listOf(
-        R.string.player_quality to pb.options(C.TRACK_TYPE_VIDEO),
-        R.string.player_audio to pb.options(C.TRACK_TYPE_AUDIO),
-        R.string.player_subs to pb.options(C.TRACK_TYPE_TEXT),
-    ).filter { it.second.isNotEmpty() }
 
     // Position is only polled while the controls are visible.
     LaunchedEffect(pb, show) {
         if (pb == null) return@LaunchedEffect
         while (show) { pos = pb.position; buf = pb.bufferedPosition; delay(400) }
     }
-    LaunchedEffect(show, tick, pb?.wantsPlay, scrub != null, failed, panel) {
-        if (show && pb?.wantsPlay == true && scrub == null && !failed && !panel) { delay(3500); show = false }
+    LaunchedEffect(show, tick, pb?.wantsPlay, scrub != null, failed, panelOpen) {
+        if (show && pb?.wantsPlay == true && scrub == null && !failed && !panelOpen) { delay(3500); show = false }
     }
-    LaunchedEffect(show) { if (!show) panel = false }
     LaunchedEffect(pb?.ended) { if (pb?.ended == true) show = true }
     LaunchedEffect(hud) { if (hud != null) { lastHud = hud; delay(900); hud = null } }
 
@@ -213,7 +207,7 @@ fun PlayerScreen(source: PlaySource, onClose: () -> Unit) {
                 val h: Dp
                 if (fit == containerWider) { h = maxHeight; w = maxHeight * ratio } else { w = maxWidth; h = maxWidth / ratio }
                 AndroidView(
-                    factory = { SurfaceView(it).also { sv -> sv.setSecure(stream?.drm != null); pb.player.setVideoSurfaceView(sv) } },
+                    factory = { SurfaceView(it).also { sv -> pb.player.setVideoSurfaceView(sv) } },
                     modifier = Modifier.requiredSize(w, h),
                 )
             }
@@ -228,11 +222,11 @@ fun PlayerScreen(source: PlaySource, onClose: () -> Unit) {
             Modifier.fillMaxSize()
                 .pointerInput(playback) {
                     detectTapGestures(
-                        onTap = { if (panel) panel = false else show = !show; tick++ },
+                        onTap = { if (panelOpen) panelOpen = false else { show = !show; tick++ } },
                         onDoubleTap = { o ->
                             val p = playback ?: return@detectTapGestures
                             val side = when { o.x < size.width / 3f -> -1; o.x > size.width * 2f / 3f -> 1; else -> 0 }
-                            if (side == 0) { p.toggle(); tick++ }
+                            if (side == 0) { if (!p.live) { p.toggle(); tick++ } }
                             else if (p.seekable) {
                                 p.seekBy(side * 10_000L)
                                 val h = hud
@@ -286,68 +280,56 @@ fun PlayerScreen(source: PlaySource, onClose: () -> Unit) {
         }
         AnimatedVisibility(
             hud != null,
-            Modifier.align(hudAlign).windowInsetsPadding(WindowInsets.safeDrawing).padding(horizontal = 56.dp, vertical = 24.dp),
+            Modifier.align(hudAlign).then(safe).padding(horizontal = if (fullscreen) 56.dp else 16.dp, vertical = 24.dp),
             enter = fadeIn(tween(100)), exit = fadeOut(tween(260)),
         ) {
             val h = lastHud
             if (h != null) CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) { HudView(h, c.accent) }
         }
 
-        // 4b) subtitles: drawn here (no media3-ui), lifted above the controls while they are visible
-        val subText = pb?.cues.orEmpty()
-        if (subText.isNotEmpty()) {
-            val lift by animateDpAsState(if (show) 104.dp else 28.dp, tween(220), label = "sub")
-            OneText(
-                subText,
-                TextStyle(fontSize = SubSizes[sz].sp, fontWeight = FontWeight.Medium, textAlign = TextAlign.Center, shadow = Shadow(Color.Black, Offset(0f, 2f), 6f)),
-                SubColors[co],
-                Modifier.align(Alignment.BottomCenter).windowInsetsPadding(WindowInsets.safeDrawing)
-                    .padding(horizontal = 48.dp).padding(bottom = lift)
-                    .background(Color.Black.copy(alpha = SubBgs[bg]), RoundedCornerShape(8.dp)).padding(horizontal = 10.dp, vertical = 4.dp),
-            )
+        // 4b) captions: drawn by us (own style), lifted above the seek island while the controls are visible
+        val sample = stringResource(R.string.sample_caption)
+        val cap = pb?.caption.orEmpty().ifEmpty { if (panelOpen && tab == 2) sample else "" }
+        val lifted by animateDpAsState(if (show && pb?.seekable == true) 76.dp else 0.dp, tween(220), label = "capLift")
+        if (cap.isNotEmpty()) Box(Modifier.fillMaxSize().then(safe), Alignment.BottomCenter) {
+            CaptionText(cap, style, c.accent, c.onAccent, Modifier.padding(bottom = 12.dp + lifted + (style.lift * (if (fullscreen) 120f else 40f)).dp).widthIn(max = 640.dp))
         }
 
         // 5) loading / error
         val controlsA by animateFloatAsState(if (show) 1f else 0f, tween(220), label = "controls")
-        if ((pb == null || pb.buffering || !pb.firstFrame) && !failed && controlsA < 0.5f) {
+        if ((pb == null || pb.buffering || !pb.firstFrame) && !failed && (controlsA < 0.5f || pb?.live == true)) {
             Spinner(c.accent, Modifier.align(Alignment.Center).size(44.dp))
+            if (pb == null && attempt > 0) OneText(stringResource(R.string.player_extracting), OneType.Caption, Color.White.copy(alpha = 0.7f), Modifier.align(Alignment.Center).padding(top = 84.dp))
         }
         if (failed) Column(Modifier.align(Alignment.Center), Arrangement.spacedBy(16.dp), Alignment.CenterHorizontally) {
-            OneText(stringResource(if (stream == null) R.string.player_bad_link else R.string.player_error), OneType.Section, Color.White)
-            if (stream != null) OneButton(stringResource(R.string.player_retry), OneIcon.Forward, { playback?.retry() }, Modifier.width(220.dp))
+            OneText(
+                stringResource(if (link == null) R.string.player_bad_link else if (resolveFailed) R.string.resolve_failed else R.string.player_error),
+                OneType.Section, Color.White,
+            )
+            if (link != null) OneButton(
+                stringResource(R.string.player_retry), OneIcon.Forward,
+                { val p = playback; if (p == null || resolveFailed) retryKey++ else p.retry() }, Modifier.width(220.dp),
+            )
         }
 
         // 6) controls
         if (controlsA > 0.01f) Box(Modifier.fillMaxSize().graphicsLayer { alpha = controlsA }) {
-            Box(
-                Modifier.align(Alignment.TopCenter).fillMaxWidth().height(120.dp)
-                    .background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.6f), Color.Transparent)))
-            )
-            Box(
-                Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(170.dp)
-                    .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.65f))))
-            )
-            Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(horizontal = 16.dp, vertical = 12.dp)) {
-                // top: back · title (+ live) · aspect
-                Row(Modifier.align(Alignment.TopCenter).fillMaxWidth(), Arrangement.spacedBy(8.dp), Alignment.CenterVertically) {
-                    Box(Modifier.size(44.dp).press { onClose() }.vGlass(22.dp), Alignment.Center) { OneIconView(OneIcon.Back) { Color.White } }
-                    Row(
-                        Modifier.weight(1f).height(44.dp).vGlass(22.dp).padding(horizontal = 16.dp),
-                        Arrangement.spacedBy(10.dp), Alignment.CenterVertically,
-                    ) {
-                        OneText(source.title, OneType.Section, Color.White, Modifier.weight(1f), 1)
-                        if (pb?.live ?: source.live) LiveChip(c.accent)
-                    }
-                    Box(Modifier.size(44.dp).press { fit = !fit; tick++ }.vGlass(22.dp), Alignment.Center) {
-                        OneIconView(if (fit) OneIcon.Fit else OneIcon.Fill) { Color.White }
-                    }
-                    if (groups.isNotEmpty()) Box(Modifier.size(44.dp).press { panel = !panel; tick++ }.vGlass(22.dp), Alignment.Center) {
-                        OneIconView(OneIcon.Settings) { Color.White }
-                    }
+            Box(Modifier.align(Alignment.TopCenter).fillMaxWidth().height(if (fullscreen) 120.dp else 72.dp).scrim(top = true))
+            Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(if (fullscreen) 170.dp else 96.dp).scrim(top = false))
+            Box(Modifier.fillMaxSize().then(safe).padding(horizontal = if (fullscreen) 16.dp else 8.dp, vertical = if (fullscreen) 12.dp else 8.dp)) {
+                // top: back (fullscreen only) · title as plain text · live chip
+                Row(Modifier.align(Alignment.TopCenter).fillMaxWidth(), Arrangement.spacedBy(12.dp), Alignment.CenterVertically) {
+                    if (fullscreen) GlassBtn(onClose) { OneIconView(OneIcon.Back) { Color.White } }
+                    BasicText(
+                        source.title, Modifier.weight(1f),
+                        style = OneType.Section.copy(color = Color.White, shadow = Shadow(Color.Black.copy(alpha = 0.6f), Offset(0f, 1f), 6f)),
+                        maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    )
+                    if (pb?.live ?: source.live) LiveChip(c.accent)
                 }
 
-                if (pb != null && !failed) {
-                    // center transport (physical order: back · play · forward, independent of RTL)
+                // center transport: VOD only. A live stream has nothing to pause; it heals itself (retry, live edge, resume).
+                if (pb != null && !failed && !pb.live) {
                     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
                         Row(Modifier.align(Alignment.Center), Arrangement.spacedBy(28.dp), Alignment.CenterVertically) {
                             if (pb.seekable) SkipButton(false) { pb.seekBy(-10_000); tick++ }
@@ -361,30 +343,62 @@ fun PlayerScreen(source: PlaySource, onClose: () -> Unit) {
                             if (pb.seekable) SkipButton(true) { pb.seekBy(10_000); tick++ }
                         }
                     }
+                }
 
-                    // bottom: seek island (VOD only; a live stream has nothing to scrub)
-                    if (pb.seekable) CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
-                        val dur = pb.durationMs
-                        val shown = scrub?.let { (it * dur).toLong() } ?: pos
-                        Row(
-                            Modifier.align(Alignment.BottomCenter).widthIn(max = 720.dp).fillMaxWidth().vGlass(24.dp)
-                                .padding(horizontal = 18.dp, vertical = 8.dp),
-                            Arrangement.spacedBy(12.dp), Alignment.CenterVertically,
-                        ) {
-                            OneText(fmt(shown), OneType.Caption, Color.White)
-                            SeekBar(
-                                fraction = scrub ?: if (dur > 0) pos.toFloat() / dur else 0f,
-                                buffered = if (dur > 0) buf.toFloat() / dur else 0f,
-                                active = scrub != null, accent = c.accent,
-                                onScrub = { scrub = it; tick++ },
-                                onCommit = { f -> pb.seekTo((f * dur).toLong()); pos = (f * dur).toLong(); scrub = null; tick++ },
-                                modifier = Modifier.weight(1f),
-                            )
-                            OneText(fmt(dur), OneType.Caption, Color.White.copy(alpha = 0.7f))
+                // bottom: seek island (VOD) on the left, action buttons pinned to the physical right
+                if (pb != null && !failed) CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                    val texts = pb.texts
+                    val audios = pb.audios
+                    val qualities = pb.qualities
+                    val bs = if (fullscreen) 44.dp else 36.dp
+                    fun open(t: Int) { tab = t; panelOpen = true; tick++ }
+                    Row(Modifier.align(Alignment.BottomCenter).fillMaxWidth(), Arrangement.spacedBy(8.dp), Alignment.Bottom) {
+                        if (pb.seekable) {
+                            val dur = pb.durationMs
+                            val shown = scrub?.let { (it * dur).toLong() } ?: pos
+                            Row(
+                                Modifier.weight(1f).vGlass(24.dp).padding(horizontal = 18.dp, vertical = 8.dp),
+                                Arrangement.spacedBy(12.dp), Alignment.CenterVertically,
+                            ) {
+                                OneText(fmt(shown), OneType.Caption, Color.White)
+                                SeekBar(
+                                    fraction = scrub ?: if (dur > 0) pos.toFloat() / dur else 0f,
+                                    buffered = if (dur > 0) buf.toFloat() / dur else 0f,
+                                    active = scrub != null, accent = c.accent,
+                                    onScrub = { scrub = it; tick++ },
+                                    onCommit = { f -> pb.seekTo((f * dur).toLong()); pos = (f * dur).toLong(); scrub = null; tick++ },
+                                    modifier = Modifier.weight(1f),
+                                )
+                                OneText(fmt(dur), OneType.Caption, Color.White.copy(alpha = 0.7f))
+                            }
+                        } else Spacer(Modifier.weight(1f))
+                        if (texts.isNotEmpty()) GlassBtn({ open(2) }, bs) { OneIconView(OneIcon.Cc) { if (texts.drop(1).any { it.selected }) c.accent else Color.White } }
+                        if (audios.size > 1) GlassBtn({ open(1) }, bs) { OneIconView(OneIcon.Wave) { Color.White } }
+                        if (qualities.size > 1) Box(
+                            Modifier.height(bs).press { open(0) }.vGlass(bs / 2).padding(horizontal = 12.dp), Alignment.Center,
+                        ) { OneText(qualities.firstOrNull { it.selected }?.label ?: "", OneType.Caption, Color.White, maxLines = 1) }
+                        if (fullscreen) GlassBtn({ fit = !fit; tick++ }, bs) { OneIconView(if (fit) OneIcon.Fit else OneIcon.Fill) { Color.White } }
+                        if (onToggleFullscreen != null) GlassBtn({ onToggleFullscreen() }, bs) {
+                            OneIconView(if (fullscreen) OneIcon.Shrink else OneIcon.Expand) { Color.White }
                         }
                     }
                 }
-                if (panel && groups.isNotEmpty()) TrackPanel(groups, styleChips, c.accent, Modifier.align(Alignment.TopEnd).padding(top = 56.dp))
+            }
+        }
+
+        // 7) quality / audio / subtitles panel: pinned to the physical right edge whatever the UI direction
+        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+            AnimatedVisibility(
+                panelOpen && pb != null, Modifier.align(Alignment.CenterEnd),
+                enter = slideInHorizontally(tween(260)) { it } + fadeIn(tween(200)),
+                exit = slideOutHorizontally(tween(200)) { it } + fadeOut(tween(150)),
+            ) {
+                CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+                    if (pb != null) TracksPanel(
+                        pb, tab, { tab = it }, style, { style = it }, { style.save(app) },
+                        safe.padding(8.dp).width(232.dp).fillMaxHeight(),
+                    )
+                }
             }
         }
     }
@@ -392,44 +406,25 @@ fun PlayerScreen(source: PlaySource, onClose: () -> Unit) {
 
 // ---- pieces ----------------------------------------------------------------------------------------------------
 
-/** Quality / audio / subtitles in one glass card; the subtitle group also carries the three look chips (tap = next value). */
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun TrackPanel(groups: List<Pair<Int, List<TrackOpt>>>, style: List<Pair<String, () -> Unit>>, accent: Color, modifier: Modifier) {
-    val c = LocalColors.current
-    Column(
-        modifier.widthIn(max = 340.dp).heightIn(max = 240.dp).vGlass(20.dp).verticalScroll(rememberScrollState()).padding(14.dp),
-        Arrangement.spacedBy(10.dp),
-    ) {
-        groups.forEach { (title, opts) ->
-            OneText(stringResource(title), OneType.Caption, Color.White.copy(alpha = 0.6f))
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                opts.forEach { o ->
-                    val label = o.label ?: stringResource(if (title == R.string.player_quality) R.string.player_auto else R.string.player_off)
-                    Chip(label, o.on, accent, c.onAccent, o.pick)
-                }
-                if (title == R.string.player_subs) style.forEach { (label, next) -> Chip(label, false, accent, c.onAccent, next) }
-            }
-        }
-    }
-}
-
-@Composable
-private fun Chip(text: String, on: Boolean, accent: Color, onAccent: Color, onClick: () -> Unit) {
-    OneText(
-        text, OneType.Caption, if (on) onAccent else Color.White,
-        Modifier.press(onClick).clip(RoundedCornerShape(14.dp)).background(if (on) accent else Color.White.copy(alpha = 0.14f))
-            .padding(horizontal = 12.dp, vertical = 7.dp),
-        1,
-    )
-}
-
 /** Dark floating glass: reads on any video regardless of the app's day/night theme. */
 @Composable
-private fun Modifier.vGlass(radius: Dp): Modifier {
+internal fun Modifier.vGlass(radius: Dp): Modifier {
     val fx = LocalGlassEffects.current
     val shape = RoundedCornerShape(radius)
     return clip(shape).background(Color.Black.copy(alpha = if (fx) 0.42f else 0.72f)).border(0.5.dp, Color.White.copy(alpha = 0.16f), shape)
+}
+
+@Composable
+private fun GlassBtn(onClick: () -> Unit, size: Dp = 44.dp, content: @Composable BoxScope.() -> Unit) {
+    Box(Modifier.size(size).press(onClick).vGlass(size / 2), Alignment.Center, content = content)
+}
+
+/** Dark fade at the top/bottom edge that keeps controls readable. Same hue at both ends + dither (no gray fringe, no banding). */
+private fun Modifier.scrim(top: Boolean) = drawWithCache {
+    val b = Brush.verticalGradient(
+        if (top) listOf(Color.Black.copy(alpha = 0.6f), Color.Black.copy(alpha = 0f)) else listOf(Color.Black.copy(alpha = 0f), Color.Black.copy(alpha = 0.65f)),
+    )
+    onDrawBehind { drawRect(b); drawDither() }
 }
 
 @Composable

@@ -48,17 +48,6 @@
     <string name="player_error">تعذّر تشغيل الفيديو</string>
     <string name="player_bad_link">رابط التشغيل غير صالح</string>
     <string name="player_retry">إعادة المحاولة</string>
-    <string name="player_quality">الجودة</string>
-    <string name="player_audio">الصوت</string>
-    <string name="player_subs">الترجمة</string>
-    <string name="player_auto">تلقائي</string>
-    <string name="player_off">إيقاف</string>
-    <string name="sub_size">الحجم: %1$s</string>
-    <string name="sub_color">اللون: %1$s</string>
-    <string name="sub_bg">الخلفية: %1$s</string>
-    <string-array name="sub_sizes"><item>صغير</item><item>متوسط</item><item>كبير</item><item>كبير جدًا</item></string-array>
-    <string-array name="sub_colors"><item>أبيض</item><item>أصفر</item><item>سماوي</item><item>أخضر</item></string-array>
-    <string-array name="sub_bgs"><item>بدون</item><item>شفافة</item><item>سوداء</item></string-array>
 
     <string name="movies_title">الأفلام</string>
     <string name="filter_all">الكل</string>
@@ -70,4 +59,25 @@
     <string name="sort_name">الاسم</string>
     <string name="movies_empty">لا توجد نتائج مطابقة</string>
     <string name="movies_reset">إعادة الضبط</string>
+
+    <string name="tab_quality">الجودة</string>
+    <string name="tab_audio">الصوت</string>
+    <string name="tab_subs">الترجمة</string>
+    <string name="track_auto">تلقائي</string>
+    <string name="track_off">إيقاف</string>
+    <string name="track_n">مسار</string>
+    <string name="track_none">غير متاح لهذا المحتوى</string>
+    <string name="subs_style">تخصيص الترجمة</string>
+    <string name="style_size">الحجم</string>
+    <string name="style_lift">الارتفاع</string>
+    <string name="sample_caption">هذا نص تجريبي للترجمة</string>
+    <string name="player_extracting">جارٍ جلب الفيديو…</string>
+    <string name="resolve_failed">تعذّر جلب فيديو هذا المنشور</string>
+    <string name="link_title">مشغّل تجريبي</string>
+    <string name="link_url">رابط البث أو الفيديو</string>
+    <string name="link_license">رابط خادم الترخيص</string>
+    <string name="link_keys">المفاتيح kid:key أو رابط الخادم</string>
+    <string name="link_sample">بث تجريبي</string>
+    <string name="link_play">تشغيل</string>
+    <string name="drm_none">بدون تشفير</string>
 </resources>

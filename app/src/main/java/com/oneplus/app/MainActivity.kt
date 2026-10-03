@@ -1,5 +1,7 @@
 package com.oneplus.app
 
+import android.graphics.PixelFormat
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
@@ -16,6 +18,9 @@ import com.oneplus.app.ui.system.resolveDark
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Pre-Oreo low-end devices may composite the window in 16-bit colour, which bands every gradient; force 32-bit.
+        @Suppress("DEPRECATION")
+        if (Build.VERSION.SDK_INT < 26) window.setFormat(PixelFormat.RGBA_8888)
         enableEdgeToEdge() // edge-to-edge from the first frame; bar icon colors are then synced with the chosen theme below
         setContent {
             val theme = remember { ThemeController(ThemeStore(applicationContext)) }

@@ -57,14 +57,16 @@ fun OneText(text: String, style: TextStyle, color: Color, modifier: Modifier = M
 fun Modifier.ambient(): Modifier {
     val c = LocalColors.current
     return background(c.bg).drawWithCache {
-        val b = Brush.radialGradient(listOf(c.ambient.copy(alpha = 0.16f), Color.Transparent),
+        // Fade to the same colour at alpha 0: fading to Color.Transparent (= transparent BLACK) is interpolated through gray
+        // and leaves a dirty halo, most visible in day mode.
+        val b = Brush.radialGradient(listOf(c.ambient.copy(alpha = 0.16f), c.ambient.copy(alpha = 0f)),
             Offset(size.width * 0.85f, 0f), size.maxDimension * 0.7f)
-        onDrawBehind { drawRect(b) }
+        onDrawBehind { drawRect(b); drawDither() }
     }
 }
 
 private val GlassAlpha = floatArrayOf(0.40f, 0.55f, 0.70f, 0.88f) // Glass 1..4
-internal val Sheen = Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.10f), Color.Transparent))
+internal val Sheen = Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.10f), Color.White.copy(alpha = 0f))) // same hue at both ends
 
 /** Translucent tint + sheen + hairline border. Real backdrop blur is not applied (see README note). */
 @Composable
@@ -86,7 +88,7 @@ fun Modifier.press(onClick: () -> Unit): Modifier {
 }
 
 // ---- Icons (custom, 24dp grid, 1.75 stroke) ------------------------------
-enum class OneIcon { Home, Channels, Settings, Search, Close, Back, Next, Play, Pause, Plus, Check, Star, Replay, Forward, Sun, Volume, Mute, Fit, Fill, Filter }
+enum class OneIcon { Home, Channels, Settings, Search, Close, Back, Next, Play, Pause, Plus, Check, Star, Replay, Forward, Sun, Volume, Mute, Fit, Fill, Expand, Shrink, Filter, Cc, Wave }
 
 @Composable
 fun OneIconView(icon: OneIcon, modifier: Modifier = Modifier, tint: () -> Color) {
@@ -168,11 +170,26 @@ fun OneIconView(icon: OneIcon, modifier: Modifier = Modifier, tint: () -> Color)
                 } else { line(15.5f, 9.5f, 20.5f, 14.5f); line(20.5f, 9.5f, 15.5f, 14.5f) }
             }
             OneIcon.Fit -> drawRoundRect(color, o(4f, 7f), Size(16f * k, 10f * k), CornerRadius(2.5f * k), st)
-            OneIcon.Fill -> {
+            OneIcon.Fill -> drawRoundRect(color, o(4f, 7f), Size(16f * k, 10f * k), CornerRadius(2.5f * k))
+            OneIcon.Expand, OneIcon.Shrink -> {
                 fun corner(x1: Float, y1: Float, x2: Float, y2: Float, x3: Float, y3: Float) =
                     drawPath(Path().apply { moveTo(x1 * k, y1 * k); lineTo(x2 * k, y2 * k); lineTo(x3 * k, y3 * k) }, color, style = st)
-                corner(4f, 9f, 4f, 4f, 9f, 4f); corner(15f, 4f, 20f, 4f, 20f, 9f)
-                corner(20f, 15f, 20f, 20f, 15f, 20f); corner(9f, 20f, 4f, 20f, 4f, 15f)
+                if (icon == OneIcon.Expand) { // corners point outwards
+                    corner(4f, 9f, 4f, 4f, 9f, 4f); corner(15f, 4f, 20f, 4f, 20f, 9f)
+                    corner(20f, 15f, 20f, 20f, 15f, 20f); corner(9f, 20f, 4f, 20f, 4f, 15f)
+                } else { // corners point inwards
+                    corner(4f, 9f, 9f, 9f, 9f, 4f); corner(15f, 4f, 15f, 9f, 20f, 9f)
+                    corner(20f, 15f, 15f, 15f, 15f, 20f); corner(9f, 20f, 9f, 15f, 4f, 15f)
+                }
+            }
+            OneIcon.Cc -> {
+                drawRoundRect(color, o(3f, 5.5f), Size(18f * k, 13f * k), CornerRadius(3f * k), st)
+                drawArc(color, 40f, 280f, false, o(6.4f, 9.4f), Size(5.2f * k, 5.2f * k), style = st)
+                drawArc(color, 40f, 280f, false, o(13.4f, 9.4f), Size(5.2f * k, 5.2f * k), style = st)
+            }
+            OneIcon.Wave -> {
+                val h = floatArrayOf(3f, 6f, 9f, 6f, 3f)
+                for (i in h.indices) line(5f + i * 3.5f, 12f - h[i], 5f + i * 3.5f, 12f + h[i])
             }
             OneIcon.Filter -> drawPath(Path().apply {
                 moveTo(4f * k, 6f * k); lineTo(20f * k, 6f * k); lineTo(14f * k, 13f * k)
@@ -227,26 +244,29 @@ fun OneSwitch(checked: Boolean, onChange: (Boolean) -> Unit) {
 
 // ---- Segmented control (sliding indicator, same look as the nav blob) ----
 @Composable
-fun OneSegmented(labels: List<String>, selected: Int, onSelect: (Int) -> Unit, modifier: Modifier = Modifier) {
+fun OneSegmented(
+    labels: List<String>, selected: Int, onSelect: (Int) -> Unit, modifier: Modifier = Modifier,
+    height: Dp = 40.dp, textStyle: TextStyle = OneType.Body,
+) {
     val c = LocalColors.current
     val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
     val pos by animateFloatAsState(selected.toFloat(), spring(0.75f, 520f), label = "segment")
     val n = labels.size
     Row(
-        modifier.height(40.dp).clip(RoundedCornerShape(14.dp)).background(c.dim.copy(alpha = 0.12f)).drawBehind {
+        modifier.height(height).clip(RoundedCornerShape(height * 0.35f)).background(c.dim.copy(alpha = 0.12f)).drawBehind {
             val w = size.width / n
             val inset = 3.dp.toPx()
             val x = (if (rtl) (n - 1) - pos else pos) * w
             val tl = Offset(x + inset, inset)
             val sz = Size(w - inset * 2f, size.height - inset * 2f)
-            val r = CornerRadius(11.dp.toPx())
+            val r = CornerRadius((height * 0.35f).toPx() - inset)
             drawRoundRect(c.selection, tl, sz, r)
             drawRoundRect(c.accent.copy(alpha = 0.45f), tl, sz, r, Stroke(1.dp.toPx()))
         }
     ) {
         labels.forEachIndexed { i, label ->
             Box(Modifier.weight(1f).fillMaxHeight().press { onSelect(i) }, Alignment.Center) {
-                OneText(label, OneType.Body, if (selected == i) c.accent else c.dim, maxLines = 1)
+                OneText(label, textStyle, if (selected == i) c.accent else c.dim, maxLines = 1)
             }
         }
     }
@@ -254,17 +274,19 @@ fun OneSegmented(labels: List<String>, selected: Int, onSelect: (Int) -> Unit, m
 
 // ---- Slider (gradient track, spring thumb). Always laid out left-to-right so gradients read naturally. ----
 @Composable
-fun OneSlider(value: Float, onChange: (Float) -> Unit, onDone: () -> Unit, track: Brush, modifier: Modifier = Modifier) {
+fun OneSlider(
+    value: Float, onChange: (Float) -> Unit, onDone: () -> Unit, track: Brush, modifier: Modifier = Modifier,
+    height: Dp = 32.dp, thumb: Dp = 28.dp,
+) {
     val c = LocalColors.current
     var w by remember { mutableFloatStateOf(1f) }
     var held by remember { mutableStateOf(false) }
     val scale by animateFloatAsState(if (held) 1.14f else 1f, spring(0.6f, 500f), label = "thumb")
     val change by rememberUpdatedState(onChange)
     val done by rememberUpdatedState(onDone)
-    val thumb = 28.dp
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
         Box(
-            modifier.fillMaxWidth().height(32.dp).onSizeChanged { w = it.width.toFloat() }
+            modifier.fillMaxWidth().height(height).onSizeChanged { w = it.width.toFloat() }
                 .pointerInput(Unit) {
                     val t = thumb.toPx()
                     detectTapGestures { p -> change(((p.x - t / 2f) / (w - t).coerceAtLeast(1f)).coerceIn(0f, 1f)); done() }
@@ -282,7 +304,7 @@ fun OneSlider(value: Float, onChange: (Float) -> Unit, onDone: () -> Unit, track
                 },
             Alignment.CenterStart,
         ) {
-            Box(Modifier.fillMaxWidth().height(12.dp).clip(CircleShape).background(track).border(0.5.dp, c.border, CircleShape))
+            Box(Modifier.fillMaxWidth().height(height * 0.375f).clip(CircleShape).background(track).border(0.5.dp, c.border, CircleShape))
             Box(
                 Modifier.offset { IntOffset((value.coerceIn(0f, 1f) * (w - thumb.toPx()).coerceAtLeast(0f)).roundToInt(), 0) }
                     .graphicsLayer { scaleX = scale; scaleY = scale; shadowElevation = 4.dp.toPx(); shape = CircleShape }
@@ -320,4 +342,10 @@ fun OneChip(text: String, selected: Boolean, onClick: () -> Unit, modifier: Modi
             .padding(horizontal = 14.dp),
         Alignment.Center,
     ) { OneText(text, OneType.Body, lerp(c.dim, c.accent, p), maxLines = 1) }
+}
+
+/** Separator dot, drawn (no text glyph). */
+@Composable
+fun OneDot(color: Color, modifier: Modifier = Modifier) {
+    Canvas(modifier.size(4.dp)) { drawCircle(color) }
 }

@@ -103,7 +103,11 @@ private fun MatchRow(m: Match, expanded: Boolean, onClick: () -> Unit, modifier:
             }
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) { Team(m.home); Team(m.away) }
         }
-        if (expanded) OneText("${m.competition}  ·  ${m.channel}", OneType.Caption, c.dim, Modifier.padding(top = 12.dp, start = 68.dp))
+        if (expanded) Row(Modifier.padding(top = 12.dp, start = 68.dp), Arrangement.spacedBy(8.dp), Alignment.CenterVertically) {
+            OneText(m.competition, OneType.Caption, c.dim)
+            OneDot(c.dim)
+            OneText(m.channel, OneType.Caption, c.dim)
+        }
     }
 }
 
@@ -138,14 +142,14 @@ internal fun Poster(movie: Movie, modifier: Modifier, onClick: () -> Unit) {
 @Composable
 private fun ChannelSection(channels: List<Channel>, portrait: Boolean, onChannel: (Int) -> Unit) {
     if (portrait) Column(Modifier.padding(horizontal = 20.dp), Arrangement.spacedBy(12.dp)) {
-        channels.chunked(2).forEach { pair ->
+        channels.take(8).chunked(2).forEach { pair ->
             Row(Modifier.fillMaxWidth(), Arrangement.spacedBy(12.dp)) {
                 pair.forEach { ch -> ChannelCard(ch, Modifier.weight(1f)) { onChannel(ch.id) } }
                 if (pair.size == 1) Spacer(Modifier.weight(1f))
             }
         }
     } else FlowRow(Modifier.padding(horizontal = 20.dp), Arrangement.spacedBy(12.dp), Arrangement.spacedBy(12.dp)) {
-        channels.forEach { ch -> ChannelTile(ch) { onChannel(ch.id) } }
+        channels.take(8).forEach { ch -> ChannelTile(ch) { onChannel(ch.id) } }
     }
 }
 
