@@ -15,6 +15,7 @@
     <string name="theme_system">تلقائي</string>
     <string name="theme_light">نهاري</string>
     <string name="theme_dark">ليلي</string>
+    <string name="theme_amoled">أموليد</string>
     <string name="color_row">لون التطبيق</string>
     <string name="color_blue">أزرق</string>
     <string name="color_green">أخضر</string>
@@ -22,6 +23,7 @@
     <string name="color_orange">برتقالي</string>
     <string name="color_red">أحمر</string>
     <string name="color_purple">بنفسجي</string>
+    <string name="color_black">أسود</string>
     <string name="color_custom">مخصص</string>
     <string name="color_hue">الدرجة</string>
     <string name="color_sat">التشبع</string>
@@ -59,7 +61,12 @@
     <string name="clear_yes">مسح</string>
     <string name="clear_no">إلغاء</string>
     <string name="settings_hide_status">إخفاء شريط الإشعارات</string>
+    <string name="glass_title">الزجاج</string>
+    <string name="glass_density">الكثافة</string>
+    <string name="glass_depth">العمق</string>
+    <string name="glass_reset">استعادة الافتراضي</string>
     <string name="display_mode">وضع العرض</string>
+    <string name="display_auto">تلقائي</string>
     <string name="display_phone">هاتف</string>
     <string name="display_tv">تلفاز</string>
     <string name="sec_all">الكل</string>

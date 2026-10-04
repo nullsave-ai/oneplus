@@ -14,12 +14,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.oneplus.app.R
 import com.oneplus.app.data.Movie
 import com.oneplus.app.ui.system.*
+import kotlin.math.roundToInt
 
 private const val SwatchesPerRow = 4
 
@@ -33,7 +35,7 @@ fun SettingsScreen(
     val dark = LocalDarkTheme.current
     val p = theme.prefs
     var open by rememberSaveable { mutableStateOf(false) }
-    val bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 112.dp
+    val bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + bottomNavSpace()
     Box(Modifier.fillMaxSize(), Alignment.TopCenter) {
         Column(
             Modifier.widthIn(max = 640.dp).fillMaxSize().verticalScroll(scroll).padding(top = toolbarInset(), bottom = bottom),
@@ -60,13 +62,13 @@ fun SettingsScreen(
                         OneSegmented(
                             ThemeMode.entries.map { stringResource(it.label) }, p.mode.ordinal,
                             { i -> theme.update { copy(mode = ThemeMode.entries[i]) }; theme.save() },
-                            Modifier.width(216.dp),
+                            Modifier.width(248.dp), textStyle = OneType.Caption,
                         )
                     }
                     SettingRow(stringResource(R.string.display_mode)) {
                         OneSegmented(
-                            listOf(stringResource(R.string.display_phone), stringResource(R.string.display_tv)), if (p.tvMode) 1 else 0,
-                            { i -> theme.update { copy(tvMode = i == 1) }; theme.save() },
+                            DisplayMode.entries.map { stringResource(it.label) }, p.display.ordinal,
+                            { i -> theme.update { copy(display = DisplayMode.entries[i]) }; theme.save() },
                             Modifier.width(216.dp),
                         )
                     }
@@ -88,6 +90,7 @@ fun SettingsScreen(
                         if (p.accent == Accent.Custom) CustomPicker(theme)
                     }
                     SettingRow(stringResource(R.string.settings_effects)) { OneSwitch(effects, onEffects) }
+                    GlassSliders(theme)
                     SettingRow(stringResource(R.string.settings_hide_status)) {
                         OneSwitch(p.hideStatusBar) { theme.update { copy(hideStatusBar = it) }; theme.save() }
                     }
@@ -121,10 +124,37 @@ private fun CustomPicker(theme: ThemeController) {
     }
 }
 
+/** Density and depth of the glass. Both sit at the middle of their track when they are "as designed"; the app shows the change live. */
 @Composable
-private fun PickerRow(label: Int, value: Float, onChange: (Float) -> Unit, onDone: () -> Unit, track: Brush) {
+private fun GlassSliders(theme: ThemeController) {
+    val c = LocalColors.current
+    val p = theme.prefs
+    val track = remember(c) { Brush.horizontalGradient(listOf(c.dim.copy(alpha = 0.10f), c.accent.copy(alpha = 0.60f))) }
+    Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp), Arrangement.spacedBy(2.dp)) {
+        PickerRow(
+            R.string.glass_density, unlerp(GlassRange.DENSITY_MIN, GlassRange.DENSITY_MAX, p.glassDensity),
+            { f -> theme.update { copy(glassDensity = lerpF(GlassRange.DENSITY_MIN, GlassRange.DENSITY_MAX, f)) } }, theme::save, track,
+            "${(p.glassDensity * 100f).roundToInt()}%",
+        )
+        PickerRow(
+            R.string.glass_depth, unlerp(GlassRange.DEPTH_MIN, GlassRange.DEPTH_MAX, p.glassDepth),
+            { f -> theme.update { copy(glassDepth = lerpF(GlassRange.DEPTH_MIN, GlassRange.DEPTH_MAX, f)) } }, theme::save, track,
+            "${(p.glassDepth * 100f).roundToInt()}%",
+        )
+    }
+    if (p.glassDensity != 1f || p.glassDepth != 1f) {
+        SettingRow(stringResource(R.string.glass_reset), Modifier.press { theme.update { copy(glassDensity = 1f, glassDepth = 1f) }; theme.save() }) {}
+    }
+}
+
+@Composable
+private fun PickerRow(label: Int, value: Float, onChange: (Float) -> Unit, onDone: () -> Unit, track: Brush, hint: String? = null) {
+    val c = LocalColors.current
     Column {
-        OneText(stringResource(label), OneType.Caption, LocalColors.current.dim, Modifier.padding(start = 4.dp, top = 6.dp))
+        Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp).padding(top = 6.dp), Arrangement.SpaceBetween) {
+            OneText(stringResource(label), OneType.Caption, c.dim)
+            if (hint != null) OneText(hint, OneType.Caption, c.dim)
+        }
         OneSlider(value, onChange, onDone, track)
     }
 }
@@ -136,14 +166,16 @@ private fun unlerp(a: Float, b: Float, v: Float) = ((v - a) / (b - a)).coerceIn(
 private fun Swatch(a: Accent, p: ThemePrefs, selected: Boolean, dark: Boolean, onClick: () -> Unit, modifier: Modifier) {
     val c = LocalColors.current
     val ring by animateFloatAsState(if (selected) 1f else 0f, tween(200), label = "ring")
-    val col = p.colorOf(a, dark)
+    val black = a == Accent.Black
+    val col = if (black) Color(0xFF0B0B0D) else p.colorOf(a, dark)
     val custom = a == Accent.Custom
     val spectrum = remember { Brush.sweepGradient(Spectrum) }
     Column(modifier.press(onClick), Arrangement.spacedBy(6.dp), Alignment.CenterHorizontally) {
         Box(Modifier.size(40.dp).drawBehind {
             drawCircle(col, size.minDimension / 2f - 7.dp.toPx())
             if (custom) drawCircle(spectrum, size.minDimension / 2f - 2.dp.toPx(), style = Stroke(2.5.dp.toPx()), alpha = 0.55f + 0.45f * ring)
-            else drawCircle(col, size.minDimension / 2f - 1.dp.toPx(), style = Stroke(1.5.dp.toPx()), alpha = ring)
+            else drawCircle(if (black) c.text else col, size.minDimension / 2f - 1.dp.toPx(), style = Stroke(1.5.dp.toPx()), alpha = ring)
+            if (black) drawCircle(c.dim, size.minDimension / 2f - 7.dp.toPx(), style = Stroke(1.dp.toPx()), alpha = 0.55f) // visible on a black screen too
         })
         OneText(stringResource(a.label), OneType.Caption, if (selected) c.text else c.dim, maxLines = 1)
     }

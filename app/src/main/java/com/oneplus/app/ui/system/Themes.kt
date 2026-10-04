@@ -24,16 +24,19 @@ class OneColors(
     val onAccent: Color,
 )
 
-/** Day / night. The app opens in [Dark]; [System] follows the device; the other two are an explicit user choice. */
+/**
+ * Day / night. The app opens in [Dark]; [System] follows the device; the others are an explicit user choice.
+ * [Amoled] is the night theme on pure black (screens that light each pixel themselves keep those pixels off).
+ */
 enum class ThemeMode(@StringRes val label: Int) {
-    System(R.string.theme_system), Light(R.string.theme_light), Dark(R.string.theme_dark)
+    System(R.string.theme_system), Light(R.string.theme_light), Dark(R.string.theme_dark), Amoled(R.string.theme_amoled)
 }
 
 @Composable
 fun ThemeMode.resolveDark(): Boolean = when (this) {
     ThemeMode.System -> isSystemInDarkTheme()
     ThemeMode.Light -> false
-    ThemeMode.Dark -> true
+    ThemeMode.Dark, ThemeMode.Amoled -> true
 }
 
 /** Color experiences. Presets have their own light and dark accent (muted, not neon); [Custom] is user-defined. */
@@ -44,8 +47,24 @@ enum class Accent(@StringRes val label: Int, val light: Color, val dark: Color) 
     Orange(R.string.color_orange, Color(0xFFD9701A), Color(0xFFF29A4B)),
     Red(R.string.color_red, Color(0xFFD0443C), Color(0xFFEF6B63)),
     Purple(R.string.color_purple, Color(0xFF7552D6), Color(0xFFA088F0)),
+    /** Black on the day theme; on the night themes the same colour would vanish into the background, so it turns off-white there. */
+    Black(R.string.color_black, Color(0xFF111114), Color(0xFFF2F2F5)),
     Custom(R.string.color_custom, Color.Unspecified, Color.Unspecified);
 }
+
+/** Ranges of the glass sliders. The default (1) sits in the middle of both, so "as designed" is the thumb at rest. */
+object GlassRange {
+    const val DENSITY_MIN = 0.4f
+    const val DENSITY_MAX = 1.6f
+    const val DEPTH_MIN = 0f
+    const val DEPTH_MAX = 2f
+}
+
+/** How solid ([density]) and how lifted ([depth]) every glass surface is. Read by [glass]. */
+@Immutable
+class GlassStyle(val density: Float = 1f, val depth: Float = 1f)
+
+val LocalGlassStyle = staticCompositionLocalOf { GlassStyle() }
 
 /** Allowed ranges for the custom color (keeps it away from white/black/gray where an accent stops working). */
 object CustomRange {
@@ -69,8 +88,11 @@ data class ThemePrefs(
     val value: Float = 0.90f,
     /** Hide the phone's status (notification) bar; a swipe from the top edge still reveals it briefly. */
     val hideStatusBar: Boolean = false,
-    /** Display mode: false = Phone UI, true = TV UI (see TvMode.kt). A choice of the user, never inferred from the device. */
-    val tvMode: Boolean = false,
+    /** Phone UI or TV UI (see TvMode.kt). [DisplayMode.Auto] lets the device decide; the layout itself never looks at the device. */
+    val display: DisplayMode = DisplayMode.Auto,
+    /** Glass look, as a multiplier of the built-in one: 1 = exactly as designed. See [GlassRange]. */
+    val glassDensity: Float = 1f,
+    val glassDepth: Float = 1f,
 ) {
     fun colorOf(a: Accent, dark: Boolean): Color =
         if (a == Accent.Custom) fit(hsv(hue, sat, value), dark) else a.color(dark)
@@ -98,11 +120,13 @@ private fun onColor(bg: Color): Color {
 
 private fun build(p: ThemePrefs, dark: Boolean): OneColors {
     val ac = p.accentColor(dark)
+    val amoled = dark && p.mode == ThemeMode.Amoled
     val bg = if (dark) Color(0xFF0A0E16) else Color(0xFFEEF2F9)
-    val glass = if (dark) Color(0xFF1A2333) else Color.White
+    val glass = if (amoled) Color(0xFF16181D) else if (dark) Color(0xFF1A2333) else Color.White
     val dim = if (dark) Color(0xFF94A3B8) else Color(0xFF64748B)
     return OneColors(
-        bg = lerp(bg, ac, 0.03f), ambient = ac,
+        // Amoled: the background is exactly black (no accent tint, no ambient glow) so those pixels stay off
+        bg = if (amoled) Color.Black else lerp(bg, ac, 0.03f), ambient = if (amoled) Color.Black else ac,
         glass = lerp(glass, ac, 0.04f), glassTint = lerp(glass, ac, 0.12f),
         border = if (dark) Color(0x26FFFFFF) else Color(0x2E5B6B8C),
         text = if (dark) Color(0xFFF1F5F9) else Color(0xFF0F172A), dim = dim,
@@ -147,6 +171,7 @@ fun OnePlusTheme(prefs: ThemePrefs, dark: Boolean, content: @Composable () -> Un
         LocalColors provides cur,
         LocalDarkTheme provides dark,
         LocalHideStatusBar provides prefs.hideStatusBar,
+        LocalGlassStyle provides remember(prefs.glassDensity, prefs.glassDepth) { GlassStyle(prefs.glassDensity, prefs.glassDepth) },
         LocalLayoutDirection provides LayoutDirection.Rtl,
         content = content,
     )
@@ -178,13 +203,18 @@ class ThemeStore(ctx: Context) {
             sat = p.getFloat("sat", d.sat).clean(CustomRange.SAT_MIN, 1f, d.sat),
             value = p.getFloat("val", d.value).clean(CustomRange.VAL_MIN, 1f, d.value),
             hideStatusBar = p.getBoolean("hide_status", d.hideStatusBar),
-            tvMode = p.getBoolean("tv_mode", d.tvMode),
+            // "tv_mode" is what earlier builds stored: an explicit TV choice stays TV, everything else becomes Auto
+            display = DisplayMode.entries.firstOrNull { it.name == p.getString("display", null) }
+                ?: if (p.getBoolean("tv_mode", false)) DisplayMode.Tv else d.display,
+            glassDensity = p.getFloat("glass_density", d.glassDensity).clean(GlassRange.DENSITY_MIN, GlassRange.DENSITY_MAX, d.glassDensity),
+            glassDepth = p.getFloat("glass_depth", d.glassDepth).clean(GlassRange.DEPTH_MIN, GlassRange.DEPTH_MAX, d.glassDepth),
         )
     }.getOrDefault(ThemePrefs())
 
     fun save(t: ThemePrefs) {
         p.edit().putString("mode", t.mode.name).putString("accent", t.accent.name)
-            .putFloat("hue", t.hue).putFloat("sat", t.sat).putFloat("val", t.value).putBoolean("hide_status", t.hideStatusBar).putBoolean("tv_mode", t.tvMode).apply()
+            .putFloat("hue", t.hue).putFloat("sat", t.sat).putFloat("val", t.value).putBoolean("hide_status", t.hideStatusBar).putString("display", t.display.name)
+            .putFloat("glass_density", t.glassDensity).putFloat("glass_depth", t.glassDepth).apply()
     }
 
     private fun Float.clean(lo: Float, hi: Float, fallback: Float) =

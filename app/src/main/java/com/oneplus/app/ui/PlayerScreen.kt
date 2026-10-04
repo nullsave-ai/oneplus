@@ -206,7 +206,7 @@ fun PlayerScreen(
             Key.MediaFastForward, Key.MediaNext -> { skip(1); true }
             Key.MediaRewind, Key.MediaPrevious -> { skip(-1); true }
             else -> if (show) { tick++; false } else when (e.key) {
-                Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> {
+                Key.DirectionCenter, Key.Enter, Key.NumPadEnter, Key.ButtonA, Key.ButtonSelect -> {
                     if (p != null && !p.live) p.toggle()
                     show = true; keyShown = true; tick++; true
                 }
@@ -352,7 +352,11 @@ fun PlayerScreen(
         val controlsA by animateFloatAsState(if (show) 1f else 0f, tween(220), label = "controls")
         val controlsUp = controlsA > 0.01f
         LaunchedEffect(keysOn, show, controlsUp, keyShown) {
-            if (keysOn && show && controlsUp && keyShown) { runCatching { first.requestFocus() }; keyShown = false }
+            if (keysOn && show && controlsUp && keyShown) {
+                // the play button (not there for a live stream): then the player itself, so the remote always has a target
+                try { first.requestFocus() } catch (e: IllegalStateException) { runCatching { keys.requestFocus() } }
+                keyShown = false
+            }
         }
         if ((pb == null || pb.buffering || !pb.firstFrame) && !failed && (controlsA < 0.5f || pb?.live == true)) {
             Spinner(c.accent, Modifier.align(Alignment.Center).size(44.dp))

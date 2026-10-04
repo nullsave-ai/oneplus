@@ -154,7 +154,7 @@ private fun MovieDetail(m: Movie, all: List<Movie>, lib: Library, onBack: () -> 
             Box(Modifier.fillMaxWidth(), Alignment.TopCenter) {
                 Column(Modifier.widthIn(max = 720.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(24.dp)) {
                     Row(Modifier.padding(horizontal = 20.dp), Arrangement.spacedBy(12.dp)) {
-                        OneButton(stringResource(if (lib.resumeMs(m.id) > 0L) R.string.movie_resume else R.string.movie_play), OneIcon.Play, { onPlay(m.id) }, Modifier.weight(1.4f))
+                        OneButton(stringResource(if (lib.resumeMs(m.id) > 0L) R.string.movie_resume else R.string.movie_play), OneIcon.Play, { onPlay(m.id) }, Modifier.weight(1.4f).tvAutoFocus())
                         OneButton(
                             stringResource(R.string.movie_list), if (added) OneIcon.Check else OneIcon.Plus,
                             { lib.toggle(m.id) }, Modifier.weight(1f), primary = false,

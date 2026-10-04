@@ -52,7 +52,7 @@ fun TelegramDialog(onSkip: () -> Unit, onJoin: () -> Unit) {
         }
         OneText(stringResource(R.string.tg_title), OneType.Title, c.text, Modifier.padding(top = 4.dp))
         OneText(stringResource(R.string.tg_body), OneType.Body.copy(textAlign = TextAlign.Center), c.dim)
-        OneButton(stringResource(R.string.tg_join), OneIcon.Send, { leave(onJoin) }, Modifier.padding(top = 8.dp).fillMaxWidth())
+        OneButton(stringResource(R.string.tg_join), OneIcon.Send, { leave(onJoin) }, Modifier.padding(top = 8.dp).fillMaxWidth().tvAutoFocus())
         OneButton(stringResource(R.string.tg_skip), null, { leave(onSkip) }, Modifier.fillMaxWidth(), primary = false)
     }
 }
@@ -65,6 +65,6 @@ fun ClearHistoryDialog(onCancel: () -> Unit, onConfirm: () -> Unit) {
         OneText(stringResource(R.string.clear_title), OneType.Title.copy(textAlign = TextAlign.Center), c.text)
         OneText(stringResource(R.string.clear_body), OneType.Body.copy(textAlign = TextAlign.Center), c.dim)
         OneButton(stringResource(R.string.clear_yes), null, { leave(onConfirm) }, Modifier.padding(top = 8.dp).fillMaxWidth())
-        OneButton(stringResource(R.string.clear_no), null, { leave(onCancel) }, Modifier.fillMaxWidth(), primary = false)
+        OneButton(stringResource(R.string.clear_no), null, { leave(onCancel) }, Modifier.fillMaxWidth().tvAutoFocus(), primary = false) // the remote starts on the safe choice
     }
 }

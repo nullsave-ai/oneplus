@@ -70,7 +70,7 @@ fun toolbarInset(): Dp = topInset() + 84.dp
  * Drop shadow painted only OUTSIDE the pill. A platform elevation shadow is drawn underneath the whole outline and
  * shows through translucent glass as a dark rectangle; clipping the pill out of the shadow avoids that entirely.
  */
-private fun DrawScope.softShadow(r: CornerRadius, e: Float) {
+internal fun DrawScope.softShadow(r: CornerRadius, e: Float) {
     if (e < 0.01f) return
     val hole = Path().apply { addRoundRect(RoundRect(0f, 0f, size.width, size.height, r)) }
     clipPath(hole, ClipOp.Difference) {

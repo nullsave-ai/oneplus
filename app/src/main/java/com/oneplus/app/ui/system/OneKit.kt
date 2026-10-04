@@ -67,21 +67,30 @@ fun Modifier.ambient(): Modifier {
         // and leaves a dirty halo, most visible in day mode.
         val b = Brush.radialGradient(listOf(c.ambient.copy(alpha = 0.16f), c.ambient.copy(alpha = 0f)),
             Offset(size.width * 0.85f, 0f), size.maxDimension * 0.7f)
-        onDrawBehind { drawRect(b); drawDither() }
+        onDrawBehind { drawRect(b); if (c.bg != Color.Black) drawDither() } // pure black (Amoled) must stay pure: dither would light the pixels
     }
 }
 
 private val GlassAlpha = floatArrayOf(0.40f, 0.55f, 0.70f, 0.88f) // Glass 1..4
 internal val Sheen = Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.10f), Color.White.copy(alpha = 0f))) // same hue at both ends
 
-/** Translucent tint + sheen + hairline border. Real backdrop blur is not applied (see README note). */
+/**
+ * Translucent tint + sheen + hairline border. Real backdrop blur is not applied (see README note).
+ * The user's [GlassStyle] scales it: density = how solid the tint is; depth = how strong the sheen and the edge are, and above 1
+ * the surface also lifts off the page with a soft shadow. At the default (1, 1) nothing is added or changed.
+ */
 @Composable
 fun Modifier.glass(level: Int, radius: Dp): Modifier {
     val c = LocalColors.current
     val fx = LocalGlassEffects.current
+    val g = LocalGlassStyle.current
     val shape = RoundedCornerShape(radius)
-    val base = clip(shape).background(c.glass.copy(alpha = if (fx) GlassAlpha[level - 1] else 0.94f))
-    return (if (fx) base.background(Sheen) else base).border(0.5.dp, c.border, shape)
+    val sheen = remember(g.depth) { if (g.depth == 1f) Sheen else Brush.verticalGradient(listOf(Color.White.copy(alpha = (0.10f * g.depth).coerceIn(0f, 1f)), Color.White.copy(alpha = 0f))) }
+    val edge = if (g.depth == 1f) c.border else c.border.copy(alpha = (c.border.alpha * g.depth).coerceIn(0f, 1f))
+    val tint = ((if (fx) GlassAlpha[level - 1] else 0.94f) * g.density).coerceIn(0f, 1f)
+    val lift = if (fx && g.depth > 1f) drawBehind { softShadow(CornerRadius(radius.toPx()), (g.depth - 1f) * 3f) } else this
+    val base = lift.clip(shape).background(c.glass.copy(alpha = tint))
+    return (if (fx) base.background(sheen) else base).border(0.5.dp, edge, shape)
 }
 
 /** Press physics (no ripple): scale down, spring back. */
@@ -90,7 +99,12 @@ fun Modifier.press(onClick: () -> Unit): Modifier {
     val src = remember { MutableInteractionSource() }
     val pressed by src.collectIsPressedAsState()
     val s by animateFloatAsState(if (pressed) 0.96f else 1f, spring(0.6f, 500f), label = "press")
-    return graphicsLayer { scaleX = s; scaleY = s }.tvFocusRing(src).tvLockable().clickable(src, null, onClick = onClick)
+    val tv = LocalTvMode.current
+    val click by rememberUpdatedState(onClick)
+    return graphicsLayer { scaleX = s; scaleY = s }.tvFocusRing(src).tvLockable()
+        // a gamepad's A button is "OK" too (the remote's centre / Enter is already handled by clickable)
+        .then(if (tv) Modifier.onKeyEvent { e -> (e.key == Key.ButtonA).also { if (it && e.type == KeyEventType.KeyUp) click() } } else Modifier)
+        .clickable(src, null, onClick = onClick)
 }
 
 // ---- Icons (custom, 24dp grid, 1.75 stroke) ------------------------------

@@ -100,7 +100,7 @@ private fun MoviesScreen(movies: List<Movie>, portrait: Boolean, onMovie: (Int) 
     Column(Modifier.fillMaxSize().padding(top = topInset()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         // header: back · title + count · filter
         Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 12.dp), Arrangement.spacedBy(8.dp), Alignment.CenterVertically) {
-            Box(Modifier.size(44.dp).press(onClose).glass(3, 22.dp), Alignment.Center) { OneIconView(OneIcon.Back) { c.text } }
+            Box(Modifier.size(44.dp).tvAutoFocus().press(onClose).glass(3, 22.dp), Alignment.Center) { OneIconView(OneIcon.Back) { c.text } }
             Box(Modifier.weight(1f).height(44.dp).glass(3, 22.dp), Alignment.Center) {
                 if (searching) Row(Modifier.fillMaxSize().padding(start = 14.dp, end = 2.dp), Arrangement.spacedBy(8.dp), Alignment.CenterVertically) {
                     OneIconView(OneIcon.Search) { c.accent }

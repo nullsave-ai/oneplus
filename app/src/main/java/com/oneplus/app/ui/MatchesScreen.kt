@@ -71,7 +71,7 @@ private fun MatchesScreen(matches: List<Match>, wide: Boolean, focusId: Int, onC
         }
         // competition filter
         LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            item(key = "all") { OneChip(stringResource(R.string.filter_all), comp == null, { comp = null }) }
+            item(key = "all") { OneChip(stringResource(R.string.filter_all), comp == null, { comp = null }, Modifier.tvAutoFocus()) }
             items(competitions, key = { it }) { n -> OneChip(n, comp == n, { comp = n }) }
         }
         Box(Modifier.weight(1f).fillMaxWidth(), Alignment.TopCenter) {

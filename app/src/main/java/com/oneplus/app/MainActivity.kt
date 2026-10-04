@@ -18,6 +18,7 @@ import com.oneplus.app.ui.system.ThemeController
 import com.oneplus.app.ui.system.ThemeStore
 import com.oneplus.app.ui.system.TvScreen
 import com.oneplus.app.ui.system.resolveDark
+import com.oneplus.app.ui.system.resolveTv
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -44,7 +45,7 @@ class MainActivity : ComponentActivity() {
                 if (hideStatus) bars.hide(WindowInsetsCompat.Type.statusBars()) else bars.show(WindowInsetsCompat.Type.statusBars())
                 onDispose { }
             }
-            TvScreen(theme.prefs.tvMode) { OnePlusTheme(theme.prefs, dark) { OnePlusApp(theme) } }
+            TvScreen(theme.prefs.display.resolveTv()) { OnePlusTheme(theme.prefs, dark) { OnePlusApp(theme) } }
         }
     }
 }

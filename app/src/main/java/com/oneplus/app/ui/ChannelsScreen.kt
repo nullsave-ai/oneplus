@@ -39,7 +39,7 @@ fun ChannelsScreen(
 ) {
     val groups = remember(channels) { channels.map { it.group }.distinct() }
     val shown = if (searching) channels else channels.filter { it.group == group }
-    val bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 112.dp
+    val bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + bottomNavSpace()
 
     // Bring the playing channel into view the first time, and again only when the group / search changes;
     // coming back from another tab must not move the list the user left.

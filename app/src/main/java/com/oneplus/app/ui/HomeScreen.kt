@@ -41,7 +41,7 @@ fun HomeScreen(
     lib: Library, onMovie: (Int) -> Unit, onChannel: (Int) -> Unit, onAllMovies: () -> Unit, onAllChannels: () -> Unit,
     onMatches: (Int) -> Unit,
 ) {
-    val bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 112.dp
+    val bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + bottomNavSpace()
     val d = state.data
     // "continue watching" = movies stopped part-way (newest first), limited to what the search matches
     val byId = d.movies.associateBy { it.id }

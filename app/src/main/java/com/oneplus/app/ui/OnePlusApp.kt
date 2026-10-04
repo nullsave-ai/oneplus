@@ -1,6 +1,7 @@
 package com.oneplus.app.ui
 
 import android.app.ActivityManager
+import androidx.activity.compose.BackHandler
 import android.content.Context
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.Animatable
@@ -8,13 +9,19 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.runtime.*
@@ -147,10 +154,16 @@ fun OnePlusApp(theme: ThemeController, vm: MainViewModel = viewModel()) {
         }
     }
     // TV Mode: which layers a remote can reach. A covered layer must not take D-pad focus (it is still composed underneath).
+    val tv = LocalTvMode.current
+    val railFocus = remember { FocusRequester() }
+    var baseFocused by remember { mutableStateOf(false) } // the remote is somewhere in the pages (not on the rail)
     val dialogOpen = showTg || showClear
     val playerFull = session != null && !wantsInPlace
     val lockBase = movieId >= 0 || showMatches || showMovies || playerFull || dialogOpen
     val lockOver = playerFull || dialogOpen
+    // TV Mode: "back" from the pages first returns to the rail; from the rail it leaves the app as usual. Declared first, so every
+    // other back handler (search, hosts, dialogs, player) has priority over it.
+    BackHandler(enabled = tv && baseFocused && !lockBase) { runCatching { railFocus.requestFocus() } }
     CompositionLocalProvider(LocalGlassEffects provides fx) {
         BoxWithConstraints(Modifier.fillMaxSize().ambient()) {
             val wide = maxWidth >= 600.dp
@@ -165,7 +178,12 @@ fun OnePlusApp(theme: ThemeController, vm: MainViewModel = viewModel()) {
                 // dim with a plain scrim: alpha on the whole tree would force an offscreen layer every frame of the transition
                 drawRect(Color.Black, alpha = 0.35f * maxOf(detail.depth, matchesP.value))
             }) {
-                CompositionLocalProvider(LocalTvLock provides lockBase) {
+                // TV Mode: the rail takes the start of the screen, so every page (and the toolbar) simply gets the width that is left
+                Box(
+                    Modifier.fillMaxSize()
+                        .then(if (tv) Modifier.absolutePadding(left = TvRailSpace).onFocusChanged { baseFocused = it.hasFocus }.focusGroup() else Modifier)
+                ) {
+                TvLayer(lockBase, railFocus) {
                 Crossfade(tab, Modifier.fillMaxSize(), tween(180), label = "page") { t ->
                     // each page keeps its remembered state (expanded rows, inner scrolls) while another tab is shown
                     pages.SaveableStateProvider(t) {
@@ -198,13 +216,14 @@ fun OnePlusApp(theme: ThemeController, vm: MainViewModel = viewModel()) {
                         .padding(start = 16.dp, end = 16.dp, top = topInset() + 12.dp),
                 )
                 }
+                }
                 // Inside the receding layer so it also steps back when a details page opens over it.
-                CompositionLocalProvider(LocalTvLock provides (movieId >= 0 || lockOver)) {
+                TvLayer(movieId >= 0 || lockOver) {
                     MoviesHost(showMovies, state.all.movies, portrait, { id -> movieId = id }) { showMovies = false }
                 }
             }
             // Overlays are declared in z-order: each one's back handler takes priority over the ones before it.
-            CompositionLocalProvider(LocalTvLock provides lockOver) {
+            TvLayer(lockOver) {
                 MatchesHost(showMatches, matchesP, state.all.matches, wide, matchFocus) { showMatches = false }
                 MovieDetailHost(detail, state.all.movies, library, movieId, { movieId = it }, { id -> playFull(1, id) }, { movieId = -1 })
             }
@@ -226,7 +245,7 @@ fun OnePlusApp(theme: ThemeController, vm: MainViewModel = viewModel()) {
                         .size(r.width.toDp(), r.height.toDp())
                 } else Modifier.fillMaxSize()
                 Box(box.then(if (inPlace) Modifier.clip(RoundedCornerShape(20.dp)) else Modifier)) {
-                    CompositionLocalProvider(LocalTvLock provides dialogOpen) {
+                    TvLayer(dialogOpen) {
                         PlayerScreen(
                             session, fullscreen = !inPlace,
                             onToggleFullscreen = if (playKind == 2 && r != null) ({ fullscreen = !fullscreen }) else null,
@@ -241,16 +260,17 @@ fun OnePlusApp(theme: ThemeController, vm: MainViewModel = viewModel()) {
             val covered = showMovies || (session != null && !wantsInPlace)
             val navShow by animateFloatAsState(if (covered) 0f else 1f, tween(160), label = "nav")
             val navAlpha = { navShow * (1f - maxOf(detail.depth, matchesP.value)) }
+            // Same fade / collapse for both navigations: the phone's island at the bottom, or (TV Mode) the rail at the start.
+            val navMod = Modifier
+                .layout { m, c ->
+                    val pl = m.measure(c)
+                    if (navAlpha() < 0.02f) layout(0, 0) {} else layout(pl.width, pl.height) { pl.place(0, 0) }
+                }
+                .graphicsLayer { alpha = navAlpha() }
+            // (not a TvLayer: the rail must not compete with the pages for the focus that is given back when a layer is released)
             CompositionLocalProvider(LocalTvLock provides lockBase) {
-                LiquidNav(
-                    tab, { tab = it },
-                    Modifier.align(Alignment.BottomCenter)
-                        .layout { m, c ->
-                            val pl = m.measure(c)
-                            if (navAlpha() < 0.02f) layout(0, 0) {} else layout(pl.width, pl.height) { pl.place(0, 0) }
-                        }
-                        .graphicsLayer { alpha = navAlpha() },
-                )
+                if (tv) TvRail(tab, { tab = it }, railFocus, navMod.align(AbsoluteAlignment.CenterLeft).absolutePadding(left = 16.dp))
+                else LiquidNav(tab, { tab = it }, navMod.align(Alignment.BottomCenter))
             }
             if (showTg) TelegramDialog(
                 onSkip = { showTg = false; telegramSkipped(ctx) },
@@ -266,6 +286,34 @@ fun OnePlusApp(theme: ThemeController, vm: MainViewModel = viewModel()) {
 
 private val Tabs = listOf(OneIcon.Home to R.string.tab_home, OneIcon.Channels to R.string.tab_channels, OneIcon.Settings to R.string.tab_settings)
 private val NavSpring = spring<Float>(0.62f, 380f)
+
+/** Width the rail takes at the start of the screen in TV Mode (its own 76dp + the margins around it). */
+private val TvRailSpace = 108.dp
+
+/**
+ * TV Mode navigation: the same glass and the same tabs as the phone's island, stood upright at the start of the screen so the
+ * pages keep the full height. The selected tab is the one the remote lands on at launch and on "back" ([focus]).
+ */
+@Composable
+private fun TvRail(selected: Int, onSelect: (Int) -> Unit, focus: FocusRequester, modifier: Modifier = Modifier) {
+    val c = LocalColors.current
+    val shape = RoundedCornerShape(22.dp)
+    Column(modifier.width(76.dp).glass(3, 28.dp).padding(6.dp), Arrangement.spacedBy(4.dp)) {
+        Tabs.forEachIndexed { i, (icon, label) ->
+            val on by animateFloatAsState(if (i == selected) 1f else 0f, tween(180), label = "railTab")
+            Column(
+                Modifier.fillMaxWidth().height(60.dp).then(if (i == selected) Modifier.focusRequester(focus) else Modifier)
+                    .press { onSelect(i) }.clip(shape)
+                    .drawBehind { drawRect(c.selection.copy(alpha = c.selection.alpha * on)) }
+                    .border(1.dp, c.accent.copy(alpha = 0.45f * on), shape),
+                Arrangement.Center, Alignment.CenterHorizontally,
+            ) {
+                OneIconView(icon) { lerp(c.dim, c.accent, on) }
+                OneText(stringResource(label), OneType.Caption, lerp(c.dim, c.accent, on), Modifier.padding(top = 4.dp), 1)
+            }
+        }
+    }
+}
 
 /** Floating glass island. The indicator is a blob drawn per frame only while it moves (stretch/squash by velocity). */
 @Composable
