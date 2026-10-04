@@ -2,6 +2,7 @@ package com.oneplus.app.ui
 
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
@@ -17,14 +18,13 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.oneplus.app.R
 import com.oneplus.app.data.Movie
 import com.oneplus.app.ui.system.*
 import kotlin.math.roundToInt
-
-private const val SwatchesPerRow = 4
 
 @Composable
 fun SettingsScreen(
@@ -37,7 +37,6 @@ fun SettingsScreen(
     val feed = LocalFeed.current
     val tv = LocalTvMode.current
     val p = theme.prefs
-    var open by rememberSaveable { mutableStateOf(false) }
     val bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + bottomNavSpace()
     // The three blocks of the page. The phone stacks them in one scroll; TV Mode shows one at a time (see below).
     val telegram = @Composable {
@@ -76,27 +75,16 @@ fun SettingsScreen(
                     Modifier.width(216.dp),
                 )
             }
-            SettingRow(stringResource(R.string.color_row), Modifier.press { open = !open }) {
+            SettingRow(stringResource(R.string.color_row)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     OneText(stringResource(p.accent.label), OneType.Body, c.dim)
                     Box(Modifier.size(20.dp).background(c.accent, CircleShape))
                 }
             }
-            if (open) Column(Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, bottom = 12.dp), Arrangement.spacedBy(8.dp)) {
-                Accent.entries.chunked(SwatchesPerRow).forEach { row ->
-                    Row(Modifier.fillMaxWidth()) {
-                        row.forEach { a ->
-                            Swatch(a, p, a == p.accent, dark, { theme.update { copy(accent = a) }; theme.save() }, Modifier.weight(1f))
-                        }
-                        repeat(SwatchesPerRow - row.size) { Spacer(Modifier.weight(1f)) }
-                    }
-                }
-                if (p.accent == Accent.Custom) CustomPicker(theme)
-            }
-            if (!feed) { // the glass controls mean nothing on the flat Feed surfaces
-                SettingRow(stringResource(R.string.settings_effects)) { OneSwitch(effects, onEffects) }
-                GlassSliders(theme)
-            }
+            ColorStudio(theme, dark, tv)
+            if (!feed) SettingRow(stringResource(R.string.settings_effects)) { OneSwitch(effects, onEffects) } // the glass effects mean nothing on the flat Feed surfaces
+            if (tv) { if (!feed) GlassSliders(theme) } // TV: a remote cannot drag a pad, so it keeps the sliders it can step with the D-pad
+            else LookPad(theme, feed)
             SettingRow(stringResource(R.string.settings_hide_status)) {
                 OneSwitch(p.hideStatusBar) { theme.update { copy(hideStatusBar = it) }; theme.save() }
             }
@@ -204,23 +192,78 @@ private fun PickerRow(label: Int, value: Float, onChange: (Float) -> Unit, onDon
 private fun lerpF(a: Float, b: Float, f: Float) = a + (b - a) * f
 private fun unlerp(a: Float, b: Float, v: Float) = ((v - a) / (b - a)).coerceIn(0f, 1f)
 
+/** Colour presets as one row of dots; "Custom" opens the wheel (phone) or the three sliders (TV, steppable with a remote). */
 @Composable
-private fun Swatch(a: Accent, p: ThemePrefs, selected: Boolean, dark: Boolean, onClick: () -> Unit, modifier: Modifier) {
-    val c = LocalColors.current
-    val ring by animateFloatAsState(if (selected) 1f else 0f, tween(200), label = "ring")
-    val black = a == Accent.Black
-    val col = if (black) Color(0xFF0B0B0D) else p.colorOf(a, dark)
-    val custom = a == Accent.Custom
-    val spectrum = remember { Brush.sweepGradient(Spectrum) }
-    Column(modifier.press(onClick), Arrangement.spacedBy(6.dp), Alignment.CenterHorizontally) {
-        Box(Modifier.size(40.dp).drawBehind {
-            drawCircle(col, size.minDimension / 2f - 7.dp.toPx())
-            if (custom) drawCircle(spectrum, size.minDimension / 2f - 2.dp.toPx(), style = Stroke(2.5.dp.toPx()), alpha = 0.55f + 0.45f * ring)
-            else drawCircle(if (black) c.text else col, size.minDimension / 2f - 1.dp.toPx(), style = Stroke(1.5.dp.toPx()), alpha = ring)
-            if (black) drawCircle(c.dim, size.minDimension / 2f - 7.dp.toPx(), style = Stroke(1.dp.toPx()), alpha = 0.55f) // visible on a black screen too
-        })
-        OneText(stringResource(a.label), OneType.Caption, if (selected) c.text else c.dim, maxLines = 1)
+private fun ColorStudio(theme: ThemeController, dark: Boolean, tv: Boolean) {
+    val p = theme.prefs
+    Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp).padding(bottom = 12.dp), Arrangement.spacedBy(16.dp), Alignment.CenterHorizontally) {
+        Row(Modifier.fillMaxWidth()) {
+            Accent.entries.forEach { a -> Dot(a, p, a == p.accent, dark, { theme.update { copy(accent = a) }; theme.save() }, Modifier.weight(1f)) }
+        }
+        if (p.accent == Accent.Custom) {
+            if (tv) CustomPicker(theme) else OneWheel(
+                p.hue, unlerp(CustomRange.SAT_MIN, 1f, p.sat), unlerp(CustomRange.VAL_MIN, 1f, p.value),
+                { h, sa, br -> theme.update { copy(hue = h, sat = lerpF(CustomRange.SAT_MIN, 1f, sa), value = lerpF(CustomRange.VAL_MIN, 1f, br)) } }, theme::save,
+            )
+        }
     }
+}
+
+@Composable
+private fun Dot(a: Accent, p: ThemePrefs, selected: Boolean, dark: Boolean, onClick: () -> Unit, modifier: Modifier) {
+    val c = LocalColors.current
+    val on by animateFloatAsState(if (selected) 1f else 0f, spring(0.6f, 500f), label = "dot")
+    val col = if (a == Accent.Black) Color(0xFF0B0B0D) else p.colorOf(a, dark)
+    val spectrum = remember { Brush.sweepGradient(Spectrum) }
+    Box(modifier.height(40.dp).press(onClick), Alignment.Center) {
+        Box(Modifier.size(26.dp).graphicsLayer { val k = 1f + 0.12f * on; scaleX = k; scaleY = k }.drawBehind {
+            val r = size.minDimension / 2f
+            if (a == Accent.Custom) { drawCircle(spectrum, r); drawCircle(col, r * 0.5f) } else drawCircle(col, r)
+            if (a == Accent.Black) drawCircle(c.dim, r - 0.5.dp.toPx(), style = Stroke(1.dp.toPx()), alpha = 0.6f) // visible on a black screen too
+            if (on > 0.01f) drawCircle(c.text, r + 3.5.dp.toPx(), style = Stroke(1.75.dp.toPx()), alpha = on)
+        })
+    }
+}
+
+/**
+ * One pad instead of two sliders. Glass: density (x) and depth (y). Feed: card size (x) and corner roundness (y).
+ * A live sample sits inside the pad, and the whole app answers while the puck moves; the value is saved on release.
+ */
+@Composable
+private fun LookPad(theme: ThemeController, feed: Boolean) {
+    val c = LocalColors.current
+    val p = theme.prefs
+    val x = if (feed) unlerp(FeedRange.SIZE_MIN, FeedRange.SIZE_MAX, p.feedSize) else unlerp(GlassRange.DENSITY_MIN, GlassRange.DENSITY_MAX, p.glassDensity)
+    val y = if (feed) unlerp(FeedRange.ROUND_MIN, FeedRange.ROUND_MAX, p.feedRound) else unlerp(GlassRange.DEPTH_MIN, GlassRange.DEPTH_MAX, p.glassDepth)
+    val vx = if (feed) p.feedSize else p.glassDensity
+    val vy = if (feed) p.feedRound else p.glassDepth
+    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), Arrangement.spacedBy(10.dp)) {
+        OneText(stringResource(if (feed) R.string.look_feed else R.string.glass_title), OneType.Caption, c.dim)
+        OnePad(
+            x, y,
+            { nx, ny ->
+                theme.update {
+                    if (feed) copy(feedSize = lerpF(FeedRange.SIZE_MIN, FeedRange.SIZE_MAX, nx), feedRound = lerpF(FeedRange.ROUND_MIN, FeedRange.ROUND_MAX, ny))
+                    else copy(glassDensity = lerpF(GlassRange.DENSITY_MIN, GlassRange.DENSITY_MAX, nx), glassDepth = lerpF(GlassRange.DEPTH_MIN, GlassRange.DEPTH_MAX, ny))
+                }
+            },
+            theme::save, Modifier.height(200.dp),
+        ) {
+            // colourful shapes behind the sample, so translucency and depth are visible
+            Box(Modifier.fillMaxSize().background(Brush.linearGradient(listOf(c.accent.copy(alpha = 0.55f), c.dim.copy(alpha = 0.15f)))))
+            Box(Modifier.offset(x = (-56).dp, y = (-26).dp).size(84.dp).background(c.accent.copy(alpha = 0.85f), CircleShape))
+            val k = if (feed) p.feedSize else 1f
+            Box(Modifier.size(132.dp * k, 78.dp * k).glass(2, 22.dp), Alignment.Center) { OneText("Aa", OneType.Title, c.text) }
+        }
+        Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween) {
+            OneText("${stringResource(if (feed) R.string.style_size else R.string.glass_density)}  ${(vx * 100f).roundToInt()}%", OneType.Caption, c.dim)
+            OneText("${stringResource(if (feed) R.string.look_round else R.string.glass_depth)}  ${(vy * 100f).roundToInt()}%", OneType.Caption, c.dim)
+        }
+    }
+    if (vx != 1f || vy != 1f) SettingRow(
+        stringResource(R.string.glass_reset),
+        Modifier.press { theme.update { if (feed) copy(feedSize = 1f, feedRound = 1f) else copy(glassDensity = 1f, glassDepth = 1f) }; theme.save() },
+    ) {}
 }
 
 @Composable

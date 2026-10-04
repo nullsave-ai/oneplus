@@ -37,7 +37,7 @@ import kotlin.math.roundToInt
 
 @Composable
 fun HomeScreen(
-    state: UiState, list: LazyListState, wide: Boolean, portrait: Boolean,
+    state: UiState, list: LazyListState, wide: Boolean,
     lib: Library, onMovie: (Int) -> Unit, onChannel: (Int) -> Unit, onAllMovies: () -> Unit, onAllChannels: () -> Unit,
     onMatches: (Int) -> Unit,
 ) {
@@ -63,7 +63,7 @@ fun HomeScreen(
                     }
                 }
             }
-            if (d.channels.isNotEmpty()) item(key = "channels") { Block(R.string.sec_channels, onAllChannels) { ChannelSection(d.channels, portrait, onChannel) } }
+            if (d.channels.isNotEmpty()) item(key = "channels") { Block(R.string.sec_channels, onAllChannels) { ChannelShelf(d.channels, onChannel) } }
         }
     }
 }
@@ -160,7 +160,7 @@ private fun MatchRow(m: Match, expanded: Boolean, onClick: () -> Unit, modifier:
 }
 
 @Composable
-private fun Team(name: String) {
+internal fun Team(name: String) {
     val c = LocalColors.current
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
         Box(Modifier.size(24.dp).background(c.accentSoft, CircleShape), Alignment.Center) {
@@ -185,27 +185,21 @@ internal fun Poster(movie: Movie, modifier: Modifier, onClick: () -> Unit) {
     }
 }
 
-/** Portrait: a two-column grid of cards. Landscape / tablets: the compact tile wrap. */
-@OptIn(ExperimentalLayoutApi::class)
+/** Channels on Home: small square tiles (logo, or the first letter) with the name under them, in one row that slides sideways. */
 @Composable
-private fun ChannelSection(channels: List<Channel>, portrait: Boolean, onChannel: (Int) -> Unit) {
-    if (portrait) Column(Modifier.padding(horizontal = 20.dp), Arrangement.spacedBy(12.dp)) {
-        channels.take(8).chunked(2).forEach { pair ->
-            Row(Modifier.fillMaxWidth(), Arrangement.spacedBy(12.dp)) {
-                pair.forEach { ch -> ChannelCard(ch, Modifier.weight(1f)) { onChannel(ch.id) } }
-                if (pair.size == 1) Spacer(Modifier.weight(1f))
-            }
-        }
-    } else FlowRow(Modifier.padding(horizontal = 20.dp), Arrangement.spacedBy(12.dp), Arrangement.spacedBy(12.dp)) {
-        channels.take(8).forEach { ch -> ChannelTile(ch) { onChannel(ch.id) } }
+internal fun ChannelShelf(channels: List<Channel>, onChannel: (Int) -> Unit) {
+    LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        items(channels.take(12), key = { it.id }) { ch -> ChannelTile(ch) { onChannel(ch.id) } }
     }
 }
 
 @Composable
-private fun ChannelTile(ch: Channel, onClick: () -> Unit) {
+internal fun ChannelTile(ch: Channel, onClick: () -> Unit) {
     val c = LocalColors.current
     Column(Modifier.width(72.dp), Arrangement.spacedBy(8.dp), Alignment.CenterHorizontally) {
-        Box(Modifier.size(56.dp).press(onClick).glass(2, 18.dp), Alignment.Center) { OneText(ch.name.take(1), OneType.Section, c.accent) }
+        Box(Modifier.size(56.dp).press(onClick).glass(2, 18.dp), Alignment.Center) {
+            if (ch.logo.isNotBlank()) RemoteImage(ch.logo, Modifier.matchParentSize()) else OneText(ch.name.take(1), OneType.Section, c.accent)
+        }
         OneText(ch.name, OneType.Caption, c.dim, maxLines = 1)
     }
 }

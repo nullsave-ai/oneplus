@@ -7,11 +7,14 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
@@ -41,6 +44,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
@@ -200,12 +204,16 @@ fun OnePlusApp(theme: ThemeController, vm: MainViewModel = viewModel()) {
                 ) {
                 CompositionLocalProvider(LocalRailInset provides (if (tv) TvRailSpace else 0.dp)) {
                 TvLayer(lockBase, railFocus) {
-                // Glass: a plain cross-fade. Feed: the pages slide sideways in the direction of the tab change (RTL: tab 0 is on the right).
+                // Glass: a plain cross-fade. TV: the pages slide sideways in the direction of the tab change (RTL: tab 0 is on the right).
+                // Phone Feed: the same direction, but the page also settles from a slight scale, slower in than out.
                 AnimatedContent(tab, Modifier.fillMaxSize(), transitionSpec = {
-                    if (feedLayout) {
-                        val dir = if (targetState > initialState) -1 else 1
+                    val dir = if (targetState > initialState) -1 else 1
+                    if (tv) {
                         (slideInHorizontally(tween(280)) { dir * it / 5 } + fadeIn(tween(280))) togetherWith
                             (slideOutHorizontally(tween(200)) { -dir * it / 5 } + fadeOut(tween(120)))
+                    } else if (feed) {
+                        (slideInHorizontally(tween(380, easing = FastOutSlowInEasing)) { dir * it / 6 } + fadeIn(tween(380)) + scaleIn(tween(380, easing = FastOutSlowInEasing), 0.94f)) togetherWith
+                            (slideOutHorizontally(tween(260)) { -dir * it / 6 } + fadeOut(tween(160)) + scaleOut(tween(260), 0.94f))
                     } else fadeIn(tween(180)) togetherWith fadeOut(tween(180))
                 }, label = "page") { t ->
                     // each page keeps its remembered state (expanded rows, inner scrolls) while another tab is shown
@@ -217,8 +225,9 @@ fun OnePlusApp(theme: ThemeController, vm: MainViewModel = viewModel()) {
                             val onAllMovies = { focus.clearFocus(); showMovies = true }
                             val onAllChannels = { tab = 1 }
                             val onMatches = { id: Int -> focus.clearFocus(); matchFocus = id; showMatches = true }
-                            if (feedLayout) FeedHome(state, homeList, wide, library, onMovie, onChannel, onAllMovies, onAllChannels, onMatches)
-                            else HomeScreen(state, homeList, wide, portrait, library, onMovie, onChannel, onAllMovies, onAllChannels, onMatches)
+                            if (tv) FeedHome(state, homeList, wide, library, onMovie, onChannel, onAllMovies, onAllChannels, onMatches)
+                            else if (feed) LuxHome(state, homeList, portrait, library, onMovie, onChannel, onAllMovies, onAllChannels, onMatches)
+                            else HomeScreen(state, homeList, wide, library, onMovie, onChannel, onAllMovies, onAllChannels, onMatches)
                         }
                         1 -> {
                             val playing = if (playKind == 2) playId else -1
@@ -359,24 +368,29 @@ private fun TvRail(selected: Int, onSelect: (Int) -> Unit, onSearch: () -> Unit,
     }
 }
 
-/** Feed style's bottom bar: flat, full width, solid; the current tab is marked by a bar on its top edge instead of a moving blob. */
+/**
+ * Phone Feed's bottom bar: solid, full width, hairline on top. One accent line with a soft glow slides (spring) to the current tab,
+ * instead of a marker that appears on each tab separately.
+ */
 @Composable
 private fun FeedBar(selected: Int, onSelect: (Int) -> Unit, modifier: Modifier = Modifier) {
     val c = LocalColors.current
+    val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
+    val pos by animateFloatAsState(selected.toFloat(), spring(0.8f, 380f), label = "feedLine")
     Row(
-        modifier.fillMaxWidth().background(c.bg).drawBehind { drawRect(c.border, size = Size(size.width, 1.dp.toPx())) }
-            .navigationBarsPadding().height(56.dp),
+        modifier.fillMaxWidth().background(c.bg).drawBehind {
+            val w = size.width / Tabs.size
+            val cx = (if (rtl) Tabs.size - (pos + 0.5f) else pos + 0.5f) * w
+            val glow = 64.dp.toPx()
+            drawRect(c.border, size = Size(size.width, 1.dp.toPx()))
+            drawCircle(Brush.radialGradient(listOf(c.accent.copy(alpha = 0.30f), c.accent.copy(alpha = 0f)), Offset(cx, 0f), glow), glow, Offset(cx, 0f))
+            drawRoundRect(c.accent, Offset(cx - 14.dp.toPx(), 0f), Size(28.dp.toPx(), 2.dp.toPx()), CornerRadius(1.dp.toPx()))
+        }.navigationBarsPadding().height(58.dp),
     ) {
         Tabs.forEachIndexed { i, (icon, label) ->
-            val on by animateFloatAsState(if (i == selected) 1f else 0f, tween(200), label = "feedTab")
-            Column(
-                Modifier.weight(1f).fillMaxHeight().press { onSelect(i) }.drawBehind {
-                    val w = 28.dp.toPx()
-                    drawRoundRect(c.accent.copy(alpha = on), Offset((size.width - w) / 2f, 0f), Size(w, 3.dp.toPx()), CornerRadius(1.5.dp.toPx()))
-                },
-                Arrangement.Center, Alignment.CenterHorizontally,
-            ) {
-                OneIconView(icon) { lerp(c.dim, c.accent, on) }
+            val on by animateFloatAsState(if (i == selected) 1f else 0f, tween(220), label = "feedTab")
+            Column(Modifier.weight(1f).fillMaxHeight().press { onSelect(i) }, Arrangement.Center, Alignment.CenterHorizontally) {
+                OneIconView(icon, Modifier.graphicsLayer { val k = 1f + 0.1f * on; scaleX = k; scaleY = k }) { lerp(c.dim, c.accent, on) }
                 OneText(stringResource(label), OneType.Caption, lerp(c.dim, c.accent, on), Modifier.padding(top = 2.dp), 1)
             }
         }

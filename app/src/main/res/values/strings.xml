@@ -24,6 +24,7 @@
     <string name="color_red">أحمر</string>
     <string name="color_purple">بنفسجي</string>
     <string name="color_black">أسود</string>
+    <string name="color_gold">ذهبي</string>
     <string name="color_custom">مخصص</string>
     <string name="color_hue">الدرجة</string>
     <string name="color_sat">التشبع</string>
@@ -65,6 +66,9 @@
     <string name="glass_density">الكثافة</string>
     <string name="glass_depth">العمق</string>
     <string name="glass_reset">استعادة الافتراضي</string>
+    <string name="look_feed">البطاقات</string>
+    <string name="look_round">الاستدارة</string>
+    <string name="lux_featured">مختارات اليوم</string>
     <string name="display_mode">وضع العرض</string>
     <string name="display_auto">تلقائي</string>
     <string name="display_phone">هاتف</string>

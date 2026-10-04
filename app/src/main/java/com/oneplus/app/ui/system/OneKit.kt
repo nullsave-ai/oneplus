@@ -31,9 +31,11 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.*
+import kotlinx.coroutines.delay
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.cos
@@ -51,6 +53,9 @@ object OneType {
     val Section = TextStyle(fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
     val Body = TextStyle(fontSize = 15.sp)
     val Caption = TextStyle(fontSize = 12.sp)
+    /** Editorial headline of the phone Feed (serif; no letter-spacing, which would break Arabic joins). */
+    val Lux = TextStyle(fontSize = 22.sp, fontWeight = FontWeight.SemiBold, fontFamily = FontFamily.Serif)
+    val LuxHero = TextStyle(fontSize = 30.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Serif, lineHeight = 38.sp)
 }
 
 @Composable
@@ -83,7 +88,11 @@ internal val Sheen = Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.10
 @Composable
 fun Modifier.glass(level: Int, radius: Dp): Modifier {
     val c = LocalColors.current
-    if (LocalFeed.current) return clip(RoundedCornerShape(minOf(radius, 14.dp))).background(c.glass) // Feed: a flat solid card
+    if (LocalFeed.current) { // Feed: a flat solid card (phone: hairline border, corners follow the user's roundness)
+        if (!LocalLux.current) return clip(RoundedCornerShape(minOf(radius, 14.dp))).background(c.glass)
+        val s = RoundedCornerShape(radius * LocalFeedLook.current.round)
+        return clip(s).background(c.glass).border(0.5.dp, c.border, s)
+    }
     val fx = LocalGlassEffects.current
     val g = LocalGlassStyle.current
     val shape = RoundedCornerShape(radius)
@@ -109,6 +118,18 @@ fun Modifier.press(onClick: () -> Unit): Modifier {
         // a gamepad's A button is "OK" too (the remote's centre / Enter is already handled by clickable)
         .then(if (tv) Modifier.onKeyEvent { e -> (e.key == Key.ButtonA).also { if (it && e.type == KeyEventType.KeyUp) click() } } else Modifier)
         .clickable(src, null, onClick = onClick)
+}
+
+/**
+ * Entrance for a feed section: it fades up once, staggered by [index]. [seen] remembers which ones already played, so a section
+ * that scrolls out and back in does not play again (the set dies with the page, so coming back to the tab plays it anew).
+ */
+@Composable
+fun Modifier.reveal(index: Int, seen: MutableSet<Int>): Modifier {
+    val done = index in seen
+    val p = remember { Animatable(if (done) 1f else 0f) }
+    LaunchedEffect(Unit) { if (!done) { delay(index * 80L); p.animateTo(1f, tween(560, easing = FastOutSlowInEasing)); seen += index } }
+    return graphicsLayer { alpha = p.value; translationY = (1f - p.value) * 32.dp.toPx() }
 }
 
 // ---- Icons (custom, 24dp grid, 1.75 stroke) ------------------------------

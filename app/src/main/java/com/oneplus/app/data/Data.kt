@@ -10,7 +10,9 @@ data class Movie(val id: Int, val title: String, val year: Int, val rating: Floa
                  val url: String,
                  /** The second, landscape artwork (16:9 backdrop) used by "continue watching". Empty = the gradient placeholder. */
                  val backdrop: String = "")
-data class Channel(val id: Int, val name: String, val url: String, val group: String, val number: Int)
+data class Channel(val id: Int, val name: String, val url: String, val group: String, val number: Int,
+                   /** The channel's logo (http/https). Empty = its first letter on the tile. */
+                   val logo: String = "")
 data class HomeData(val matches: List<Match>, val movies: List<Movie>, val channels: List<Channel>)
 
 interface HomeRepository { val data: Flow<HomeData> }

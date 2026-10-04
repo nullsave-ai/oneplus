@@ -1,1 +1,1 @@
-<resources><style name="Theme.OnePlus" parent="android:Theme.Material.NoActionBar" /></resources>
+<resources><style name="Theme.OnePlus" parent="android:Theme.Material.NoActionBar"><item name="android:windowBackground">@android:color/black</item></style></resources>

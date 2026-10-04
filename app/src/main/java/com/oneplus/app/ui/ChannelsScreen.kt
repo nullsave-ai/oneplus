@@ -160,15 +160,3 @@ private fun ChannelRow(ch: Channel, playing: Boolean, onClick: () -> Unit) {
         OneText(ch.name, OneType.Body, if (playing) c.accent else c.text, Modifier.weight(1f), 1)
     }
 }
-
-/** One channel cell (Home section). */
-@Composable
-internal fun ChannelCard(ch: Channel, modifier: Modifier = Modifier, onClick: () -> Unit) {
-    val c = LocalColors.current
-    Row(modifier.fillMaxWidth().press(onClick).glass(1, 18.dp).padding(12.dp), Arrangement.spacedBy(12.dp), Alignment.CenterVertically) {
-        Box(Modifier.size(40.dp).background(c.accentSoft, RoundedCornerShape(14.dp)), Alignment.Center) {
-            OneText("${ch.number}", OneType.Section, c.accent)
-        }
-        OneText(ch.name, OneType.Body, c.text, maxLines = 1)
-    }
-}

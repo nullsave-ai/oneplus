@@ -96,7 +96,8 @@ fun FloatingToolbar(
     val c = LocalColors.current
     val fx = LocalGlassEffects.current
     val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
-    val flat = LocalFeed.current // Feed: a full-width solid bar that never shrinks into a pill
+    val flat = LocalFeed.current // Feed: a full-width bar that never shrinks into a pill
+    val lux = LocalLux.current   // phone Feed: no bar at rest (the page shows through); it turns solid once the page scrolls or search opens
     var searching by rememberSaveable { mutableStateOf(startOpen) }
     val morph by animateFloatAsState(if (searching) 1f else 0f, spring(0.82f, 500f), label = "search")
     val focus = remember { FocusRequester() }
@@ -120,8 +121,9 @@ fun FloatingToolbar(
             }
             .drawBehind {
                 if (flat) {
-                    drawRect(c.bg)
-                    drawRect(c.border.copy(alpha = c.border.alpha * max(progress(), morph)), Offset(0f, size.height - 1.dp.toPx()), Size(size.width, 1.dp.toPx()))
+                    val e = max(progress(), morph)
+                    drawRect(if (lux) c.bg.copy(alpha = e) else c.bg)
+                    drawRect(c.border.copy(alpha = c.border.alpha * e), Offset(0f, size.height - 1.dp.toPx()), Size(size.width, 1.dp.toPx()))
                     return@drawBehind
                 }
                 val e = max(progress(), morph)
