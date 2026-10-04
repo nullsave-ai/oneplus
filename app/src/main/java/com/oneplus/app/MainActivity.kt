@@ -17,6 +17,7 @@ import com.oneplus.app.ui.system.OnePlusTheme
 import com.oneplus.app.ui.system.ThemeController
 import com.oneplus.app.ui.system.ThemeStore
 import com.oneplus.app.ui.system.resolveDark
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
