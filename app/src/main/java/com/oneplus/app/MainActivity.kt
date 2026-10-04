@@ -16,6 +16,7 @@ import com.oneplus.app.ui.OnePlusApp
 import com.oneplus.app.ui.system.OnePlusTheme
 import com.oneplus.app.ui.system.ThemeController
 import com.oneplus.app.ui.system.ThemeStore
+import com.oneplus.app.ui.system.TvScreen
 import com.oneplus.app.ui.system.resolveDark
 import kotlinx.coroutines.launch
 
@@ -47,7 +48,7 @@ class MainActivity : ComponentActivity() {
                 if (hideStatus) bars.hide(WindowInsetsCompat.Type.statusBars()) else bars.show(WindowInsetsCompat.Type.statusBars())
                 onDispose { }
             }
-            OnePlusTheme(theme.prefs, dark) { OnePlusApp(theme) }
+            TvScreen(theme.prefs.tvMode) { OnePlusTheme(theme.prefs, dark) { OnePlusApp(theme) } }
         }
     }
 }

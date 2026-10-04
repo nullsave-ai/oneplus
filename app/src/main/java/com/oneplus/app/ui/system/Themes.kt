@@ -69,6 +69,8 @@ data class ThemePrefs(
     val value: Float = 0.90f,
     /** Hide the phone's status (notification) bar; a swipe from the top edge still reveals it briefly. */
     val hideStatusBar: Boolean = false,
+    /** Display mode: false = Phone UI, true = TV UI (see TvMode.kt). A choice of the user, never inferred from the device. */
+    val tvMode: Boolean = false,
 ) {
     fun colorOf(a: Accent, dark: Boolean): Color =
         if (a == Accent.Custom) fit(hsv(hue, sat, value), dark) else a.color(dark)
@@ -176,12 +178,13 @@ class ThemeStore(ctx: Context) {
             sat = p.getFloat("sat", d.sat).clean(CustomRange.SAT_MIN, 1f, d.sat),
             value = p.getFloat("val", d.value).clean(CustomRange.VAL_MIN, 1f, d.value),
             hideStatusBar = p.getBoolean("hide_status", d.hideStatusBar),
+            tvMode = p.getBoolean("tv_mode", d.tvMode),
         )
     }.getOrDefault(ThemePrefs())
 
     fun save(t: ThemePrefs) {
         p.edit().putString("mode", t.mode.name).putString("accent", t.accent.name)
-            .putFloat("hue", t.hue).putFloat("sat", t.sat).putFloat("val", t.value).putBoolean("hide_status", t.hideStatusBar).apply()
+            .putFloat("hue", t.hue).putFloat("sat", t.sat).putFloat("val", t.value).putBoolean("hide_status", t.hideStatusBar).putBoolean("tv_mode", t.tvMode).apply()
     }
 
     private fun Float.clean(lo: Float, hi: Float, fallback: Float) =

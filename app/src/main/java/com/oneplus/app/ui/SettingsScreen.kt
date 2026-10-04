@@ -63,6 +63,13 @@ fun SettingsScreen(
                             Modifier.width(216.dp),
                         )
                     }
+                    SettingRow(stringResource(R.string.display_mode)) {
+                        OneSegmented(
+                            listOf(stringResource(R.string.display_phone), stringResource(R.string.display_tv)), if (p.tvMode) 1 else 0,
+                            { i -> theme.update { copy(tvMode = i == 1) }; theme.save() },
+                            Modifier.width(216.dp),
+                        )
+                    }
                     SettingRow(stringResource(R.string.color_row), Modifier.press { open = !open }) {
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                             OneText(stringResource(p.accent.label), OneType.Body, c.dim)

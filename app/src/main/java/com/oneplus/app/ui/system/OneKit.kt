@@ -5,6 +5,7 @@ import androidx.compose.foundation.*
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -21,6 +22,11 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalLayoutDirection
@@ -84,7 +90,7 @@ fun Modifier.press(onClick: () -> Unit): Modifier {
     val src = remember { MutableInteractionSource() }
     val pressed by src.collectIsPressedAsState()
     val s by animateFloatAsState(if (pressed) 0.96f else 1f, spring(0.6f, 500f), label = "press")
-    return graphicsLayer { scaleX = s; scaleY = s }.clickable(src, null, onClick = onClick)
+    return graphicsLayer { scaleX = s; scaleY = s }.tvFocusRing(src).tvLockable().clickable(src, null, onClick = onClick)
 }
 
 // ---- Icons (custom, 24dp grid, 1.75 stroke) ------------------------------
@@ -285,12 +291,24 @@ fun OneSlider(
     val c = LocalColors.current
     var w by remember { mutableFloatStateOf(1f) }
     var held by remember { mutableStateOf(false) }
-    val scale by animateFloatAsState(if (held) 1.14f else 1f, spring(0.6f, 500f), label = "thumb")
+    val tv = LocalTvMode.current
+    val src = remember { MutableInteractionSource() }
+    val focused by src.collectIsFocusedAsState()
+    val scale by animateFloatAsState(if (held || focused) 1.14f else 1f, spring(0.6f, 500f), label = "thumb")
     val change by rememberUpdatedState(onChange)
     val done by rememberUpdatedState(onDone)
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
         Box(
             modifier.fillMaxWidth().height(height).onSizeChanged { w = it.width.toFloat() }
+                // TV Mode: reachable with the D-pad; left / right move the thumb a little, and the value is saved on every step
+                .tvFocusRing(src)
+                .then(
+                    if (tv) Modifier.tvLockable().onKeyEvent { e ->
+                        val dir = if (e.key == Key.DirectionRight) 1 else if (e.key == Key.DirectionLeft) -1 else 0
+                        if (dir != 0 && e.type == KeyEventType.KeyDown) { change((value + dir * 0.03f).coerceIn(0f, 1f)); done() }
+                        dir != 0
+                    }.focusable(interactionSource = src) else Modifier
+                )
                 .pointerInput(Unit) {
                     val t = thumb.toPx()
                     detectTapGestures { p -> change(((p.x - t / 2f) / (w - t).coerceAtLeast(1f)).coerceIn(0f, 1f)); done() }

@@ -53,6 +53,18 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.foundation.focusable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEvent
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -169,6 +181,44 @@ fun PlayerScreen(
     LaunchedEffect(pb?.ended) { if (pb?.ended == true) show = true }
     LaunchedEffect(hud) { if (hud != null) { lastHud = hud; delay(900); hud = null } }
 
+    // TV Mode, fullscreen: the remote drives the player. Controls hidden: left / right = -10s / +10s, centre = play / pause,
+    // up / down = show the controls. Controls shown: the D-pad moves between the buttons and the seek bar as usual.
+    val tv = LocalTvMode.current
+    val keysOn = tv && fullscreen
+    val keys = remember { FocusRequester() }   // the player itself, while the controls are hidden
+    val first = remember { FocusRequester() }  // the play button, where focus lands when a key brings the controls up
+    var keyShown by remember { mutableStateOf(true) }
+    fun skip(dir: Int) {
+        val p = playback ?: return
+        if (!p.seekable) return
+        p.seekBy(dir * 10_000L)
+        val h = hud
+        hud = Hud.Skip(dir > 0, if (h is Hud.Skip && h.forward == (dir > 0)) h.seconds + 10 else 10)
+        tick++
+    }
+    val onKey: (KeyEvent) -> Boolean = handler@{ e ->
+        if (e.type != KeyEventType.KeyDown) return@handler false
+        val p = playback
+        when (e.key) {
+            Key.MediaPlayPause -> { if (p != null && !p.live) p.toggle(); tick++; true }
+            Key.MediaPlay -> { if (p != null && !p.live && !p.wantsPlay) p.toggle(); tick++; true }
+            Key.MediaPause -> { if (p != null && !p.live && p.wantsPlay) p.toggle(); tick++; true }
+            Key.MediaFastForward, Key.MediaNext -> { skip(1); true }
+            Key.MediaRewind, Key.MediaPrevious -> { skip(-1); true }
+            else -> if (show) { tick++; false } else when (e.key) {
+                Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> {
+                    if (p != null && !p.live) p.toggle()
+                    show = true; keyShown = true; tick++; true
+                }
+                Key.DirectionLeft -> { skip(-1); true }
+                Key.DirectionRight -> { skip(1); true }
+                Key.DirectionUp, Key.DirectionDown -> { show = true; keyShown = true; tick++; true }
+                else -> false
+            }
+        }
+    }
+    LaunchedEffect(keysOn, show, panelOpen) { if (keysOn && !show && !panelOpen) runCatching { keys.requestFocus() } }
+
     fun readBrightness(): Float {
         val b = window?.attributes?.screenBrightness ?: -1f
         if (b >= 0f) return b
@@ -186,7 +236,10 @@ fun PlayerScreen(
         runCatching { audio.setStreamVolume(AudioManager.STREAM_MUSIC, (f * max).roundToInt().coerceIn(0, max), 0) }
     }
 
-    Box(Modifier.fillMaxSize().background(Color.Black)) {
+    Box(
+        Modifier.fillMaxSize().background(Color.Black)
+            .then(if (keysOn) Modifier.focusRequester(keys).onPreviewKeyEvent(onKey).tvLockable().focusable() else Modifier)
+    ) {
         // 1) video
         val corner = with(LocalDensity.current) { 20.dp.toPx() }
         if (pb != null) key(pb) {
@@ -297,6 +350,10 @@ fun PlayerScreen(
 
         // 5) loading / error
         val controlsA by animateFloatAsState(if (show) 1f else 0f, tween(220), label = "controls")
+        val controlsUp = controlsA > 0.01f
+        LaunchedEffect(keysOn, show, controlsUp, keyShown) {
+            if (keysOn && show && controlsUp && keyShown) { runCatching { first.requestFocus() }; keyShown = false }
+        }
         if ((pb == null || pb.buffering || !pb.firstFrame) && !failed && (controlsA < 0.5f || pb?.live == true)) {
             Spinner(c.accent, Modifier.align(Alignment.Center).size(44.dp))
             if (pb == null && session.attempt > 0 && !session.resolveFailed) OneText(stringResource(R.string.player_extracting), OneType.Caption, Color.White.copy(alpha = 0.7f), Modifier.align(Alignment.Center).padding(top = 84.dp))
@@ -333,7 +390,11 @@ fun PlayerScreen(
                     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
                         Row(Modifier.align(Alignment.Center), Arrangement.spacedBy(28.dp), Alignment.CenterVertically) {
                             if (pb.seekable) SkipButton(false) { pb.seekBy(-10_000); tick++ }
-                            Box(Modifier.size(72.dp).press { pb.toggle(); tick++ }.clip(CircleShape).background(c.accent), Alignment.Center) {
+                            Box(
+                                Modifier.size(72.dp).then(if (keysOn) Modifier.focusRequester(first) else Modifier)
+                                    .press { pb.toggle(); tick++ }.clip(CircleShape).background(c.accent),
+                                Alignment.Center,
+                            ) {
                                 if (pb.buffering && pb.wantsPlay) Spinner(c.onAccent, Modifier.size(30.dp))
                                 else OneIconView(
                                     if (pb.ended) OneIcon.Replay else if (pb.wantsPlay) OneIcon.Pause else OneIcon.Play,
@@ -367,6 +428,7 @@ fun PlayerScreen(
                                     active = scrub != null, accent = c.accent,
                                     onScrub = { scrub = it; tick++ },
                                     onCommit = { f -> pb.seekTo((f * dur).toLong()); pos = (f * dur).toLong(); scrub = null; tick++ },
+                                    onStep = { dir -> pb.seekBy(dir * 10_000L); tick++ },
                                     modifier = Modifier.weight(1f),
                                 )
                                 OneText(fmt(dur), OneType.Caption, Color.White.copy(alpha = 0.7f))
@@ -460,14 +522,27 @@ private fun Spinner(color: Color, modifier: Modifier = Modifier) {
 @Composable
 private fun SeekBar(
     fraction: Float, buffered: Float, active: Boolean, accent: Color,
-    onScrub: (Float) -> Unit, onCommit: (Float) -> Unit, modifier: Modifier = Modifier,
+    onScrub: (Float) -> Unit, onCommit: (Float) -> Unit, onStep: (Int) -> Unit, modifier: Modifier = Modifier,
 ) {
-    val grow by animateFloatAsState(if (active) 1f else 0f, spring(0.7f, 600f), label = "grow")
+    val tv = LocalTvMode.current
+    val src = remember { MutableInteractionSource() }
+    val focused by src.collectIsFocusedAsState()
+    val stepCb by rememberUpdatedState(onStep)
+    val grow by animateFloatAsState(if (active || focused) 1f else 0f, spring(0.7f, 600f), label = "grow")
     val scrubCb by rememberUpdatedState(onScrub)
     val commitCb by rememberUpdatedState(onCommit)
     var last by remember { mutableFloatStateOf(0f) }
     Canvas(
         modifier.height(32.dp)
+            // TV Mode: the bar takes D-pad focus; left / right = -10s / +10s
+            .tvFocusRing(src)
+            .then(
+                if (tv) Modifier.tvLockable().onKeyEvent { e ->
+                    val dir = if (e.key == Key.DirectionRight) 1 else if (e.key == Key.DirectionLeft) -1 else 0
+                    if (dir != 0 && e.type == KeyEventType.KeyDown) stepCb(dir)
+                    dir != 0
+                }.focusable(interactionSource = src) else Modifier
+            )
             .pointerInput(Unit) { detectTapGestures { o -> commitCb((o.x / size.width).coerceIn(0f, 1f)) } }
             .pointerInput(Unit) {
                 detectHorizontalDragGestures(

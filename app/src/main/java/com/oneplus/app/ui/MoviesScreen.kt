@@ -66,6 +66,7 @@ fun MoviesHost(open: Boolean, movies: List<Movie>, portrait: Boolean, onMovie: (
 @Composable
 private fun MoviesScreen(movies: List<Movie>, portrait: Boolean, onMovie: (Int) -> Unit, onClose: () -> Unit) {
     val c = LocalColors.current
+    val tv = LocalTvMode.current // TV Mode: the number of columns always follows the width (never a fixed 3)
     var genre by rememberSaveable { mutableStateOf<String?>(null) }
     var year by rememberSaveable { mutableIntStateOf(0) }       // 0 = all
     var minRating by rememberSaveable { mutableIntStateOf(0) }  // 0 = all
@@ -160,7 +161,7 @@ private fun MoviesScreen(movies: List<Movie>, portrait: Boolean, onMovie: (Int) 
             OneText(stringResource(R.string.movies_empty), OneType.Body, c.dim)
             OneButton(stringResource(R.string.movies_reset), null, reset, Modifier.width(200.dp), primary = false)
         } else LazyVerticalGrid(
-            if (portrait) GridCells.Fixed(3) else GridCells.Adaptive(130.dp), Modifier.weight(1f).fillMaxWidth(),
+            if (portrait && !tv) GridCells.Fixed(3) else GridCells.Adaptive(130.dp), Modifier.weight(1f).fillMaxWidth(),
             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = bottom),
             horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {

@@ -59,6 +59,9 @@
     <string name="clear_yes">مسح</string>
     <string name="clear_no">إلغاء</string>
     <string name="settings_hide_status">إخفاء شريط الإشعارات</string>
+    <string name="display_mode">وضع العرض</string>
+    <string name="display_phone">هاتف</string>
+    <string name="display_tv">تلفاز</string>
     <string name="sec_all">الكل</string>
     <string name="unit_sec">ث</string>
 

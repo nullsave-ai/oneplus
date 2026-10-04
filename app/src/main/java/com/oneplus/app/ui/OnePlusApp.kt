@@ -146,6 +146,11 @@ fun OnePlusApp(theme: ThemeController, vm: MainViewModel = viewModel()) {
             movieId = -1
         }
     }
+    // TV Mode: which layers a remote can reach. A covered layer must not take D-pad focus (it is still composed underneath).
+    val dialogOpen = showTg || showClear
+    val playerFull = session != null && !wantsInPlace
+    val lockBase = movieId >= 0 || showMatches || showMovies || playerFull || dialogOpen
+    val lockOver = playerFull || dialogOpen
     CompositionLocalProvider(LocalGlassEffects provides fx) {
         BoxWithConstraints(Modifier.fillMaxSize().ambient()) {
             val wide = maxWidth >= 600.dp
@@ -160,6 +165,7 @@ fun OnePlusApp(theme: ThemeController, vm: MainViewModel = viewModel()) {
                 // dim with a plain scrim: alpha on the whole tree would force an offscreen layer every frame of the transition
                 drawRect(Color.Black, alpha = 0.35f * maxOf(detail.depth, matchesP.value))
             }) {
+                CompositionLocalProvider(LocalTvLock provides lockBase) {
                 Crossfade(tab, Modifier.fillMaxSize(), tween(180), label = "page") { t ->
                     // each page keeps its remembered state (expanded rows, inner scrolls) while another tab is shown
                     pages.SaveableStateProvider(t) {
@@ -191,12 +197,17 @@ fun OnePlusApp(theme: ThemeController, vm: MainViewModel = viewModel()) {
                     modifier = Modifier.align(Alignment.TopCenter).widthIn(max = 880.dp)
                         .padding(start = 16.dp, end = 16.dp, top = topInset() + 12.dp),
                 )
+                }
                 // Inside the receding layer so it also steps back when a details page opens over it.
-                MoviesHost(showMovies, state.all.movies, portrait, { id -> movieId = id }) { showMovies = false }
+                CompositionLocalProvider(LocalTvLock provides (movieId >= 0 || lockOver)) {
+                    MoviesHost(showMovies, state.all.movies, portrait, { id -> movieId = id }) { showMovies = false }
+                }
             }
             // Overlays are declared in z-order: each one's back handler takes priority over the ones before it.
-            MatchesHost(showMatches, matchesP, state.all.matches, wide, matchFocus) { showMatches = false }
-            MovieDetailHost(detail, state.all.movies, library, movieId, { movieId = it }, { id -> playFull(1, id) }, { movieId = -1 })
+            CompositionLocalProvider(LocalTvLock provides lockOver) {
+                MatchesHost(showMatches, matchesP, state.all.matches, wide, matchFocus) { showMatches = false }
+                MovieDetailHost(detail, state.all.movies, library, movieId, { movieId = it }, { id -> playFull(1, id) }, { movieId = -1 })
+            }
             // The app's single player. Fullscreen = the whole screen; otherwise it is laid exactly over the Channels page's slot,
             // so switching between the two never rebuilds it (the stream keeps playing). Its engine lives in [session], so a
             // parked player (another tab is shown) keeps its engine and simply is not drawn.
@@ -215,11 +226,13 @@ fun OnePlusApp(theme: ThemeController, vm: MainViewModel = viewModel()) {
                         .size(r.width.toDp(), r.height.toDp())
                 } else Modifier.fillMaxSize()
                 Box(box.then(if (inPlace) Modifier.clip(RoundedCornerShape(20.dp)) else Modifier)) {
-                    PlayerScreen(
-                        session, fullscreen = !inPlace,
-                        onToggleFullscreen = if (playKind == 2 && r != null) ({ fullscreen = !fullscreen }) else null,
-                        onClose = { playKind = 0; fullscreen = true },
-                    )
+                    CompositionLocalProvider(LocalTvLock provides dialogOpen) {
+                        PlayerScreen(
+                            session, fullscreen = !inPlace,
+                            onToggleFullscreen = if (playKind == 2 && r != null) ({ fullscreen = !fullscreen }) else null,
+                            onClose = { playKind = 0; fullscreen = true },
+                        )
+                    }
                 }
             }
             // The one nav island, drawn after the shared player so it floats above it (in-place, portrait or landscape).
@@ -228,15 +241,17 @@ fun OnePlusApp(theme: ThemeController, vm: MainViewModel = viewModel()) {
             val covered = showMovies || (session != null && !wantsInPlace)
             val navShow by animateFloatAsState(if (covered) 0f else 1f, tween(160), label = "nav")
             val navAlpha = { navShow * (1f - maxOf(detail.depth, matchesP.value)) }
-            LiquidNav(
-                tab, { tab = it },
-                Modifier.align(Alignment.BottomCenter)
-                    .layout { m, c ->
-                        val pl = m.measure(c)
-                        if (navAlpha() < 0.02f) layout(0, 0) {} else layout(pl.width, pl.height) { pl.place(0, 0) }
-                    }
-                    .graphicsLayer { alpha = navAlpha() },
-            )
+            CompositionLocalProvider(LocalTvLock provides lockBase) {
+                LiquidNav(
+                    tab, { tab = it },
+                    Modifier.align(Alignment.BottomCenter)
+                        .layout { m, c ->
+                            val pl = m.measure(c)
+                            if (navAlpha() < 0.02f) layout(0, 0) {} else layout(pl.width, pl.height) { pl.place(0, 0) }
+                        }
+                        .graphicsLayer { alpha = navAlpha() },
+                )
+            }
             if (showTg) TelegramDialog(
                 onSkip = { showTg = false; telegramSkipped(ctx) },
                 onJoin = { showTg = false; telegramJoined(ctx); openTelegram(ctx) },
@@ -296,8 +311,9 @@ fun LiquidNav(selected: Int, onSelect: (Int) -> Unit, modifier: Modifier = Modif
         Row(Modifier.fillMaxSize()) {
             Tabs.forEachIndexed { i, (icon, label) ->
                 val prox = { (1f - abs(pos.value - i)).coerceIn(0f, 1f) }
+                val src = remember { MutableInteractionSource() }
                 Column(
-                    Modifier.weight(1f).fillMaxHeight().clickable(remember { MutableInteractionSource() }, null) { onSelect(i) },
+                    Modifier.weight(1f).fillMaxHeight().tvFocusRing(src).tvLockable().clickable(src, null) { onSelect(i) },
                     Arrangement.Center, Alignment.CenterHorizontally,
                 ) {
                     OneIconView(icon, Modifier.graphicsLayer {
