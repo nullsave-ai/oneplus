@@ -50,10 +50,10 @@ fun OnePad(
     val s by animateFloatAsState(if (held) 1.18f else 1f, spring(0.6f, 500f), label = "puck")
     val change by rememberUpdatedState(onChange)
     val done by rememberUpdatedState(onDone)
-    val shape = RoundedCornerShape(26.dp)
+    val padShape = RoundedCornerShape(26.dp)
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
         Box(
-            modifier.fillMaxWidth().clip(shape).border(0.5.dp, c.border, shape).onSizeChanged { w = it.width.toFloat(); h = it.height.toFloat() }
+            modifier.fillMaxWidth().clip(padShape).border(0.5.dp, c.border, padShape).onSizeChanged { w = it.width.toFloat(); h = it.height.toFloat() }
                 .drawBehind { // a quiet dot grid: the pad reads as a surface to move over, not a track to slide along
                     val gap = 24.dp.toPx()
                     var gx = gap / 2f
@@ -76,7 +76,7 @@ fun OnePad(
             Box(
                 Modifier.offset { IntOffset((x.coerceIn(0f, 1f) * w - 14.dp.toPx()).roundToInt(), ((1f - y.coerceIn(0f, 1f)) * h - 14.dp.toPx()).roundToInt()) }
                     .align(Alignment.TopStart)
-                    .graphicsLayer { scaleX = s; scaleY = s; shadowElevation = 6.dp.toPx(); shape = CircleShape }
+                    .graphicsLayer { scaleX = s; scaleY = s; shadowElevation = 6.dp.toPx(); shape = CircleShape; clip = true }
                     .size(28.dp).background(Color.White, CircleShape).border(3.dp, c.accent, CircleShape)
             )
         }
