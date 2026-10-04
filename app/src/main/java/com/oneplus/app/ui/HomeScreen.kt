@@ -24,13 +24,12 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.oneplus.app.R
 import com.oneplus.app.data.Channel
+import com.oneplus.app.data.Library
 import com.oneplus.app.data.Match
 import com.oneplus.app.data.Movie
 import com.oneplus.app.ui.system.*
@@ -38,20 +37,25 @@ import com.oneplus.app.ui.system.*
 @Composable
 fun HomeScreen(
     state: UiState, list: LazyListState, wide: Boolean, portrait: Boolean,
-    onMovie: (Int) -> Unit, onChannel: (Int) -> Unit, onAllMovies: () -> Unit, onAllChannels: () -> Unit, onMatches: () -> Unit,
+    lib: Library, onMovie: (Int) -> Unit, onChannel: (Int) -> Unit, onAllMovies: () -> Unit, onAllChannels: () -> Unit,
+    onMatches: (Int) -> Unit, onAllList: () -> Unit, onAllRecent: () -> Unit,
 ) {
     val bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 112.dp
     val d = state.data
-    val haptic = LocalHapticFeedback.current
+    // the viewer's shelves, limited to what the search matches; "continue" = stopped part-way, "recent" = the rest of the history
+    val byId = d.movies.associateBy { it.id }
+    val resume = lib.recent.filter { it in lib.progress }.mapNotNull { byId[it] }
+    val saved = lib.list.mapNotNull { byId[it] }
+    val recent = lib.recent.filter { it !in lib.progress }.mapNotNull { byId[it] }
     Box(Modifier.fillMaxSize(), Alignment.TopCenter) {
         LazyColumn(
             Modifier.widthIn(max = 880.dp).fillMaxSize(), list,
             PaddingValues(top = toolbarInset(), bottom = bottom),
             verticalArrangement = Arrangement.spacedBy(32.dp),
         ) {
-            if (d.matches.isNotEmpty()) item(key = "matches") { Block(R.string.sec_matches, null) {
-                MatchSchedule(d.matches.take(4), wide) { haptic.performHapticFeedback(HapticFeedbackType.LongPress); onMatches() } // a teaser: long-press opens the full page
-            } }
+            // a teaser: a tap on any row opens the full matches page (the details are there)
+            if (d.matches.isNotEmpty()) item(key = "matches") { Block(R.string.sec_matches, null) { MatchSchedule(d.matches.take(4), wide, onOpen = onMatches) } }
+            if (resume.isNotEmpty()) item(key = "resume") { Block(R.string.sec_resume, null) { MovieRow(resume, wide, lib, onMovie) } }
             if (d.movies.isNotEmpty()) item(key = "movies") {
                 Block(R.string.sec_movies, onAllMovies) {
                     LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -60,6 +64,8 @@ fun HomeScreen(
                     }
                 }
             }
+            if (saved.isNotEmpty()) item(key = "list") { Block(R.string.sec_list, onAllList) { MovieRow(saved.take(10), wide, lib, onMovie) } }
+            if (recent.isNotEmpty()) item(key = "recent") { Block(R.string.sec_recent, onAllRecent) { MovieRow(recent.take(10), wide, lib, onMovie) } }
             if (d.channels.isNotEmpty()) item(key = "channels") { Block(R.string.sec_channels, onAllChannels) { ChannelSection(d.channels, portrait, onChannel) } }
         }
     }
@@ -84,24 +90,36 @@ private fun Block(@StringRes title: Int, onAll: (() -> Unit)? = null, content: @
     }
 }
 
-/** The schedule table. Every row is also a long-press target ([onLong]), so the whole table opens the matches page. */
+/** A shelf of posters; those stopped part-way carry a progress bar. */
 @Composable
-internal fun MatchSchedule(matches: List<Match>, wide: Boolean, onLong: (() -> Unit)?) {
-    var open by rememberSaveable { mutableIntStateOf(-1) }
+private fun MovieRow(movies: List<Movie>, wide: Boolean, lib: Library, onMovie: (Int) -> Unit) {
+    LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        items(movies, key = { it.id }) { m -> Poster(m, Modifier.width(if (wide) 156.dp else 124.dp), lib.fraction(m.id)) { onMovie(m.id) } }
+    }
+}
+
+/**
+ * The schedule table. With [onOpen] (Home) a tap on any row opens the full page instead of expanding it;
+ * without it (the matches page) a tap expands the row, and [initialOpen] is the row expanded from the start.
+ */
+@Composable
+internal fun MatchSchedule(matches: List<Match>, wide: Boolean, initialOpen: Int = -1, onOpen: ((Int) -> Unit)? = null) {
+    var open by rememberSaveable { mutableIntStateOf(initialOpen) }
+    val click = { m: Match -> if (onOpen != null) onOpen(m.id) else open = if (open == m.id) -1 else m.id }
     Column(Modifier.padding(horizontal = 20.dp).fillMaxWidth().glass(2, 22.dp).animateContentSize()) {
         if (wide) matches.chunked(2).forEach { pair ->
             Row {
-                pair.forEach { m -> MatchRow(m, open == m.id, onLong, { open = if (open == m.id) -1 else m.id }, Modifier.weight(1f)) }
+                pair.forEach { m -> MatchRow(m, open == m.id, { click(m) }, Modifier.weight(1f)) }
                 if (pair.size == 1) Spacer(Modifier.weight(1f))
             }
-        } else matches.forEach { m -> MatchRow(m, open == m.id, onLong, { open = if (open == m.id) -1 else m.id }, Modifier.fillMaxWidth()) }
+        } else matches.forEach { m -> MatchRow(m, open == m.id, { click(m) }, Modifier.fillMaxWidth()) }
     }
 }
 
 @Composable
-private fun MatchRow(m: Match, expanded: Boolean, onLong: (() -> Unit)?, onClick: () -> Unit, modifier: Modifier) {
+private fun MatchRow(m: Match, expanded: Boolean, onClick: () -> Unit, modifier: Modifier) {
     val c = LocalColors.current
-    Column(modifier.press(onLong, onClick).padding(horizontal = 16.dp, vertical = 14.dp)) {
+    Column(modifier.press(onClick).padding(horizontal = 16.dp, vertical = 14.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.width(52.dp)) {
                 OneText(m.time, OneType.Section, c.text)
@@ -129,7 +147,7 @@ private fun Team(name: String) {
 }
 
 @Composable
-internal fun Poster(movie: Movie, modifier: Modifier, onClick: () -> Unit) {
+internal fun Poster(movie: Movie, modifier: Modifier, progress: Float = 0f, onClick: () -> Unit) {
     val c = LocalColors.current
     val fill = remember(c) { Brush.linearGradient(listOf(c.accent.copy(alpha = 0.40f), c.dim.copy(alpha = 0.22f))) }
     Box(modifier.aspectRatio(2f / 3f).press(onClick).clip(RoundedCornerShape(16.dp)).background(fill)) {
@@ -139,6 +157,9 @@ internal fun Poster(movie: Movie, modifier: Modifier, onClick: () -> Unit) {
         ) {
             OneText(movie.title, OneType.Body, Color.White, maxLines = 1)
             OneText("${movie.year}", OneType.Caption, Color.White.copy(alpha = 0.7f))
+            if (progress > 0f) Box(Modifier.padding(top = 8.dp).fillMaxWidth().height(3.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.3f))) {
+                Box(Modifier.fillMaxWidth(progress).fillMaxHeight().background(c.accent))
+            }
         }
     }
 }

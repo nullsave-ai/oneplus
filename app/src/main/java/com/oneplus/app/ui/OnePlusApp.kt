@@ -4,6 +4,7 @@ import android.app.ActivityManager
 import android.content.Context
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
@@ -28,6 +29,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.unit.IntOffset
@@ -42,6 +44,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.oneplus.app.R
+import com.oneplus.app.data.Library
 import com.oneplus.app.player.PlaySource
 import com.oneplus.app.ui.system.*
 import kotlin.math.abs
@@ -58,13 +61,28 @@ fun OnePlusApp(theme: ThemeController, vm: MainViewModel = viewModel()) {
     var tab by rememberSaveable { mutableIntStateOf(0) }
     var movieId by rememberSaveable { mutableIntStateOf(-1) }
     var showMovies by rememberSaveable { mutableStateOf(false) }
+    var showList by rememberSaveable { mutableStateOf(false) }
+    var showRecent by rememberSaveable { mutableStateOf(false) }
     var showMatches by rememberSaveable { mutableStateOf(false) }
+    var matchFocus by rememberSaveable { mutableIntStateOf(-1) } // the match tapped on Home: opens expanded on the matches page
+    var showTg by rememberSaveable { mutableStateOf(telegramDue(ctx)) } // decided once per launch
+    val library = remember { Library(ctx.getSharedPreferences("library", Context.MODE_PRIVATE)) }
     val matchesP = remember { Animatable(if (showMatches) 1f else 0f) } // opening progress of the matches page (also drives the depth effect)
     var playKind by rememberSaveable { mutableIntStateOf(0) } // 0 none · 1 movie · 2 channel
     var playId by rememberSaveable { mutableIntStateOf(-1) }
-    // The Channels page shows the channel picked during this session; a fresh launch (nothing picked yet) starts on the first channel.
+    var playStart by rememberSaveable { mutableLongStateOf(0L) } // movie: where to resume (ms)
+    // Channels: the page plays by itself. Within a session it goes back to the last channel; across launches only the
+    // last pressed group is kept (and only while it still exists, else the first group).
+    val chPrefs = remember { ctx.getSharedPreferences("channels", Context.MODE_PRIVATE) }
     var lastChannel by rememberSaveable { mutableIntStateOf(-1) }
-    val saveLast = { id: Int -> lastChannel = id }
+    var pickedGroup by rememberSaveable { mutableStateOf(chPrefs.getString("group", "").orEmpty()) }
+    val groups = remember(state.all.channels) { state.all.channels.map { it.group }.distinct() }
+    val group = if (pickedGroup in groups) pickedGroup else groups.firstOrNull().orEmpty()
+    val pickGroup = { g: String -> pickedGroup = g; chPrefs.edit().putString("group", g).apply() }
+    val saveLast = { id: Int ->
+        lastChannel = id
+        state.all.channels.firstOrNull { it.id == id }?.let { pickGroup(it.group) }
+    }
     var fullscreen by rememberSaveable { mutableStateOf(true) }
     var slot by remember { mutableStateOf<Rect?>(null) } // where the Channels page wants the player drawn when it is not fullscreen
     val detail = remember { DetailState(movieId >= 0) }
@@ -89,7 +107,7 @@ fun OnePlusApp(theme: ThemeController, vm: MainViewModel = viewModel()) {
     // Only an id is persisted; the URL is always resolved from the catalogue (never stored or passed around as free text).
     val source = remember(playKind, playId, state.all) {
         when (playKind) {
-            1 -> state.all.movies.firstOrNull { it.id == playId }?.let { PlaySource(it.url, it.title, live = false, cacheable = true) }
+            1 -> state.all.movies.firstOrNull { it.id == playId }?.let { PlaySource(it.url, it.title, live = false, cacheable = true, startMs = playStart) }
             2 -> state.all.channels.firstOrNull { it.id == playId }?.let { PlaySource(it.url, it.name, live = true) }
             else -> null
         }
@@ -97,10 +115,19 @@ fun OnePlusApp(theme: ThemeController, vm: MainViewModel = viewModel()) {
     LaunchedEffect(source, playKind, state.all) {
         if (playKind in 1..2 && source == null && state.all.movies.isNotEmpty()) playKind = 0
     }
-    val playFull = { kind: Int, id: Int -> if (kind == 2) saveLast(id); playKind = kind; playId = id; fullscreen = true }
+    val playFull = { kind: Int, id: Int ->
+        if (kind == 2) saveLast(id) else { library.watched(id); playStart = library.resumeMs(id) }
+        playKind = kind; playId = id; fullscreen = true
+    }
     val playInline = { id: Int -> saveLast(id); playKind = 2; playId = id; fullscreen = false } // from the Channels page: plays in place
-    // Leaving the Channels page stops an in-place player.
-    LaunchedEffect(tab) { if (tab != 1 && playKind == 2 && !fullscreen) playKind = 0 }
+    // Leaving the Channels page stops its in-place player; entering it starts one: the last channel if it is in the shown
+    // group, else that group's first channel.
+    LaunchedEffect(tab, state.all.channels) {
+        if (tab != 1) { if (playKind == 2 && !fullscreen) playKind = 0; return@LaunchedEffect }
+        if (playKind == 2) return@LaunchedEffect
+        val inGroup = state.all.channels.filter { it.group == group }
+        (inGroup.firstOrNull { it.id == lastChannel } ?: inGroup.firstOrNull())?.let { playInline(it.id) }
+    }
     // A stale id (e.g. the catalogue changed after process death) must never leave the page stuck in "depth" mode.
     LaunchedEffect(movieId, state.all.movies) {
         if (movieId >= 0 && state.all.movies.isNotEmpty() && state.all.movies.none { it.id == movieId }) {
@@ -127,18 +154,20 @@ fun OnePlusApp(theme: ThemeController, vm: MainViewModel = viewModel()) {
                     pages.SaveableStateProvider(t) {
                     when (t) {
                         0 -> HomeScreen(
-                            state, homeList, wide, portrait,
+                            state, homeList, wide, portrait, library,
                             onMovie = { id -> focus.clearFocus(); movieId = id },
                             onChannel = { id -> playFull(2, id) },
                             onAllMovies = { focus.clearFocus(); showMovies = true },
                             onAllChannels = { tab = 1 },
-                            onMatches = { focus.clearFocus(); showMatches = true },
+                            onMatches = { id -> focus.clearFocus(); matchFocus = id; showMatches = true },
+                            onAllList = { focus.clearFocus(); showList = true },
+                            onAllRecent = { focus.clearFocus(); showRecent = true },
                         )
                         1 -> ChannelsScreen(
-                            state.data.channels, state.query.isNotBlank(), if (playKind == 2) playId else -1, lastChannel,
-                            portrait, channelsList, { slot = it }, playInline,
+                            state.data.channels, state.query.isNotBlank(), if (playKind == 2) playId else -1, group,
+                            portrait, channelsList, { slot = it }, pickGroup, playInline,
                         )
-                        else -> SettingsScreen(fx, { fx = it }, theme, settingsScroll)
+                        else -> SettingsScreen(fx, { fx = it }, theme, settingsScroll, { openTelegram(ctx) }, library::clearHistory)
                     }
                     }
                 }
@@ -149,13 +178,15 @@ fun OnePlusApp(theme: ThemeController, vm: MainViewModel = viewModel()) {
                     modifier = Modifier.align(Alignment.TopCenter).widthIn(max = 880.dp).statusBarsPadding()
                         .padding(start = 16.dp, end = 16.dp, top = 12.dp),
                 )
-                LiquidNav(tab, { tab = it }, Modifier.align(Alignment.BottomCenter))
                 // Inside the receding layer so it also steps back when a details page opens over it.
-                MoviesHost(showMovies, state.all.movies, portrait, { id -> movieId = id }, { showMovies = false })
+                MoviesHost(showMovies, state.all.movies, portrait, { id -> movieId = id }, R.string.movies_title) { showMovies = false }
+                val byId = remember(state.all.movies) { state.all.movies.associateBy { it.id } }
+                MoviesHost(showList, library.list.mapNotNull { byId[it] }, portrait, { id -> movieId = id }, R.string.sec_list) { showList = false }
+                MoviesHost(showRecent, library.recent.mapNotNull { byId[it] }, portrait, { id -> movieId = id }, R.string.sec_recent) { showRecent = false }
             }
             // Overlays are declared in z-order: each one's back handler takes priority over the ones before it.
-            MatchesHost(showMatches, matchesP, state.all.matches, wide) { showMatches = false }
-            MovieDetailHost(detail, state.all.movies, movieId, { movieId = it }, { id -> playFull(1, id) }, { movieId = -1 })
+            MatchesHost(showMatches, matchesP, state.all.matches, wide, matchFocus) { showMatches = false }
+            MovieDetailHost(detail, state.all.movies, library, movieId, { movieId = it }, { id -> playFull(1, id) }, { movieId = -1 })
             // The app's single player. Fullscreen = the whole screen; otherwise it is laid exactly over the Channels page's slot,
             // so switching between the two never rebuilds it (the stream keeps playing).
             // An in-place player exists only while the Channels page (and its slot) is on screen. Without this guard, the frame in
@@ -166,16 +197,37 @@ fun OnePlusApp(theme: ThemeController, vm: MainViewModel = viewModel()) {
             val inPlace = wantsInPlace && r != null
             if (source != null && (!wantsInPlace || inPlace)) {
                 val box = if (r != null && inPlace) with(LocalDensity.current) {
-                    Modifier.offset { IntOffset(r.left.roundToInt(), r.top.roundToInt()) }.size(r.width.toDp(), r.height.toDp())
+                    // absoluteOffset: a plain offset is mirrored in RTL (that was the landscape "jump")
+                    Modifier.absoluteOffset { IntOffset(r.left.roundToInt(), r.top.roundToInt()) }.size(r.width.toDp(), r.height.toDp())
                 } else Modifier.fillMaxSize()
                 Box(box.then(if (inPlace) Modifier.clip(RoundedCornerShape(20.dp)) else Modifier)) {
                     PlayerScreen(
                         source, fullscreen = !inPlace,
                         onToggleFullscreen = if (playKind == 2 && r != null) ({ fullscreen = !fullscreen }) else null,
                         onClose = { playKind = 0; fullscreen = true },
+                        onProgress = if (playKind == 1) ({ pos, dur -> library.saveProgress(playId, pos, dur) }) else null,
                     )
                 }
             }
+            // The one nav island, drawn after the shared player so it floats above it (in-place, portrait or landscape).
+            // Whatever covers the whole screen (details, matches, "all" pages, fullscreen player) fades it out and takes its
+            // size to 0, so it never intercepts touches; it is never recreated, only hidden.
+            val covered = showMovies || showList || showRecent || (source != null && !wantsInPlace)
+            val navShow by animateFloatAsState(if (covered) 0f else 1f, tween(160), label = "nav")
+            val navAlpha = { navShow * (1f - maxOf(detail.depth, matchesP.value)) }
+            LiquidNav(
+                tab, { tab = it },
+                Modifier.align(Alignment.BottomCenter)
+                    .layout { m, c ->
+                        val pl = m.measure(c)
+                        if (navAlpha() < 0.02f) layout(0, 0) {} else layout(pl.width, pl.height) { pl.place(0, 0) }
+                    }
+                    .graphicsLayer { alpha = navAlpha() },
+            )
+            if (showTg) TelegramDialog(
+                onSkip = { showTg = false; telegramSkipped(ctx) },
+                onJoin = { showTg = false; telegramJoined(ctx); openTelegram(ctx) },
+            )
         }
     }
 }

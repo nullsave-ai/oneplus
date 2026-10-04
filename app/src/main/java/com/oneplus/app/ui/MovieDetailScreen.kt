@@ -10,6 +10,7 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
@@ -41,6 +42,7 @@ import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.oneplus.app.R
+import com.oneplus.app.data.Library
 import com.oneplus.app.data.Movie
 import com.oneplus.app.ui.system.*
 import java.util.Locale
@@ -70,7 +72,7 @@ class DetailState(isOpen: Boolean) {
  * the back button, or by pulling down while the content is at its top (release past 14% or flick to dismiss).
  */
 @Composable
-fun MovieDetailHost(state: DetailState, movies: List<Movie>, movieId: Int, onOpen: (Int) -> Unit, onPlay: (Int) -> Unit, onClosed: () -> Unit) {
+fun MovieDetailHost(state: DetailState, movies: List<Movie>, lib: Library, movieId: Int, onOpen: (Int) -> Unit, onPlay: (Int) -> Unit, onClosed: () -> Unit) {
     val scope = rememberCoroutineScope()
     val open = movieId >= 0
     val close: () -> Unit = { scope.launch { state.enter.animateTo(0f, DetailSpring); onClosed(); state.drag = 0f } }
@@ -126,18 +128,18 @@ fun MovieDetailHost(state: DetailState, movies: List<Movie>, movieId: Int, onOpe
             .pointerInput(Unit) { detectTapGestures { } } // the page underneath must not receive touches
     ) {
         Crossfade(movie, Modifier.fillMaxSize(), tween(220), label = "movie") { m ->
-            MovieDetail(m, movies, close, onOpen, onPlay)
+            MovieDetail(m, movies, lib, close, onOpen, onPlay)
         }
     }
 }
 
 @Composable
-private fun MovieDetail(m: Movie, all: List<Movie>, onBack: () -> Unit, onOpen: (Int) -> Unit, onPlay: (Int) -> Unit) {
+private fun MovieDetail(m: Movie, all: List<Movie>, lib: Library, onBack: () -> Unit, onOpen: (Int) -> Unit, onPlay: (Int) -> Unit) {
     val c = LocalColors.current
     val scroll = rememberScrollState()
     val heroH = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 330.dp
     val heroPx = with(LocalDensity.current) { heroH.toPx() }
-    var added by rememberSaveable(m.id) { mutableStateOf(false) }
+    val added = m.id in lib.list
     val similar = remember(m.id, all) {
         all.filter { it.id != m.id }.sortedByDescending { o -> o.genres.count { it in m.genres } }.take(6)
     }
@@ -152,10 +154,10 @@ private fun MovieDetail(m: Movie, all: List<Movie>, onBack: () -> Unit, onOpen: 
             Box(Modifier.fillMaxWidth(), Alignment.TopCenter) {
                 Column(Modifier.widthIn(max = 720.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(24.dp)) {
                     Row(Modifier.padding(horizontal = 20.dp), Arrangement.spacedBy(12.dp)) {
-                        OneButton(stringResource(R.string.movie_play), OneIcon.Play, { onPlay(m.id) }, Modifier.weight(1.4f))
+                        OneButton(stringResource(if (lib.resumeMs(m.id) > 0L) R.string.movie_resume else R.string.movie_play), OneIcon.Play, { onPlay(m.id) }, Modifier.weight(1.4f))
                         OneButton(
                             stringResource(R.string.movie_list), if (added) OneIcon.Check else OneIcon.Plus,
-                            { added = !added }, Modifier.weight(1f), primary = false,
+                            { lib.toggle(m.id) }, Modifier.weight(1f), primary = false,
                         )
                     }
                     Genres(m.genres)
@@ -205,14 +207,15 @@ private fun Hero(m: Movie, duration: String, height: Dp, scroll: ScrollState) {
         )
         Box(Modifier.matchParentSize().background(fade))
         Row(
-            Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(horizontal = 20.dp),
+            Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(start = 20.dp, end = 20.dp, bottom = 20.dp),
             Arrangement.spacedBy(16.dp), Alignment.Bottom,
         ) {
+            // No elevation shadow: the hero clips its children, so the shadow of a poster sitting on the bottom edge was cut
+            // off in a hard horizontal line right above the buttons. A hairline border gives the edge instead.
             Box(
                 Modifier.width(112.dp).aspectRatio(2f / 3f)
-                    .graphicsLayer { shadowElevation = 12.dp.toPx(); shape = RoundedCornerShape(16.dp) }
-                    // opaque base first: an elevation shadow shows through a translucent fill
                     .clip(RoundedCornerShape(16.dp)).background(c.bg).background(poster)
+                    .border(0.5.dp, c.border, RoundedCornerShape(16.dp))
             )
             Column(Modifier.weight(1f).padding(bottom = 4.dp), Arrangement.spacedBy(6.dp)) {
                 OneText(m.title, OneType.Title, c.text, maxLines = 2)

@@ -43,6 +43,18 @@
 
     <string name="day_today">اليوم</string>
     <string name="day_tomorrow">غدًا</string>
+    <string name="sec_resume">تابع المشاهدة</string>
+    <string name="sec_list">قائمتي</string>
+    <string name="sec_recent">شاهدتها مؤخرًا</string>
+    <string name="movie_resume">متابعة المشاهدة</string>
+    <string name="tg_title">انضم إلى قناتنا على تيليجرام</string>
+    <string name="tg_body">تابع أحدث الأفلام والتحديثات أولًا بأول</string>
+    <string name="tg_join">اشتراك</string>
+    <string name="tg_skip">تخطي</string>
+    <string name="settings_tg">قناتنا على تيليجرام</string>
+    <string name="settings_tg_sub">آخر الأخبار والتحديثات</string>
+    <string name="settings_clear">مسح سجل المشاهدة</string>
+    <string name="settings_clear_confirm">اضغط مرة أخرى للتأكيد</string>
     <string name="sec_all">الكل</string>
     <string name="unit_sec">ث</string>
 

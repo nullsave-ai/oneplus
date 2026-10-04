@@ -50,7 +50,7 @@ import java.io.File
 import java.util.Locale
 
 /** What to play. [live] = channel (no seeking); [cacheable] = a plain movie file that may use the disk cache. */
-data class PlaySource(val url: String, val title: String, val live: Boolean, val cacheable: Boolean = false)
+data class PlaySource(val url: String, val title: String, val live: Boolean, val cacheable: Boolean = false, val startMs: Long = 0L)
 
 /** One row in the quality / audio / subtitle menus. */
 class Opt(val label: String, val hint: String?, val selected: Boolean, val onSelect: () -> Unit)
@@ -139,7 +139,7 @@ class Playback(
             .build()
         params = player.trackSelectionParameters
         player.addListener(this)
-        player.setMediaSource(build())
+        player.setMediaSource(build(), if (live || source.startMs <= 0L) C.TIME_UNSET else source.startMs) // VOD resumes where it stopped
         player.prepare()
         player.playWhenReady = true
     }

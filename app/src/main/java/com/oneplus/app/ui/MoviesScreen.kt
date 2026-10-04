@@ -1,6 +1,7 @@
 package com.oneplus.app.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.annotation.StringRes
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.spring
@@ -44,7 +45,7 @@ private val SortLabels = listOf(R.string.sort_new, R.string.sort_rating, R.strin
  * Filters (genre, year, minimum rating, sort) are local to one visit and reset the next time it opens.
  */
 @Composable
-fun MoviesHost(open: Boolean, movies: List<Movie>, portrait: Boolean, onMovie: (Int) -> Unit, onClose: () -> Unit) {
+fun MoviesHost(open: Boolean, movies: List<Movie>, portrait: Boolean, onMovie: (Int) -> Unit, @StringRes title: Int, onClose: () -> Unit) {
     val p = remember { Animatable(if (open) 1f else 0f) }
     var visible by remember { mutableStateOf(open) }
     LaunchedEffect(open) {
@@ -60,11 +61,11 @@ fun MoviesHost(open: Boolean, movies: List<Movie>, portrait: Boolean, onMovie: (
             .graphicsLayer { alpha = p.value; translationY = (1f - p.value) * 36.dp.toPx() }
             .ambient()
             .pointerInput(Unit) { detectTapGestures { } } // the page underneath must not receive touches
-    ) { MoviesScreen(movies, portrait, onMovie, onClose) }
+    ) { MoviesScreen(movies, portrait, onMovie, title, onClose) }
 }
 
 @Composable
-private fun MoviesScreen(movies: List<Movie>, portrait: Boolean, onMovie: (Int) -> Unit, onClose: () -> Unit) {
+private fun MoviesScreen(movies: List<Movie>, portrait: Boolean, onMovie: (Int) -> Unit, @StringRes title: Int, onClose: () -> Unit) {
     val c = LocalColors.current
     var genre by rememberSaveable { mutableStateOf<String?>(null) }
     var year by rememberSaveable { mutableIntStateOf(0) }       // 0 = all
@@ -86,7 +87,7 @@ private fun MoviesScreen(movies: List<Movie>, portrait: Boolean, onMovie: (Int) 
             .filter { m -> (q.isBlank() || m.title.contains(q.trim(), ignoreCase = true)) && (genre == null || genre in m.genres) && (year == 0 || m.year == year) && (minRating == 0 || m.rating >= minRating) }
             .let { list ->
                 when (sort) {
-                    0 -> list.sortedByDescending { it.year }
+                    0 -> if (title == R.string.movies_title) list.sortedByDescending { it.year } else list // the shelves keep their own order (newest first)
                     1 -> list.sortedByDescending { it.rating }
                     else -> list.sortedBy { it.title }
                 }
@@ -115,7 +116,7 @@ private fun MoviesScreen(movies: List<Movie>, portrait: Boolean, onMovie: (Int) 
                     )
                     Box(Modifier.size(40.dp).press(closeSearch), Alignment.Center) { OneIconView(OneIcon.Close) { c.dim } }
                 } else Row(Modifier.padding(horizontal = 16.dp), Arrangement.spacedBy(8.dp), Alignment.CenterVertically) {
-                    OneText(stringResource(R.string.movies_title), OneType.Section, c.text, maxLines = 1)
+                    OneText(stringResource(title), OneType.Section, c.text, maxLines = 1)
                     OneDot(c.dim)
                     OneText("${shown.size}", OneType.Section, c.dim)
                 }

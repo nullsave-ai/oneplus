@@ -104,7 +104,10 @@ private tailrec fun Context.findActivity(): Activity? = when (this) {
  * Controls are floating dark glass and hide themselves 3.5s after the last interaction while playing.
  */
 @Composable
-fun PlayerScreen(source: PlaySource, fullscreen: Boolean, onToggleFullscreen: (() -> Unit)?, onClose: () -> Unit) {
+fun PlayerScreen(
+    source: PlaySource, fullscreen: Boolean, onToggleFullscreen: (() -> Unit)?, onClose: () -> Unit,
+    onProgress: ((Long, Long) -> Unit)? = null, // (position, duration) in ms, VOD only: every 10 s and when the player goes away
+) {
     val c = LocalColors.current
     val view = LocalView.current
     val ctx = LocalContext.current
@@ -153,7 +156,14 @@ fun PlayerScreen(source: PlaySource, fullscreen: Boolean, onToggleFullscreen: ((
         val cache = if (attempt == 0 && source.cacheable) withContext(Dispatchers.IO) { MediaCache.get(app) } else null
         playback = Playback(app, source, res, cache)
     }
-    DisposableEffect(playback) { val p = playback; onDispose { p?.release() } }
+    val report by rememberUpdatedState(onProgress)
+    DisposableEffect(playback) {
+        val p = playback
+        onDispose {
+            if (p != null && !p.live && p.durationMs > 0) report?.invoke(p.position, p.durationMs)
+            p?.release()
+        }
+    }
     LifecycleEventEffect(Lifecycle.Event.ON_STOP) { playback?.pause() }
     LifecycleEventEffect(Lifecycle.Event.ON_START) { playback?.resumeLive() } // live comes back at the live edge by itself
     var panelOpen by remember { mutableStateOf(false) }
@@ -162,6 +172,10 @@ fun PlayerScreen(source: PlaySource, fullscreen: Boolean, onToggleFullscreen: ((
     BackHandler(fullscreen || panelOpen) { if (panelOpen) panelOpen = false else if (onToggleFullscreen != null) onToggleFullscreen() else onClose() }
 
     val pb = playback
+    LaunchedEffect(pb) {
+        if (pb == null) return@LaunchedEffect
+        while (true) { delay(10_000); if (!pb.live && pb.durationMs > 0) report?.invoke(pb.position, pb.durationMs) }
+    }
     val failed = link == null || resolveFailed || pb?.failed == true
     var show by remember { mutableStateOf(true) }
     var tick by remember { mutableIntStateOf(0) } // bumped on every interaction to restart the auto-hide timer

@@ -80,20 +80,15 @@ fun Modifier.glass(level: Int, radius: Dp): Modifier {
 
 /** Press physics (no ripple): scale down, spring back. */
 @Composable
-fun Modifier.press(onClick: () -> Unit): Modifier = press(null, onClick)
-
-/** [press] with an extra long-press action (null = none). */
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-fun Modifier.press(onLong: (() -> Unit)?, onClick: () -> Unit): Modifier {
+fun Modifier.press(onClick: () -> Unit): Modifier {
     val src = remember { MutableInteractionSource() }
     val pressed by src.collectIsPressedAsState()
     val s by animateFloatAsState(if (pressed) 0.96f else 1f, spring(0.6f, 500f), label = "press")
-    return graphicsLayer { scaleX = s; scaleY = s }.combinedClickable(src, null, onLongClick = onLong, onClick = onClick)
+    return graphicsLayer { scaleX = s; scaleY = s }.clickable(src, null, onClick = onClick)
 }
 
 // ---- Icons (custom, 24dp grid, 1.75 stroke) ------------------------------
-enum class OneIcon { Home, Channels, Settings, Search, Close, Back, Next, Play, Pause, Plus, Check, Star, Replay, Forward, Sun, Volume, Mute, Fit, Fill, Expand, Shrink, Filter, Cc, Wave }
+enum class OneIcon { Home, Channels, Settings, Search, Close, Back, Next, Play, Pause, Plus, Check, Star, Replay, Forward, Sun, Volume, Mute, Fit, Fill, Expand, Shrink, Filter, Cc, Wave, Send }
 
 @Composable
 fun OneIconView(icon: OneIcon, modifier: Modifier = Modifier, tint: () -> Color) {
@@ -203,6 +198,10 @@ fun OneIconView(icon: OneIcon, modifier: Modifier = Modifier, tint: () -> Color)
             OneIcon.Play -> {
                 val tri = Path().apply { moveTo(8f * k, 5.5f * k); lineTo(19f * k, 12f * k); lineTo(8f * k, 18.5f * k); close() }
                 drawPath(tri, color); drawPath(tri, color, style = st) // fill + round join = softened corners
+            }
+            OneIcon.Send -> { // paper plane: outline + the fold line
+                drawPath(Path().apply { moveTo(21f * k, 3f * k); lineTo(14.5f * k, 21f * k); lineTo(10.8f * k, 13.2f * k); lineTo(3f * k, 9.5f * k); close() }, color, style = st)
+                line(21f, 3f, 10.8f, 13.2f)
             }
             OneIcon.Plus -> { line(12f, 5f, 12f, 19f); line(5f, 12f, 19f, 12f) }
             OneIcon.Check -> drawPath(Path().apply { moveTo(5f * k, 12.5f * k); lineTo(10f * k, 17.5f * k); lineTo(19f * k, 7f * k) }, color, style = st)

@@ -23,11 +23,12 @@ import com.oneplus.app.ui.system.*
 private const val SwatchesPerRow = 4
 
 @Composable
-fun SettingsScreen(effects: Boolean, onEffects: (Boolean) -> Unit, theme: ThemeController, scroll: ScrollState) {
+fun SettingsScreen(effects: Boolean, onEffects: (Boolean) -> Unit, theme: ThemeController, scroll: ScrollState, onTelegram: () -> Unit, onClearHistory: () -> Unit) {
     val c = LocalColors.current
     val dark = LocalDarkTheme.current
     val p = theme.prefs
     var open by rememberSaveable { mutableStateOf(false) }
+    var sure by remember { mutableStateOf(false) } // clearing the history asks for a second tap
     val bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 112.dp
     Box(Modifier.fillMaxSize(), Alignment.TopCenter) {
         Column(
@@ -35,7 +36,19 @@ fun SettingsScreen(effects: Boolean, onEffects: (Boolean) -> Unit, theme: ThemeC
                 .padding(start = 20.dp, end = 20.dp, top = toolbarInset(), bottom = bottom),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            OneText(stringResource(R.string.color_title), OneType.Section, c.text, Modifier.padding(start = 4.dp))
+            // channel card: icon + two lines + chevron, like a feed entry
+            Row(
+                Modifier.fillMaxWidth().press(onTelegram).glass(2, 22.dp).padding(16.dp),
+                Arrangement.spacedBy(14.dp), Alignment.CenterVertically,
+            ) {
+                Box(Modifier.size(44.dp).background(c.accentSoft, CircleShape), Alignment.Center) { OneIconView(OneIcon.Send) { c.accent } }
+                Column(Modifier.weight(1f), Arrangement.spacedBy(2.dp)) {
+                    OneText(stringResource(R.string.settings_tg), OneType.Section, c.text, maxLines = 1)
+                    OneText(stringResource(R.string.settings_tg_sub), OneType.Caption, c.dim, maxLines = 1)
+                }
+                OneIconView(OneIcon.Next) { c.dim }
+            }
+            OneText(stringResource(R.string.color_title), OneType.Section, c.text, Modifier.padding(start = 4.dp, top = 8.dp))
             Column(Modifier.fillMaxWidth().glass(2, 22.dp).animateContentSize()) {
                 SettingRow(stringResource(R.string.theme_mode)) {
                     OneSegmented(
@@ -64,6 +77,7 @@ fun SettingsScreen(effects: Boolean, onEffects: (Boolean) -> Unit, theme: ThemeC
                 SettingRow(stringResource(R.string.settings_effects)) { OneSwitch(effects, onEffects) }
             }
             Column(Modifier.fillMaxWidth().glass(2, 22.dp)) {
+                SettingRow(stringResource(if (sure) R.string.settings_clear_confirm else R.string.settings_clear), Modifier.press { if (sure) { onClearHistory(); sure = false } else sure = true }) {}
                 SettingRow(stringResource(R.string.settings_version)) { OneText("1.0", OneType.Body, c.dim) }
             }
         }

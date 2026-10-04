@@ -23,11 +23,11 @@ import com.oneplus.app.data.Match
 import com.oneplus.app.ui.system.*
 
 /**
- * Full-screen schedule, opened by a long press on the Home table. [p] (0..1) is owned by OnePlusApp: it also drives the
+ * Full-screen schedule, opened by a tap on the Home table. [p] (0..1) is owned by OnePlusApp: it also drives the
  * "page steps back" effect of the layer underneath, so opening feels like moving closer to the page rather than a popup.
  */
 @Composable
-fun MatchesHost(open: Boolean, p: Animatable<Float, AnimationVector1D>, matches: List<Match>, wide: Boolean, onClose: () -> Unit) {
+fun MatchesHost(open: Boolean, p: Animatable<Float, AnimationVector1D>, matches: List<Match>, wide: Boolean, focusId: Int, onClose: () -> Unit) {
     var height by remember { mutableFloatStateOf(1f) }
     val visible by remember { derivedStateOf { p.value > 0.001f } }
     LaunchedEffect(open) { p.animateTo(if (open) 1f else 0f, spring(1f, 340f)) }
@@ -46,11 +46,11 @@ fun MatchesHost(open: Boolean, p: Animatable<Float, AnimationVector1D>, matches:
             }
             .ambient()
             .pointerInput(Unit) { detectTapGestures { } } // the page underneath must not receive touches
-    ) { MatchesScreen(matches, wide, onClose) }
+    ) { MatchesScreen(matches, wide, focusId, onClose) }
 }
 
 @Composable
-private fun MatchesScreen(matches: List<Match>, wide: Boolean, onClose: () -> Unit) {
+private fun MatchesScreen(matches: List<Match>, wide: Boolean, focusId: Int, onClose: () -> Unit) {
     val c = LocalColors.current
     var comp by rememberSaveable { mutableStateOf<String?>(null) }
     val competitions = remember(matches) { matches.map { it.competition }.distinct() }
@@ -83,7 +83,7 @@ private fun MatchesScreen(matches: List<Match>, wide: Boolean, onClose: () -> Un
                     item(key = "h$day") {
                         OneText(stringResource(if (day == 0) R.string.day_today else R.string.day_tomorrow), OneType.Section, c.text, Modifier.padding(horizontal = 24.dp))
                     }
-                    item(key = "d$day") { MatchSchedule(list, wide, null) }
+                    item(key = "d$day") { MatchSchedule(list, wide, focusId) } // the tapped match arrives expanded
                 }
             }
         }
