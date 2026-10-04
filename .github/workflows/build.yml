@@ -52,10 +52,10 @@ jobs:
           tag_name: v1.0.${{ github.run_number }}
           name: "OnePlus v1.0.${{ github.run_number }} (Release)"
           body: |
-            ### تطبيق وان+ (OnePlus App - منظومة قنوات نيتفلاي Netfly TV):
-            * دمج منظومة قنوات نيتفلاي الكاملة (52 قناة) وعلى رأسها باقة beIN SPORTS HD الكاملة (1 إلى 9 و AFC و MAX)، وباقة SSC Sports (1 إلى 7)، و Alkass Sports.
-            * تحديث محرك NetflyEngine وتفعيل دعم تشغيل أنوية Go الأصلية (libgojni.so) في أنظمة أندرويد الحديثة عبر allowNativeHeapPointerTagging.
-            * حل روابط Turbo ومعالجة تشغيل القنوات عبر محرك البث.
+            ### تطبيق وان+ (OnePlus App - منظومة قنوات نيتفلاي Netfly TV المباشرة):
+            * دمج محرك نيتفلاي المباشر وتفعيل جسر API الديناميكي (Clientgosdk 3.0.4).
+            * تشغيل باقة beIN SPORTS HD بالكامل (1 إلى 9 + NEWS + XTRA) وباقات الكأس و MBC مع الحماية من الشاشة السوداء.
+            * حذف القنوات التالفة والملغاة بالكامل (SSC و AFC).
           files: dist/*.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -73,6 +73,10 @@ private fun SessionEffects(s: PlayerSession, parked: Boolean, onProgress: ((Long
         } else {
             link.url
         }
+        if (resolvedUrl.startsWith("turbo://", ignoreCase = true)) {
+            s.resolveFailed = true
+            return@LaunchedEffect
+        }
         val res = if (s.attempt == 0) Resolved(resolvedUrl, s.source.live, link.headers, link.drm) else Resolver.resolve(resolvedUrl)?.copy(headers = link.headers)
         if (res == null) { s.resolveFailed = true; return@LaunchedEffect }
         val cache = if (s.attempt == 0 && s.source.cacheable) withContext(Dispatchers.IO) { MediaCache.get(app) } else null
