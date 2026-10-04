@@ -18,7 +18,6 @@ import com.oneplus.app.ui.system.ThemeController
 import com.oneplus.app.ui.system.ThemeStore
 import com.oneplus.app.ui.system.TvScreen
 import com.oneplus.app.ui.system.resolveDark
-import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -27,9 +26,6 @@ class MainActivity : ComponentActivity() {
         @Suppress("DEPRECATION")
         if (Build.VERSION.SDK_INT < 26) window.setFormat(PixelFormat.RGBA_8888)
         enableEdgeToEdge() // edge-to-edge from the first frame; bar icon colors are then synced with the chosen theme below
-        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
-            com.oneplus.app.player.NetflyEngine.init(applicationContext)
-        }
         setContent {
             val theme = remember { ThemeController(ThemeStore(applicationContext)) }
             val dark = theme.prefs.mode.resolveDark() // System / Light / Dark

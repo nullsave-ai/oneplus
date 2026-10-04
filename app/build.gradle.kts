@@ -12,19 +12,13 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "1.0"
-        ndk {
-            abiFilters += listOf("arm64-v8a")
-        }
     }
     buildTypes {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
             signingConfig = signingConfigs.getByName("debug")
-            proguardFiles(
-                getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro"
-            )
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"))
         }
     }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }

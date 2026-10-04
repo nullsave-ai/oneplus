@@ -13,7 +13,7 @@ class Drm(val uuid: UUID, val licenseUrl: String?, val local: ByteArray?)
 /** A playable link: the media URL plus the request headers and DRM it was given. */
 class Link(val url: String, val headers: Map<String, String>, val drm: Drm?)
 
-private val Schemes = setOf("http", "https", "rtsp", "rtsps", "turbo")
+private val Schemes = setOf("http", "https", "rtsp", "rtsps")
 
 /** Catalogue data and pasted text are untrusted: only network schemes with a host get through (never file://, content://, data:...). */
 fun isAllowed(u: String): Boolean {

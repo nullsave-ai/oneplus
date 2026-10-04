@@ -4,7 +4,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.platform.LocalContext
 import com.oneplus.app.player.Link
 import com.oneplus.app.player.MediaCache
-import com.oneplus.app.player.NetflyEngine
 import com.oneplus.app.player.PlaySource
 import com.oneplus.app.player.Playback
 import com.oneplus.app.player.Resolved
@@ -68,16 +67,7 @@ private fun SessionEffects(s: PlayerSession, parked: Boolean, onProgress: ((Long
         if (link == null || !s.wanted) return@LaunchedEffect
         s.playback = null
         s.resolveFailed = false
-        val resolvedUrl = if (link.url.startsWith("turbo://", ignoreCase = true)) {
-            withContext(Dispatchers.IO) { NetflyEngine.resolvePlayUrl(app, link.url) }
-        } else {
-            link.url
-        }
-        if (resolvedUrl.startsWith("turbo://", ignoreCase = true)) {
-            s.resolveFailed = true
-            return@LaunchedEffect
-        }
-        val res = if (s.attempt == 0) Resolved(resolvedUrl, s.source.live, link.headers, link.drm) else Resolver.resolve(resolvedUrl)?.copy(headers = link.headers)
+        val res = if (s.attempt == 0) Resolved(link.url, s.source.live, link.headers, link.drm) else Resolver.resolve(link.url)?.copy(headers = link.headers)
         if (res == null) { s.resolveFailed = true; return@LaunchedEffect }
         val cache = if (s.attempt == 0 && s.source.cacheable) withContext(Dispatchers.IO) { MediaCache.get(app) } else null
         s.playback = Playback(app, s.source, res, cache)
