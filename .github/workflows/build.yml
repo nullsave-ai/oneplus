@@ -52,9 +52,10 @@ jobs:
           tag_name: v1.0.${{ github.run_number }}
           name: "OnePlus v1.0.${{ github.run_number }} (Release)"
           body: |
-            ### تطبيق وان+ (OnePlus App - تشغيل البث المباشر الفعلي للقنوات):
-            * تفعيل قنوات البث المباشر الحقيقية بجودة عالية Full HD وسرعة فائقة (باقة قنوات MBC كاملة، الجزيرة HD، العربية HD، سكاي نيوز، الشرق للأخبار، beIN SPORTS XTRA، الكويت الرياضية، عمان الرياضية، قنوات الأفلام، الشارقة، ودبي).
-            * إصلاح مسار المشغل ليعمل البث مباشرة عبر بروتوكول HLS دون أي تقطيع أو أخطاء.
+            ### تطبيق وان+ (OnePlus App - منظومة قنوات نيتفلاي Netfly TV):
+            * دمج منظومة قنوات نيتفلاي الكاملة (52 قناة) وعلى رأسها باقة beIN SPORTS HD الكاملة (1 إلى 9 و AFC و MAX)، وباقة SSC Sports (1 إلى 7)، و Alkass Sports.
+            * تحديث محرك NetflyEngine وتفعيل دعم تشغيل أنوية Go الأصلية (libgojni.so) في أنظمة أندرويد الحديثة عبر allowNativeHeapPointerTagging.
+            * حل روابط Turbo ومعالجة تشغيل القنوات عبر محرك البث.
           files: dist/*.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,10 +1,12 @@
 package com.oneplus.app.player
 
 import android.content.Context
+import android.provider.Settings
 import android.util.Log
 import clientgosdk.Clientgosdk
 import java.io.File
 import java.io.FileOutputStream
+import java.util.UUID
 
 /**
  * Bridge for the Netfly P2P / Turbo playback engine powered by libgojni.so.
@@ -41,20 +43,40 @@ object NetflyEngine {
 
             go.Seq.setContext(context.applicationContext)
 
-            val res = Clientgosdk.initSdk(
+            val androidId = try {
+                Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID)
+                    ?.takeIf { it.isNotBlank() } ?: UUID.randomUUID().toString().replace("-", "").take(16)
+            } catch (_: Throwable) {
+                UUID.randomUUID().toString().replace("-", "").take(16)
+            }
+
+            var res = Clientgosdk.initSdk(
                 filesDir,
                 cacheDir,
                 "",
                 "netfly_mobile/xyz.netfly",
-                "3.0.4"
+                androidId
             )
             Log.d(TAG, "Clientgosdk.initSdk result: $res")
 
-            runCatching {
-                Clientgosdk.setAppInfo("netfly_mobile/xyz.netfly", 1)
+            if (res == 4L) {
+                // Retry as per Netfly dg/a.java logic
+                res = Clientgosdk.initSdk(
+                    filesDir,
+                    cacheDir,
+                    "",
+                    "netfly_mobile/xyz.netfly",
+                    androidId
+                )
+                Log.d(TAG, "Clientgosdk.initSdk retry result: $res")
             }
 
-            isInitialized = (res == 0L || res == 4L)
+            if (res == 0L || res == 4L) {
+                runCatching {
+                    Clientgosdk.setAppInfo("netfly_mobile/xyz.netfly", 1)
+                }
+                isInitialized = true
+            }
             isInitialized
         } catch (e: Throwable) {
             Log.e(TAG, "Failed to initialize NetflyEngine: ${e.message}", e)
@@ -63,7 +85,7 @@ object NetflyEngine {
     }
 
     /**
-     * Resolves a stream URL. If it's a turbo:// URL, converts it via the local proxy.
+     * Resolves a stream URL. If it's a turbo:// URL, converts it via the local Netfly Go proxy.
      */
     fun resolvePlayUrl(context: Context, rawUrl: String): String {
         if (!rawUrl.startsWith("turbo://", ignoreCase = true)) {
@@ -73,17 +95,38 @@ object NetflyEngine {
             if (!isInitialized) {
                 init(context)
             }
-            val localUrl = Clientgosdk.getLivePlayUrlByTurboUrl(rawUrl)
+
+            // 1. Try resolving via getLivePlayUrlByTurboUrl
+            var localUrl = runCatching { Clientgosdk.getLivePlayUrlByTurboUrl(rawUrl) }.getOrNull()
             if (!localUrl.isNullOrBlank()) {
-                Log.d(TAG, "Resolved turbo URL to local stream: $localUrl")
-                localUrl
-            } else {
-                Log.w(TAG, "getLivePlayUrlByTurboUrl returned null or empty for: $rawUrl")
-                rawUrl
+                Log.d(TAG, "Resolved turbo URL via getLivePlayUrlByTurboUrl: $localUrl")
+                return localUrl
             }
+
+            // 2. Try resolving via channelId if present in URL
+            val channelId = extractChannelId(rawUrl)
+            if (channelId > 0) {
+                localUrl = runCatching { Clientgosdk.getLivePlayUrl(channelId) }.getOrNull()
+                if (!localUrl.isNullOrBlank()) {
+                    Log.d(TAG, "Resolved turbo URL via getLivePlayUrl($channelId): $localUrl")
+                    return localUrl
+                }
+            }
+
+            Log.w(TAG, "Netfly engine could not resolve: $rawUrl")
+            rawUrl
         } catch (e: Throwable) {
             Log.e(TAG, "Error resolving turbo URL: ${e.message}", e)
             rawUrl
         }
+    }
+
+    private fun extractChannelId(url: String): Long {
+        return runCatching {
+            val uri = android.net.Uri.parse(url)
+            uri.getQueryParameter("id")?.toLongOrNull()
+                ?: uri.lastPathSegment?.filter { it.isDigit() }?.toLongOrNull()
+                ?: 0L
+        }.getOrDefault(0L)
     }
 }
