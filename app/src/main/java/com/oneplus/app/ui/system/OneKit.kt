@@ -78,6 +78,22 @@ fun Modifier.glass(level: Int, radius: Dp): Modifier {
     return (if (fx) base.background(Sheen) else base).border(0.5.dp, c.border, shape)
 }
 
+/**
+ * The navigation island's glass. Same recipe as [glass], but the two knobs are the user's: [opacity] is how solid the tint is,
+ * [depth] (0..1) is how much the island lifts off the page (a soft shadow outside the pill + a stronger top highlight).
+ * With glass effects off only the opacity applies.
+ */
+@Composable
+fun Modifier.navGlass(opacity: Float, depth: Float, radius: Dp): Modifier {
+    val c = LocalColors.current
+    val fx = LocalGlassEffects.current
+    val shape = RoundedCornerShape(radius)
+    val sheen = remember(depth) { Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.04f + 0.20f * depth), Color.White.copy(alpha = 0f))) }
+    val base = (if (fx) drawBehind { softShadow(CornerRadius(radius.toPx()), depth * 3f) } else this)
+        .clip(shape).background(c.glass.copy(alpha = opacity))
+    return (if (fx) base.background(sheen) else base).border(0.5.dp, c.border, shape)
+}
+
 /** Press physics (no ripple): scale down, spring back. */
 @Composable
 fun Modifier.press(onClick: () -> Unit): Modifier {

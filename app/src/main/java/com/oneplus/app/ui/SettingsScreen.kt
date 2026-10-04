@@ -18,17 +18,23 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.oneplus.app.R
+import com.oneplus.app.data.Movie
 import com.oneplus.app.ui.system.*
+import java.util.Locale
+import kotlin.math.roundToInt
 
 private const val SwatchesPerRow = 4
 
 @Composable
-fun SettingsScreen(effects: Boolean, onEffects: (Boolean) -> Unit, theme: ThemeController, scroll: ScrollState, onTelegram: () -> Unit, onClearHistory: () -> Unit) {
+fun SettingsScreen(
+    effects: Boolean, onEffects: (Boolean) -> Unit, theme: ThemeController, scroll: ScrollState,
+    saved: List<Movie>, onMovie: (Int) -> Unit, onRemoveSaved: (Int) -> Unit,
+    onTelegram: () -> Unit, onClearHistory: () -> Unit,
+) {
     val c = LocalColors.current
     val dark = LocalDarkTheme.current
     val p = theme.prefs
     var open by rememberSaveable { mutableStateOf(false) }
-    var sure by remember { mutableStateOf(false) } // clearing the history asks for a second tap
     val bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 112.dp
     Box(Modifier.fillMaxSize(), Alignment.TopCenter) {
         Column(
@@ -75,9 +81,17 @@ fun SettingsScreen(effects: Boolean, onEffects: (Boolean) -> Unit, theme: ThemeC
                     if (p.accent == Accent.Custom) CustomPicker(theme)
                 }
                 SettingRow(stringResource(R.string.settings_effects)) { OneSwitch(effects, onEffects) }
+                SettingRow(stringResource(R.string.settings_hide_status)) {
+                    OneSwitch(p.hideStatusBar) { theme.update { copy(hideStatusBar = it) }; theme.save() }
+                }
             }
+            OneText(stringResource(R.string.nav_title), OneType.Section, c.text, Modifier.padding(start = 4.dp, top = 8.dp))
+            Column(Modifier.fillMaxWidth().glass(2, 22.dp).padding(horizontal = 8.dp, vertical = 8.dp), Arrangement.spacedBy(2.dp)) {
+                NavSliders(theme)
+            }
+            SavedFeed(saved, onMovie, onRemoveSaved)
             Column(Modifier.fillMaxWidth().glass(2, 22.dp)) {
-                SettingRow(stringResource(if (sure) R.string.settings_clear_confirm else R.string.settings_clear), Modifier.press { if (sure) { onClearHistory(); sure = false } else sure = true }) {}
+                SettingRow(stringResource(R.string.settings_clear), Modifier.press(onClearHistory)) {}
                 SettingRow(stringResource(R.string.settings_version)) { OneText("1.0", OneType.Body, c.dim) }
             }
         }
@@ -104,10 +118,39 @@ private fun CustomPicker(theme: ThemeController) {
     }
 }
 
+/** Opacity and depth of the navigation island's glass. It is visible right below, so the sliders preview live. */
 @Composable
-private fun PickerRow(label: Int, value: Float, onChange: (Float) -> Unit, onDone: () -> Unit, track: Brush) {
+private fun NavSliders(theme: ThemeController) {
+    val c = LocalColors.current
+    val p = theme.prefs
+    val track = remember(c) { Brush.horizontalGradient(listOf(c.dim.copy(alpha = 0.10f), c.accent.copy(alpha = 0.60f))) }
+    PickerRow(
+        R.string.nav_opacity, unlerp(NavGlass.OPACITY_MIN, NavGlass.OPACITY_MAX, p.navOpacity),
+        { f -> theme.update { copy(navOpacity = lerpF(NavGlass.OPACITY_MIN, NavGlass.OPACITY_MAX, f)) } }, theme::save, track,
+        percent(p.navOpacity),
+    )
+    PickerRow(
+        R.string.nav_depth, p.navDepth,
+        { f -> theme.update { copy(navDepth = f) } }, theme::save, track,
+        percent(p.navDepth),
+    )
+    val isDefault = p.navOpacity == NavGlass.OPACITY_DEFAULT && p.navDepth == NavGlass.DEPTH_DEFAULT
+    SettingRow(
+        stringResource(R.string.nav_reset),
+        Modifier.press { if (!isDefault) { theme.update { copy(navOpacity = NavGlass.OPACITY_DEFAULT, navDepth = NavGlass.DEPTH_DEFAULT) }; theme.save() } },
+    ) {}
+}
+
+private fun percent(v: Float) = String.format(Locale.US, "%d%%", (v * 100f).roundToInt())
+
+@Composable
+private fun PickerRow(label: Int, value: Float, onChange: (Float) -> Unit, onDone: () -> Unit, track: Brush, hint: String? = null) {
+    val c = LocalColors.current
     Column {
-        OneText(stringResource(label), OneType.Caption, LocalColors.current.dim, Modifier.padding(start = 4.dp, top = 6.dp))
+        Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp).padding(top = 6.dp), Arrangement.SpaceBetween) {
+            OneText(stringResource(label), OneType.Caption, c.dim)
+            if (hint != null) OneText(hint, OneType.Caption, c.dim)
+        }
         OneSlider(value, onChange, onDone, track)
     }
 }

@@ -24,7 +24,7 @@ class OneColors(
     val onAccent: Color,
 )
 
-/** Day / night. [System] follows the device; the other two are an explicit user choice. */
+/** Day / night. The app opens in [Dark]; [System] follows the device; the other two are an explicit user choice. */
 enum class ThemeMode(@StringRes val label: Int) {
     System(R.string.theme_system), Light(R.string.theme_light), Dark(R.string.theme_dark)
 }
@@ -53,6 +53,14 @@ object CustomRange {
     const val VAL_MIN = 0.45f
 }
 
+/** The navigation island's glass: tint opacity (how solid it is) and depth (soft shadow + highlight). Defaults are the ones the user can reset to. */
+object NavGlass {
+    const val OPACITY_MIN = 0.20f
+    const val OPACITY_MAX = 0.95f
+    const val OPACITY_DEFAULT = 0.55f
+    const val DEPTH_DEFAULT = 0.40f
+}
+
 fun hsv(h: Float, s: Float, v: Float): Color =
     Color(android.graphics.Color.HSVToColor(floatArrayOf(h.coerceIn(0f, 359.99f), s.coerceIn(0f, 1f), v.coerceIn(0f, 1f))))
 
@@ -62,11 +70,15 @@ val Spectrum: List<Color> = List(7) { hsv((it * 60f) % 360f, 1f, 1f) }
 /** Everything the user can change about appearance. Persisted by [ThemeStore]. */
 @Immutable
 data class ThemePrefs(
-    val mode: ThemeMode = ThemeMode.System,
+    val mode: ThemeMode = ThemeMode.Dark,
     val accent: Accent = Accent.Blue,
     val hue: Float = 335f,
     val sat: Float = 0.62f,
     val value: Float = 0.90f,
+    val navOpacity: Float = NavGlass.OPACITY_DEFAULT,
+    val navDepth: Float = NavGlass.DEPTH_DEFAULT,
+    /** Hide the phone's status (notification) bar; a swipe from the top edge still reveals it briefly. */
+    val hideStatusBar: Boolean = false,
 ) {
     fun colorOf(a: Accent, dark: Boolean): Color =
         if (a == Accent.Custom) fit(hsv(hue, sat, value), dark) else a.color(dark)
@@ -125,6 +137,9 @@ val LocalColors = compositionLocalOf { build(ThemePrefs(), true) }
 /** The resolved day/night state (after applying the user's [ThemeMode]). */
 val LocalDarkTheme = staticCompositionLocalOf { true }
 
+/** Whether the user chose to hide the phone's status bar (the fullscreen player must give it back in the same state). */
+val LocalHideStatusBar = staticCompositionLocalOf { false }
+
 /** Theme change = interpolation of every token (bg, ambient, glass tint, accent...) over 320ms. */
 @Composable
 fun OnePlusTheme(prefs: ThemePrefs, dark: Boolean, content: @Composable () -> Unit) {
@@ -139,6 +154,7 @@ fun OnePlusTheme(prefs: ThemePrefs, dark: Boolean, content: @Composable () -> Un
     CompositionLocalProvider(
         LocalColors provides cur,
         LocalDarkTheme provides dark,
+        LocalHideStatusBar provides prefs.hideStatusBar,
         LocalLayoutDirection provides LayoutDirection.Rtl,
         content = content,
     )
@@ -169,12 +185,16 @@ class ThemeStore(ctx: Context) {
             hue = p.getFloat("hue", d.hue).clean(0f, 360f, d.hue),
             sat = p.getFloat("sat", d.sat).clean(CustomRange.SAT_MIN, 1f, d.sat),
             value = p.getFloat("val", d.value).clean(CustomRange.VAL_MIN, 1f, d.value),
+            navOpacity = p.getFloat("nav_opacity", d.navOpacity).clean(NavGlass.OPACITY_MIN, NavGlass.OPACITY_MAX, d.navOpacity),
+            navDepth = p.getFloat("nav_depth", d.navDepth).clean(0f, 1f, d.navDepth),
+            hideStatusBar = p.getBoolean("hide_status", d.hideStatusBar),
         )
     }.getOrDefault(ThemePrefs())
 
     fun save(t: ThemePrefs) {
         p.edit().putString("mode", t.mode.name).putString("accent", t.accent.name)
-            .putFloat("hue", t.hue).putFloat("sat", t.sat).putFloat("val", t.value).apply()
+            .putFloat("hue", t.hue).putFloat("sat", t.sat).putFloat("val", t.value)
+            .putFloat("nav_opacity", t.navOpacity).putFloat("nav_depth", t.navDepth).putBoolean("hide_status", t.hideStatusBar).apply()
     }
 
     private fun Float.clean(lo: Float, hi: Float, fallback: Float) =

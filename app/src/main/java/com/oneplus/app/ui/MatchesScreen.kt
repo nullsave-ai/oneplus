@@ -57,7 +57,7 @@ private fun MatchesScreen(matches: List<Match>, wide: Boolean, focusId: Int, onC
     val days = remember(matches, comp) { matches.filter { comp == null || it.competition == comp }.groupBy { it.day }.toSortedMap() }
     val bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 24.dp
 
-    Column(Modifier.fillMaxSize().statusBarsPadding(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    Column(Modifier.fillMaxSize().padding(top = topInset()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         // header: back · title + count
         Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 12.dp), Arrangement.spacedBy(8.dp), Alignment.CenterVertically) {
             Box(Modifier.size(44.dp).press(onClose).glass(3, 22.dp), Alignment.Center) { OneIconView(OneIcon.Back) { c.text } }

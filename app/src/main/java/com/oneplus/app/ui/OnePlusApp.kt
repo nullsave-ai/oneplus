@@ -63,8 +63,7 @@ fun OnePlusApp(theme: ThemeController, vm: MainViewModel = viewModel()) {
     var tab by rememberSaveable { mutableIntStateOf(0) }
     var movieId by rememberSaveable { mutableIntStateOf(-1) }
     var showMovies by rememberSaveable { mutableStateOf(false) }
-    var showList by rememberSaveable { mutableStateOf(false) }
-    var showRecent by rememberSaveable { mutableStateOf(false) }
+    var showClear by rememberSaveable { mutableStateOf(false) } // the "clear watch history" confirmation
     var showMatches by rememberSaveable { mutableStateOf(false) }
     var matchFocus by rememberSaveable { mutableIntStateOf(-1) } // the match tapped on Home: opens expanded on the matches page
     var showTg by rememberSaveable { mutableStateOf(telegramDue(ctx)) } // decided once per launch
@@ -87,6 +86,7 @@ fun OnePlusApp(theme: ThemeController, vm: MainViewModel = viewModel()) {
     }
     var fullscreen by rememberSaveable { mutableStateOf(true) }
     var slot by remember { mutableStateOf<Rect?>(null) } // where the Channels page wants the player drawn when it is not fullscreen
+    val byId = remember(state.all.movies) { state.all.movies.associateBy { it.id } }
     val detail = remember { DetailState(movieId >= 0) }
     val homeList = rememberLazyListState()
     val channelsList = rememberLazyListState()
@@ -127,7 +127,7 @@ fun OnePlusApp(theme: ThemeController, vm: MainViewModel = viewModel()) {
     )
     LaunchedEffect(parked) { if (parked) { delay(5 * 60_000L); playKind = 0 } }
     val playFull = { kind: Int, id: Int ->
-        if (kind == 2) saveLast(id) else { library.watched(id); playStart = library.resumeMs(id) }
+        if (kind == 2) saveLast(id) else playStart = library.resumeMs(id)
         playKind = kind; playId = id; fullscreen = true
     }
     val playInline = { id: Int -> saveLast(id); playKind = 2; playId = id; fullscreen = false } // from the Channels page: plays in place
@@ -171,14 +171,16 @@ fun OnePlusApp(theme: ThemeController, vm: MainViewModel = viewModel()) {
                             onAllMovies = { focus.clearFocus(); showMovies = true },
                             onAllChannels = { tab = 1 },
                             onMatches = { id -> focus.clearFocus(); matchFocus = id; showMatches = true },
-                            onAllList = { focus.clearFocus(); showList = true },
-                            onAllRecent = { focus.clearFocus(); showRecent = true },
                         )
                         1 -> ChannelsScreen(
                             state.data.channels, state.query.isNotBlank(), if (playKind == 2) playId else -1, group,
                             portrait, channelsList, { slot = it }, pickGroup, playInline,
                         )
-                        else -> SettingsScreen(fx, { fx = it }, theme, settingsScroll, { openTelegram(ctx) }, library::clearHistory)
+                        else -> SettingsScreen(
+                            fx, { fx = it }, theme, settingsScroll,
+                            library.list.mapNotNull { byId[it] }, { id -> focus.clearFocus(); movieId = id }, library::toggle,
+                            { openTelegram(ctx) }, { showClear = true },
+                        )
                     }
                     }
                 }
@@ -186,14 +188,11 @@ fun OnePlusApp(theme: ThemeController, vm: MainViewModel = viewModel()) {
                     title = stringResource(if (tab == 0) R.string.app_name else Tabs[tab].second),
                     context = if (tab == 0 && nearChannels) stringResource(R.string.tab_channels) else null,
                     hasSearch = tab != 2, query = state.query, onQuery = vm::onQuery, progress = progress,
-                    modifier = Modifier.align(Alignment.TopCenter).widthIn(max = 880.dp).statusBarsPadding()
-                        .padding(start = 16.dp, end = 16.dp, top = 12.dp),
+                    modifier = Modifier.align(Alignment.TopCenter).widthIn(max = 880.dp)
+                        .padding(start = 16.dp, end = 16.dp, top = topInset() + 12.dp),
                 )
                 // Inside the receding layer so it also steps back when a details page opens over it.
-                MoviesHost(showMovies, state.all.movies, portrait, { id -> movieId = id }, R.string.movies_title) { showMovies = false }
-                val byId = remember(state.all.movies) { state.all.movies.associateBy { it.id } }
-                MoviesHost(showList, library.list.mapNotNull { byId[it] }, portrait, { id -> movieId = id }, R.string.sec_list) { showList = false }
-                MoviesHost(showRecent, library.recent.mapNotNull { byId[it] }, portrait, { id -> movieId = id }, R.string.sec_recent) { showRecent = false }
+                MoviesHost(showMovies, state.all.movies, portrait, { id -> movieId = id }) { showMovies = false }
             }
             // Overlays are declared in z-order: each one's back handler takes priority over the ones before it.
             MatchesHost(showMatches, matchesP, state.all.matches, wide, matchFocus) { showMatches = false }
@@ -226,11 +225,11 @@ fun OnePlusApp(theme: ThemeController, vm: MainViewModel = viewModel()) {
             // The one nav island, drawn after the shared player so it floats above it (in-place, portrait or landscape).
             // Whatever covers the whole screen (details, matches, "all" pages, fullscreen player) fades it out and takes its
             // size to 0, so it never intercepts touches; it is never recreated, only hidden.
-            val covered = showMovies || showList || showRecent || (session != null && !wantsInPlace)
+            val covered = showMovies || (session != null && !wantsInPlace)
             val navShow by animateFloatAsState(if (covered) 0f else 1f, tween(160), label = "nav")
             val navAlpha = { navShow * (1f - maxOf(detail.depth, matchesP.value)) }
             LiquidNav(
-                tab, { tab = it },
+                tab, { tab = it }, theme.prefs.navOpacity, theme.prefs.navDepth,
                 Modifier.align(Alignment.BottomCenter)
                     .layout { m, c ->
                         val pl = m.measure(c)
@@ -242,6 +241,10 @@ fun OnePlusApp(theme: ThemeController, vm: MainViewModel = viewModel()) {
                 onSkip = { showTg = false; telegramSkipped(ctx) },
                 onJoin = { showTg = false; telegramJoined(ctx); openTelegram(ctx) },
             )
+            if (showClear) ClearHistoryDialog(
+                onCancel = { showClear = false },
+                onConfirm = { showClear = false; library.clearHistory() },
+            )
         }
     }
 }
@@ -249,9 +252,12 @@ fun OnePlusApp(theme: ThemeController, vm: MainViewModel = viewModel()) {
 private val Tabs = listOf(OneIcon.Home to R.string.tab_home, OneIcon.Channels to R.string.tab_channels, OneIcon.Settings to R.string.tab_settings)
 private val NavSpring = spring<Float>(0.62f, 380f)
 
-/** Floating glass island. The indicator is a blob drawn per frame only while it moves (stretch/squash by velocity). */
+/**
+ * Floating glass island. The indicator is a blob drawn per frame only while it moves (stretch/squash by velocity).
+ * [opacity] and [depth] are the user's glass settings (see [navGlass]).
+ */
 @Composable
-fun LiquidNav(selected: Int, onSelect: (Int) -> Unit, modifier: Modifier = Modifier) {
+fun LiquidNav(selected: Int, onSelect: (Int) -> Unit, opacity: Float, depth: Float, modifier: Modifier = Modifier) {
     val c = LocalColors.current
     val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
     val pos = remember { Animatable(selected.toFloat()) }
@@ -267,7 +273,7 @@ fun LiquidNav(selected: Int, onSelect: (Int) -> Unit, modifier: Modifier = Modif
     }
     Box(
         modifier.navigationBarsPadding().padding(start = 16.dp, end = 16.dp, bottom = 16.dp)
-            .widthIn(max = 400.dp).fillMaxWidth().height(64.dp).glass(3, 28.dp)
+            .widthIn(max = 400.dp).fillMaxWidth().height(64.dp).navGlass(opacity, depth, 28.dp)
             .onSizeChanged { widthPx = it.width.toFloat() }
             .pointerInput(selected, rtl) {
                 detectHorizontalDragGestures(onDragEnd = { settle() }, onDragCancel = { settle() }) { change, dx ->

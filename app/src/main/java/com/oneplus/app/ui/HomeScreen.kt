@@ -39,15 +39,13 @@ import kotlin.math.roundToInt
 fun HomeScreen(
     state: UiState, list: LazyListState, wide: Boolean, portrait: Boolean,
     lib: Library, onMovie: (Int) -> Unit, onChannel: (Int) -> Unit, onAllMovies: () -> Unit, onAllChannels: () -> Unit,
-    onMatches: (Int) -> Unit, onAllList: () -> Unit, onAllRecent: () -> Unit,
+    onMatches: (Int) -> Unit,
 ) {
     val bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 112.dp
     val d = state.data
-    // the viewer's shelves, limited to what the search matches; "continue" = stopped part-way, "recent" = the rest of the history
+    // "continue watching" = movies stopped part-way (newest first), limited to what the search matches
     val byId = d.movies.associateBy { it.id }
-    val resume = lib.recent.filter { it in lib.progress }.mapNotNull { byId[it] }
-    val saved = lib.list.mapNotNull { byId[it] }
-    val recent = lib.recent.filter { it !in lib.progress }.mapNotNull { byId[it] }
+    val resume = lib.progress.keys.mapNotNull { byId[it] }
     Box(Modifier.fillMaxSize(), Alignment.TopCenter) {
         LazyColumn(
             Modifier.widthIn(max = 880.dp).fillMaxSize(), list,
@@ -65,8 +63,6 @@ fun HomeScreen(
                     }
                 }
             }
-            if (saved.isNotEmpty()) item(key = "list") { Block(R.string.sec_list, onAllList) { MovieRow(saved.take(10), wide, lib, onMovie) } }
-            if (recent.isNotEmpty()) item(key = "recent") { Block(R.string.sec_recent, onAllRecent) { MovieRow(recent.take(10), wide, lib, onMovie) } }
             if (d.channels.isNotEmpty()) item(key = "channels") { Block(R.string.sec_channels, onAllChannels) { ChannelSection(d.channels, portrait, onChannel) } }
         }
     }
@@ -88,14 +84,6 @@ private fun Block(@StringRes title: Int, onAll: (() -> Unit)? = null, content: @
             }
         }
         content()
-    }
-}
-
-/** A shelf of posters; those stopped part-way carry a progress bar. */
-@Composable
-private fun MovieRow(movies: List<Movie>, wide: Boolean, lib: Library, onMovie: (Int) -> Unit) {
-    LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        items(movies, key = { it.id }) { m -> Poster(m, Modifier.width(if (wide) 156.dp else 124.dp), lib.fraction(m.id)) { onMovie(m.id) } }
     }
 }
 
@@ -183,7 +171,7 @@ private fun Team(name: String) {
 }
 
 @Composable
-internal fun Poster(movie: Movie, modifier: Modifier, progress: Float = 0f, onClick: () -> Unit) {
+internal fun Poster(movie: Movie, modifier: Modifier, onClick: () -> Unit) {
     val c = LocalColors.current
     val fill = remember(c) { Brush.linearGradient(listOf(c.accent.copy(alpha = 0.40f), c.dim.copy(alpha = 0.22f))) }
     Box(modifier.aspectRatio(2f / 3f).press(onClick).clip(RoundedCornerShape(16.dp)).background(fill)) {
@@ -193,9 +181,6 @@ internal fun Poster(movie: Movie, modifier: Modifier, progress: Float = 0f, onCl
         ) {
             OneText(movie.title, OneType.Body, Color.White, maxLines = 1)
             OneText("${movie.year}", OneType.Caption, Color.White.copy(alpha = 0.7f))
-            if (progress > 0f) Box(Modifier.padding(top = 8.dp).fillMaxWidth().height(3.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.3f))) {
-                Box(Modifier.fillMaxWidth(progress).fillMaxHeight().background(c.accent))
-            }
         }
     }
 }

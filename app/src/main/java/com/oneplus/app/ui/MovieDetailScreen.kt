@@ -137,7 +137,7 @@ fun MovieDetailHost(state: DetailState, movies: List<Movie>, lib: Library, movie
 private fun MovieDetail(m: Movie, all: List<Movie>, lib: Library, onBack: () -> Unit, onOpen: (Int) -> Unit, onPlay: (Int) -> Unit) {
     val c = LocalColors.current
     val scroll = rememberScrollState()
-    val heroH = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 330.dp
+    val heroH = topInset() + 330.dp
     val heroPx = with(LocalDensity.current) { heroH.toPx() }
     val added = m.id in lib.list
     val similar = remember(m.id, all) {
@@ -238,7 +238,7 @@ private fun Hero(m: Movie, duration: String, height: Dp, scroll: ScrollState) {
 private fun TopBar(title: String, scroll: ScrollState, heroPx: Float, onBack: () -> Unit, modifier: Modifier) {
     val c = LocalColors.current
     Row(
-        modifier.fillMaxWidth().statusBarsPadding().padding(start = 16.dp, end = 16.dp, top = 12.dp),
+        modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = topInset() + 12.dp),
         Arrangement.spacedBy(8.dp), Alignment.CenterVertically,
     ) {
         Box(Modifier.size(44.dp).press(onBack).glass(3, 22.dp), Alignment.Center) { OneIconView(OneIcon.Back) { c.text } }

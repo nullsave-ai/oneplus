@@ -9,6 +9,9 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import com.oneplus.app.ui.OnePlusApp
 import com.oneplus.app.ui.system.OnePlusTheme
 import com.oneplus.app.ui.system.ThemeController
@@ -30,6 +33,14 @@ class MainActivity : ComponentActivity() {
                 val clear = android.graphics.Color.TRANSPARENT
                 val style = if (dark) SystemBarStyle.dark(clear) else SystemBarStyle.light(clear, clear)
                 enableEdgeToEdge(statusBarStyle = style, navigationBarStyle = style)
+                onDispose { }
+            }
+            val hideStatus = theme.prefs.hideStatusBar
+            DisposableEffect(hideStatus) {
+                // The user's choice for the phone's status (notification) bar; a swipe from the top edge still reveals it for a moment.
+                val bars = WindowCompat.getInsetsController(window, window.decorView)
+                bars.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                if (hideStatus) bars.hide(WindowInsetsCompat.Type.statusBars()) else bars.show(WindowInsetsCompat.Type.statusBars())
                 onDispose { }
             }
             OnePlusTheme(theme.prefs, dark) { OnePlusApp(theme) }

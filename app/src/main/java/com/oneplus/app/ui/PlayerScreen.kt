@@ -117,6 +117,7 @@ fun PlayerScreen(
             window?.let { w -> val lp = w.attributes; lp.screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE; w.attributes = lp }
         }
     }
+    val keepStatusHidden by rememberUpdatedState(LocalHideStatusBar.current)
     // Immersive landscape only in fullscreen; restored when leaving it (or the player).
     DisposableEffect(activity, fullscreen) {
         if (!fullscreen) return@DisposableEffect onDispose { }
@@ -126,7 +127,9 @@ fun PlayerScreen(
         controller?.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         controller?.hide(WindowInsetsCompat.Type.systemBars())
         onDispose {
-            controller?.show(WindowInsetsCompat.Type.systemBars())
+            // Give the bars back the way the user set them: the status bar stays hidden if that is their choice.
+            controller?.show(WindowInsetsCompat.Type.navigationBars())
+            if (!keepStatusHidden) controller?.show(WindowInsetsCompat.Type.statusBars())
             activity?.requestedOrientation = oldOrientation
         }
     }
