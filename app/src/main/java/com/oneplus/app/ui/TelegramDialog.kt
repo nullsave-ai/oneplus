@@ -8,12 +8,15 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
@@ -51,18 +54,23 @@ fun telegramSkipped(ctx: Context) {
 
 fun telegramJoined(ctx: Context) { prefs(ctx).edit().putBoolean("joined", true).apply() }
 
-/** App-style dialog: dimmed scrim, one glass card that springs in. Back or a tap outside = skip. */
+/**
+ * App-style dialog: dimmed scrim, one card that springs in. Back or a tap outside = skip.
+ * The card is a SOLID surface (not glass): a dialog is read on top of whatever page happens to be behind it, and any
+ * translucency lets that page show through the text.
+ */
 @Composable
 fun TelegramDialog(onSkip: () -> Unit, onJoin: () -> Unit) {
     val c = LocalColors.current
     val p = remember { Animatable(0f) }
     val scope = rememberCoroutineScope()
+    val card = RoundedCornerShape(28.dp)
     LaunchedEffect(Unit) { p.animateTo(1f, spring(0.8f, 380f)) }
     val leave: (() -> Unit) -> Unit = { then -> scope.launch { p.animateTo(0f, tween(160)); then() }; Unit }
     BackHandler { leave(onSkip) }
 
     Box(
-        Modifier.fillMaxSize().graphicsLayer { alpha = p.value }.background(Color.Black.copy(alpha = 0.5f))
+        Modifier.fillMaxSize().graphicsLayer { alpha = p.value }.background(Color.Black.copy(alpha = 0.62f))
             .pointerInput(Unit) { detectTapGestures { leave(onSkip) } },
         Alignment.Center,
     ) {
@@ -70,7 +78,7 @@ fun TelegramDialog(onSkip: () -> Unit, onJoin: () -> Unit) {
             Modifier.padding(24.dp).widthIn(max = 360.dp).fillMaxWidth()
                 .graphicsLayer { val s = 0.9f + 0.1f * p.value; scaleX = s; scaleY = s }
                 .pointerInput(Unit) { detectTapGestures { } } // taps on the card itself must not dismiss it
-                .glass(3, 28.dp).padding(24.dp),
+                .clip(card).background(c.glass).border(0.5.dp, c.border, card).padding(24.dp),
             Arrangement.spacedBy(12.dp), Alignment.CenterHorizontally,
         ) {
             Box(Modifier.size(64.dp).background(c.accentSoft, CircleShape), Alignment.Center) {

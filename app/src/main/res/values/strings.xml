@@ -44,6 +44,7 @@
     <string name="day_today">اليوم</string>
     <string name="day_tomorrow">غدًا</string>
     <string name="sec_resume">تابع المشاهدة</string>
+    <string name="resume_left">باقي %1$d د</string>
     <string name="sec_list">قائمتي</string>
     <string name="sec_recent">شاهدتها مؤخرًا</string>
     <string name="movie_resume">متابعة المشاهدة</string>

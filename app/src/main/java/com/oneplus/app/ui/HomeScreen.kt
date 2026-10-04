@@ -33,6 +33,7 @@ import com.oneplus.app.data.Library
 import com.oneplus.app.data.Match
 import com.oneplus.app.data.Movie
 import com.oneplus.app.ui.system.*
+import kotlin.math.roundToInt
 
 @Composable
 fun HomeScreen(
@@ -55,7 +56,7 @@ fun HomeScreen(
         ) {
             // a teaser: a tap on any row opens the full matches page (the details are there)
             if (d.matches.isNotEmpty()) item(key = "matches") { Block(R.string.sec_matches, null) { MatchSchedule(d.matches.take(4), wide, onOpen = onMatches) } }
-            if (resume.isNotEmpty()) item(key = "resume") { Block(R.string.sec_resume, null) { MovieRow(resume, wide, lib, onMovie) } }
+            if (resume.isNotEmpty()) item(key = "resume") { Block(R.string.sec_resume, null) { ResumeRow(resume, wide, lib, onMovie) } }
             if (d.movies.isNotEmpty()) item(key = "movies") {
                 Block(R.string.sec_movies, onAllMovies) {
                     LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -95,6 +96,41 @@ private fun Block(@StringRes title: Int, onAll: (() -> Unit)? = null, content: @
 private fun MovieRow(movies: List<Movie>, wide: Boolean, lib: Library, onMovie: (Int) -> Unit) {
     LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         items(movies, key = { it.id }) { m -> Poster(m, Modifier.width(if (wide) 156.dp else 124.dp), lib.fraction(m.id)) { onMovie(m.id) } }
+    }
+}
+
+/**
+ * "Continue watching": the poster turned on its side. A card is the poster's own box flipped (width = the poster's height) and
+ * then 10 % smaller, so it reads as a landscape still rather than a cover, and about two of them fit on a phone with the third
+ * peeking in. It shows the movie's second (landscape) artwork.
+ */
+@Composable
+private fun ResumeRow(movies: List<Movie>, wide: Boolean, lib: Library, onMovie: (Int) -> Unit) {
+    LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        items(movies, key = { it.id }) { m -> ResumeCard(m, lib.fraction(m.id), Modifier.width(if (wide) 210.dp else 168.dp)) { onMovie(m.id) } }
+    }
+}
+
+@Composable
+internal fun ResumeCard(movie: Movie, progress: Float, modifier: Modifier, onClick: () -> Unit) {
+    val c = LocalColors.current
+    // stand-in until the artwork arrives (a bit stronger than the poster's, so the wide card still has presence)
+    val fill = remember(c) { Brush.linearGradient(listOf(c.accent.copy(alpha = 0.50f), c.dim.copy(alpha = 0.18f))) }
+    val shade = remember { Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0f), Color.Black.copy(alpha = 0.78f))) }
+    val left = (movie.durationMin * (1f - progress)).roundToInt().coerceAtLeast(1)
+    Box(modifier.aspectRatio(3f / 2f).press(onClick).clip(RoundedCornerShape(18.dp)).background(fill)) {
+        if (movie.backdrop.isNotBlank()) RemoteImage(movie.backdrop, Modifier.matchParentSize())
+        Box(Modifier.matchParentSize().background(shade))
+        Box(Modifier.align(Alignment.TopStart).padding(10.dp).size(30.dp).vGlass(15.dp), Alignment.Center) {
+            OneIconView(OneIcon.Play, Modifier.size(16.dp)) { Color.White }
+        }
+        Column(Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 12.dp)) {
+            OneText(movie.title, OneType.Body, Color.White, maxLines = 1)
+            OneText(stringResource(R.string.resume_left, left), OneType.Caption, Color.White.copy(alpha = 0.75f), maxLines = 1)
+            Box(Modifier.padding(top = 8.dp).fillMaxWidth().height(3.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.3f))) {
+                Box(Modifier.fillMaxWidth(progress.coerceIn(0f, 1f)).fillMaxHeight().background(c.accent))
+            }
+        }
     }
 }
 

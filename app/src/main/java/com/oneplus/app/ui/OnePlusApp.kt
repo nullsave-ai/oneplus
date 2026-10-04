@@ -20,6 +20,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
+import androidx.compose.ui.AbsoluteAlignment
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
@@ -48,6 +49,7 @@ import com.oneplus.app.data.Library
 import com.oneplus.app.player.PlaySource
 import com.oneplus.app.ui.system.*
 import kotlin.math.abs
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
@@ -115,15 +117,24 @@ fun OnePlusApp(theme: ThemeController, vm: MainViewModel = viewModel()) {
     LaunchedEffect(source, playKind, state.all) {
         if (playKind in 1..2 && source == null && state.all.movies.isNotEmpty()) playKind = 0
     }
+    // The Channels page's in-place player is "parked" (paused, hidden, but still loaded) while another tab is shown, so coming
+    // back to the page does not rebuild it. A player left parked for a long time is let go.
+    val wantsInPlace = playKind == 2 && !fullscreen
+    val parked = wantsInPlace && tab != 1
+    val progressId = playId // by value: the final report of a movie that is replaced must still go to that movie
+    val session = rememberPlayerSession(
+        source, parked, if (playKind == 1) ({ pos, dur -> library.saveProgress(progressId, pos, dur) }) else null,
+    )
+    LaunchedEffect(parked) { if (parked) { delay(5 * 60_000L); playKind = 0 } }
     val playFull = { kind: Int, id: Int ->
         if (kind == 2) saveLast(id) else { library.watched(id); playStart = library.resumeMs(id) }
         playKind = kind; playId = id; fullscreen = true
     }
     val playInline = { id: Int -> saveLast(id); playKind = 2; playId = id; fullscreen = false } // from the Channels page: plays in place
-    // Leaving the Channels page stops its in-place player; entering it starts one: the last channel if it is in the shown
-    // group, else that group's first channel.
+    // Entering the Channels page starts its in-place player (the last channel if it is in the shown group, else that group's
+    // first channel) unless one is already there: leaving the page only parks it (see above), it is not stopped.
     LaunchedEffect(tab, state.all.channels) {
-        if (tab != 1) { if (playKind == 2 && !fullscreen) playKind = 0; return@LaunchedEffect }
+        if (tab != 1) return@LaunchedEffect
         if (playKind == 2) return@LaunchedEffect
         val inGroup = state.all.channels.filter { it.group == group }
         (inGroup.firstOrNull { it.id == lastChannel } ?: inGroup.firstOrNull())?.let { playInline(it.id) }
@@ -188,31 +199,34 @@ fun OnePlusApp(theme: ThemeController, vm: MainViewModel = viewModel()) {
             MatchesHost(showMatches, matchesP, state.all.matches, wide, matchFocus) { showMatches = false }
             MovieDetailHost(detail, state.all.movies, library, movieId, { movieId = it }, { id -> playFull(1, id) }, { movieId = -1 })
             // The app's single player. Fullscreen = the whole screen; otherwise it is laid exactly over the Channels page's slot,
-            // so switching between the two never rebuilds it (the stream keeps playing).
-            // An in-place player exists only while the Channels page (and its slot) is on screen. Without this guard, the frame in
+            // so switching between the two never rebuilds it (the stream keeps playing). Its engine lives in [session], so a
+            // parked player (another tab is shown) keeps its engine and simply is not drawn.
+            // An in-place player is drawn only while the Channels page (and its slot) is on screen. Without this guard, the frame in
             // which the tab had already changed (or the slot was not measured yet) drew it as FULLSCREEN, which forces landscape
             // for a moment: that was the page "flipping" when entering or leaving Channels.
-            val wantsInPlace = playKind == 2 && !fullscreen
             val r = if (tab == 1) slot else null
             val inPlace = wantsInPlace && r != null
-            if (source != null && (!wantsInPlace || inPlace)) {
+            if (session != null && (!wantsInPlace || inPlace)) {
                 val box = if (r != null && inPlace) with(LocalDensity.current) {
-                    // absoluteOffset: a plain offset is mirrored in RTL (that was the landscape "jump")
-                    Modifier.absoluteOffset { IntOffset(r.left.roundToInt(), r.top.roundToInt()) }.size(r.width.toDp(), r.height.toDp())
+                    // The slot's rect is in absolute (physical) root coordinates. Both the alignment and the offset must be absolute
+                    // too: in RTL a plain TopStart puts the box at the RIGHT edge first and the offset is then added on top of that,
+                    // which is what pushed the player to the right of its slot (portrait: a few dp, landscape: out of place entirely).
+                    Modifier.align(AbsoluteAlignment.TopLeft)
+                        .absoluteOffset { IntOffset(r.left.roundToInt(), r.top.roundToInt()) }
+                        .size(r.width.toDp(), r.height.toDp())
                 } else Modifier.fillMaxSize()
                 Box(box.then(if (inPlace) Modifier.clip(RoundedCornerShape(20.dp)) else Modifier)) {
                     PlayerScreen(
-                        source, fullscreen = !inPlace,
+                        session, fullscreen = !inPlace,
                         onToggleFullscreen = if (playKind == 2 && r != null) ({ fullscreen = !fullscreen }) else null,
                         onClose = { playKind = 0; fullscreen = true },
-                        onProgress = if (playKind == 1) ({ pos, dur -> library.saveProgress(playId, pos, dur) }) else null,
                     )
                 }
             }
             // The one nav island, drawn after the shared player so it floats above it (in-place, portrait or landscape).
             // Whatever covers the whole screen (details, matches, "all" pages, fullscreen player) fades it out and takes its
             // size to 0, so it never intercepts touches; it is never recreated, only hidden.
-            val covered = showMovies || showList || showRecent || (source != null && !wantsInPlace)
+            val covered = showMovies || showList || showRecent || (session != null && !wantsInPlace)
             val navShow by animateFloatAsState(if (covered) 0f else 1f, tween(160), label = "nav")
             val navAlpha = { navShow * (1f - maxOf(detail.depth, matchesP.value)) }
             LiquidNav(

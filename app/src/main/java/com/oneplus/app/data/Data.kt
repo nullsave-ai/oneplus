@@ -7,7 +7,9 @@ data class Match(val id: Int, val time: String, val live: Boolean, val status: S
                  val away: String, val competition: String, val channel: String, val day: Int = 0) // day: 0 today · 1 tomorrow
 data class Movie(val id: Int, val title: String, val year: Int, val rating: Float, val durationMin: Int,
                  val genres: List<String>, val synopsis: String, val director: String, val cast: List<String>,
-                 val url: String)
+                 val url: String,
+                 /** The second, landscape artwork (16:9 backdrop) used by "continue watching". Empty = the gradient placeholder. */
+                 val backdrop: String = "")
 data class Channel(val id: Int, val name: String, val url: String, val group: String, val number: Int)
 data class HomeData(val matches: List<Match>, val movies: List<Movie>, val channels: List<Channel>)
 

@@ -69,16 +69,9 @@ import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import com.oneplus.app.R
-import com.oneplus.app.player.MediaCache
-import com.oneplus.app.player.PlaySource
 import com.oneplus.app.player.Playback
-import com.oneplus.app.player.Resolved
-import com.oneplus.app.player.Resolver
-import com.oneplus.app.player.parseLink
 import com.oneplus.app.ui.system.*
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.withContext
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
@@ -105,9 +98,9 @@ private tailrec fun Context.findActivity(): Activity? = when (this) {
  */
 @Composable
 fun PlayerScreen(
-    source: PlaySource, fullscreen: Boolean, onToggleFullscreen: (() -> Unit)?, onClose: () -> Unit,
-    onProgress: ((Long, Long) -> Unit)? = null, // (position, duration) in ms, VOD only: every 10 s and when the player goes away
+    session: PlayerSession, fullscreen: Boolean, onToggleFullscreen: (() -> Unit)?, onClose: () -> Unit,
 ) {
+    val source = session.source
     val c = LocalColors.current
     val view = LocalView.current
     val ctx = LocalContext.current
@@ -140,30 +133,10 @@ fun PlayerScreen(
     // Insets only matter when the player really covers the screen; in place it sits below the status bar already.
     val safe: Modifier = if (fullscreen) Modifier.windowInsetsPadding(WindowInsets.safeDrawing) else Modifier
 
-    // Every link is played as is (headers / DRM from its |options|); only an X post needs one lookup first.
-    // The player is created off the first frame and released as soon as the screen leaves.
-    val link = remember(source.url) { parseLink(source.url) }
-    var attempt by remember(source) { mutableIntStateOf(if (link != null && Resolver.needsExtractor(link.url)) 1 else 0) } // 0 direct · 1 X lookup
-    var retryKey by remember { mutableIntStateOf(0) }
-    var resolveFailed by remember(source) { mutableStateOf(false) }
-    var playback by remember { mutableStateOf<Playback?>(null) }
-    LaunchedEffect(source, attempt, retryKey) {
-        if (link == null) return@LaunchedEffect
-        playback = null
-        resolveFailed = false
-        val res = if (attempt == 0) Resolved(link.url, source.live, link.headers, link.drm) else Resolver.resolve(link.url)?.copy(headers = link.headers)
-        if (res == null) { resolveFailed = true; return@LaunchedEffect }
-        val cache = if (attempt == 0 && source.cacheable) withContext(Dispatchers.IO) { MediaCache.get(app) } else null
-        playback = Playback(app, source, res, cache)
-    }
-    val report by rememberUpdatedState(onProgress)
-    DisposableEffect(playback) {
-        val p = playback
-        onDispose {
-            if (p != null && !p.live && p.durationMs > 0) report?.invoke(p.position, p.durationMs)
-            p?.release()
-        }
-    }
+    // The engine (link lookup, ExoPlayer) belongs to the session in the app root: this screen only shows it, so it can leave and
+    // come back (another tab, fullscreen switch) without rebuilding anything. See PlayerSession.
+    val link = session.link
+    val playback = session.playback
     LifecycleEventEffect(Lifecycle.Event.ON_STOP) { playback?.pause() }
     LifecycleEventEffect(Lifecycle.Event.ON_START) { playback?.resumeLive() } // live comes back at the live edge by itself
     var panelOpen by remember { mutableStateOf(false) }
@@ -172,11 +145,7 @@ fun PlayerScreen(
     BackHandler(fullscreen || panelOpen) { if (panelOpen) panelOpen = false else if (onToggleFullscreen != null) onToggleFullscreen() else onClose() }
 
     val pb = playback
-    LaunchedEffect(pb) {
-        if (pb == null) return@LaunchedEffect
-        while (true) { delay(10_000); if (!pb.live && pb.durationMs > 0) report?.invoke(pb.position, pb.durationMs) }
-    }
-    val failed = link == null || resolveFailed || pb?.failed == true
+    val failed = session.failed
     var show by remember { mutableStateOf(true) }
     var tick by remember { mutableIntStateOf(0) } // bumped on every interaction to restart the auto-hide timer
     var scrub by remember { mutableStateOf<Float?>(null) }
@@ -327,16 +296,16 @@ fun PlayerScreen(
         val controlsA by animateFloatAsState(if (show) 1f else 0f, tween(220), label = "controls")
         if ((pb == null || pb.buffering || !pb.firstFrame) && !failed && (controlsA < 0.5f || pb?.live == true)) {
             Spinner(c.accent, Modifier.align(Alignment.Center).size(44.dp))
-            if (pb == null && attempt > 0) OneText(stringResource(R.string.player_extracting), OneType.Caption, Color.White.copy(alpha = 0.7f), Modifier.align(Alignment.Center).padding(top = 84.dp))
+            if (pb == null && session.attempt > 0 && !session.resolveFailed) OneText(stringResource(R.string.player_extracting), OneType.Caption, Color.White.copy(alpha = 0.7f), Modifier.align(Alignment.Center).padding(top = 84.dp))
         }
         if (failed) Column(Modifier.align(Alignment.Center), Arrangement.spacedBy(16.dp), Alignment.CenterHorizontally) {
             OneText(
-                stringResource(if (link == null) R.string.player_bad_link else if (resolveFailed) R.string.resolve_failed else R.string.player_error),
+                stringResource(if (link == null) R.string.player_bad_link else if (session.resolveFailed) R.string.resolve_failed else R.string.player_error),
                 OneType.Section, Color.White,
             )
             if (link != null) OneButton(
                 stringResource(R.string.player_retry), OneIcon.Forward,
-                { val p = playback; if (p == null || resolveFailed) retryKey++ else p.retry() }, Modifier.width(220.dp),
+                { session.retry() }, Modifier.width(220.dp),
             )
         }
 
