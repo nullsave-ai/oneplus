@@ -4,3 +4,7 @@
 -keepclassmembers class * extends androidx.lifecycle.ViewModel {
     <init>(...);
 }
+
+-keep class clientgosdk.** { *; }
+-keep class go.** { *; }
+
