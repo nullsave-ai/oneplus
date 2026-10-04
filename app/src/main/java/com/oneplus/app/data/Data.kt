@@ -46,10 +46,10 @@ class SampleRepository : HomeRepository {
             val g1 = AllGenres[i % AllGenres.size]
             val g2 = AllGenres[(i * 4 + 3) % AllGenres.size].let { if (it == g1) AllGenres[(i + 1) % AllGenres.size] else it }
             Movie(
-                id = i, title = f"فيلم {i + 1}", year = 2014 + (i * 7) % 12,
+                id = i, title = "فيلم ${i + 1}", year = 2014 + (i * 7) % 12,
                 rating = 5.5f + ((i * 37) % 40) / 10f, durationMin = 85 + (i * 11) % 60,
                 genres = listOf(g1, g2), synopsis = SampleSynopsis,
-                director = f"المخرج {i + 1}", cast = List(5) { f"ممثل {it + 1}" },
+                director = "المخرج ${i + 1}", cast = List(5) { "ممثل ${it + 1}" },
                 url = SampleVod[i % SampleVod.size],
             )
         },
