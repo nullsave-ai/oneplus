@@ -13,6 +13,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -33,10 +34,102 @@ fun SettingsScreen(
 ) {
     val c = LocalColors.current
     val dark = LocalDarkTheme.current
+    val feed = LocalFeed.current
+    val tv = LocalTvMode.current
     val p = theme.prefs
     var open by rememberSaveable { mutableStateOf(false) }
     val bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + bottomNavSpace()
-    Box(Modifier.fillMaxSize(), Alignment.TopCenter) {
+    // The three blocks of the page. The phone stacks them in one scroll; TV Mode shows one at a time (see below).
+    val telegram = @Composable {
+        // channel card: icon + two lines + chevron, like a feed entry
+        Row(
+            Modifier.fillMaxWidth().press(onTelegram).glass(2, 22.dp).padding(16.dp),
+            Arrangement.spacedBy(14.dp), Alignment.CenterVertically,
+        ) {
+            Box(Modifier.size(44.dp).background(c.accentSoft, CircleShape), Alignment.Center) { OneIconView(OneIcon.Send) { c.accent } }
+            Column(Modifier.weight(1f), Arrangement.spacedBy(2.dp)) {
+                OneText(stringResource(R.string.settings_tg), OneType.Section, c.text, maxLines = 1)
+                OneText(stringResource(R.string.settings_tg_sub), OneType.Caption, c.dim, maxLines = 1)
+            }
+            OneIconView(OneIcon.Next) { c.dim }
+        }
+    }
+    val appearance = @Composable {
+        Column(Modifier.fillMaxWidth().glass(2, 22.dp).animateContentSize()) {
+            SettingRow(stringResource(R.string.style_mode)) {
+                OneSegmented(
+                    UiStyle.entries.map { stringResource(it.label) }, p.style.ordinal,
+                    { i -> theme.update { copy(style = UiStyle.entries[i]) }; theme.save() }, Modifier.width(168.dp),
+                )
+            }
+            SettingRow(stringResource(R.string.theme_mode)) {
+                OneSegmented(
+                    ThemeMode.entries.map { stringResource(it.label) }, p.mode.ordinal,
+                    { i -> theme.update { copy(mode = ThemeMode.entries[i]) }; theme.save() },
+                    Modifier.width(248.dp), textStyle = OneType.Caption,
+                )
+            }
+            SettingRow(stringResource(R.string.display_mode)) {
+                OneSegmented(
+                    DisplayMode.entries.map { stringResource(it.label) }, p.display.ordinal,
+                    { i -> theme.update { copy(display = DisplayMode.entries[i]) }; theme.save() },
+                    Modifier.width(216.dp),
+                )
+            }
+            SettingRow(stringResource(R.string.color_row), Modifier.press { open = !open }) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    OneText(stringResource(p.accent.label), OneType.Body, c.dim)
+                    Box(Modifier.size(20.dp).background(c.accent, CircleShape))
+                }
+            }
+            if (open) Column(Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, bottom = 12.dp), Arrangement.spacedBy(8.dp)) {
+                Accent.entries.chunked(SwatchesPerRow).forEach { row ->
+                    Row(Modifier.fillMaxWidth()) {
+                        row.forEach { a ->
+                            Swatch(a, p, a == p.accent, dark, { theme.update { copy(accent = a) }; theme.save() }, Modifier.weight(1f))
+                        }
+                        repeat(SwatchesPerRow - row.size) { Spacer(Modifier.weight(1f)) }
+                    }
+                }
+                if (p.accent == Accent.Custom) CustomPicker(theme)
+            }
+            if (!feed) { // the glass controls mean nothing on the flat Feed surfaces
+                SettingRow(stringResource(R.string.settings_effects)) { OneSwitch(effects, onEffects) }
+                GlassSliders(theme)
+            }
+            SettingRow(stringResource(R.string.settings_hide_status)) {
+                OneSwitch(p.hideStatusBar) { theme.update { copy(hideStatusBar = it) }; theme.save() }
+            }
+        }
+    }
+    val general = @Composable {
+        Column(Modifier.fillMaxWidth().glass(2, 22.dp)) {
+            SettingRow(stringResource(R.string.settings_clear), Modifier.press(onClearHistory)) {}
+            SettingRow(stringResource(R.string.settings_version)) { OneText("1.0", OneType.Body, c.dim) }
+        }
+    }
+    if (tv) {
+        // TV Mode: categories on the start side (moving the remote over one opens it), the chosen block beside it.
+        // The block scrolls on its own and slides under the rail; the categories stay put.
+        val panes = buildList<Pair<Int, @Composable () -> Unit>> {
+            if (saved.isNotEmpty()) add(Pair<Int, @Composable () -> Unit>(R.string.sec_list, { SavedShelf(saved, wide, onMovie) }))
+            add(Pair<Int, @Composable () -> Unit>(R.string.color_title, appearance))
+            add(Pair<Int, @Composable () -> Unit>(R.string.settings_general, { Column(verticalArrangement = Arrangement.spacedBy(12.dp)) { telegram(); general() } }))
+        }
+        var cat by rememberSaveable { mutableIntStateOf(0) }
+        val at = cat.coerceIn(0, panes.lastIndex)
+        Row(Modifier.fillMaxSize().padding(top = toolbarInset(), bottom = bottom)) {
+            Column(Modifier.width(200.dp).padding(start = 16.dp, end = 8.dp), Arrangement.spacedBy(8.dp)) {
+                panes.forEachIndexed { i, (label, _) ->
+                    OneChip(stringResource(label), i == at, { cat = i }, Modifier.fillMaxWidth().onFocusChanged { if (it.isFocused) cat = i })
+                }
+            }
+            Column(
+                Modifier.weight(1f).fillMaxHeight().verticalScroll(scroll)
+                    .absolutePadding(left = LocalRailInset.current + 8.dp, right = 16.dp),
+            ) { panes[at].second() }
+        }
+    } else Box(Modifier.fillMaxSize(), Alignment.TopCenter) {
         Column(
             Modifier.widthIn(max = 640.dp).fillMaxSize().verticalScroll(scroll).padding(top = toolbarInset(), bottom = bottom),
             verticalArrangement = Arrangement.spacedBy(20.dp),
@@ -44,61 +137,10 @@ fun SettingsScreen(
             // the viewer's saved movies come first and scroll sideways (edge to edge); everything below is the settings proper
             if (saved.isNotEmpty()) SavedShelf(saved, wide, onMovie)
             Column(Modifier.padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                // channel card: icon + two lines + chevron, like a feed entry
-                Row(
-                    Modifier.fillMaxWidth().press(onTelegram).glass(2, 22.dp).padding(16.dp),
-                    Arrangement.spacedBy(14.dp), Alignment.CenterVertically,
-                ) {
-                    Box(Modifier.size(44.dp).background(c.accentSoft, CircleShape), Alignment.Center) { OneIconView(OneIcon.Send) { c.accent } }
-                    Column(Modifier.weight(1f), Arrangement.spacedBy(2.dp)) {
-                        OneText(stringResource(R.string.settings_tg), OneType.Section, c.text, maxLines = 1)
-                        OneText(stringResource(R.string.settings_tg_sub), OneType.Caption, c.dim, maxLines = 1)
-                    }
-                    OneIconView(OneIcon.Next) { c.dim }
-                }
+                telegram()
                 OneText(stringResource(R.string.color_title), OneType.Section, c.text, Modifier.padding(start = 4.dp, top = 8.dp))
-                Column(Modifier.fillMaxWidth().glass(2, 22.dp).animateContentSize()) {
-                    SettingRow(stringResource(R.string.theme_mode)) {
-                        OneSegmented(
-                            ThemeMode.entries.map { stringResource(it.label) }, p.mode.ordinal,
-                            { i -> theme.update { copy(mode = ThemeMode.entries[i]) }; theme.save() },
-                            Modifier.width(248.dp), textStyle = OneType.Caption,
-                        )
-                    }
-                    SettingRow(stringResource(R.string.display_mode)) {
-                        OneSegmented(
-                            DisplayMode.entries.map { stringResource(it.label) }, p.display.ordinal,
-                            { i -> theme.update { copy(display = DisplayMode.entries[i]) }; theme.save() },
-                            Modifier.width(216.dp),
-                        )
-                    }
-                    SettingRow(stringResource(R.string.color_row), Modifier.press { open = !open }) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                            OneText(stringResource(p.accent.label), OneType.Body, c.dim)
-                            Box(Modifier.size(20.dp).background(c.accent, CircleShape))
-                        }
-                    }
-                    if (open) Column(Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, bottom = 12.dp), Arrangement.spacedBy(8.dp)) {
-                        Accent.entries.chunked(SwatchesPerRow).forEach { row ->
-                            Row(Modifier.fillMaxWidth()) {
-                                row.forEach { a ->
-                                    Swatch(a, p, a == p.accent, dark, { theme.update { copy(accent = a) }; theme.save() }, Modifier.weight(1f))
-                                }
-                                repeat(SwatchesPerRow - row.size) { Spacer(Modifier.weight(1f)) }
-                            }
-                        }
-                        if (p.accent == Accent.Custom) CustomPicker(theme)
-                    }
-                    SettingRow(stringResource(R.string.settings_effects)) { OneSwitch(effects, onEffects) }
-                    GlassSliders(theme)
-                    SettingRow(stringResource(R.string.settings_hide_status)) {
-                        OneSwitch(p.hideStatusBar) { theme.update { copy(hideStatusBar = it) }; theme.save() }
-                    }
-                }
-                Column(Modifier.fillMaxWidth().glass(2, 22.dp)) {
-                    SettingRow(stringResource(R.string.settings_clear), Modifier.press(onClearHistory)) {}
-                    SettingRow(stringResource(R.string.settings_version)) { OneText("1.0", OneType.Body, c.dim) }
-                }
+                appearance()
+                general()
             }
         }
     }

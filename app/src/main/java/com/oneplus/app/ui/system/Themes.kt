@@ -39,6 +39,12 @@ fun ThemeMode.resolveDark(): Boolean = when (this) {
     ThemeMode.Dark, ThemeMode.Amoled -> true
 }
 
+/** Two complete looks. [Glass] = floating translucent surfaces; [Feed] = flat, solid, content-first (cards, flat bars, slide transitions). */
+enum class UiStyle(@StringRes val label: Int) { Glass(R.string.style_glass), Feed(R.string.style_feed) }
+
+/** True while the [UiStyle.Feed] look is on: surfaces turn flat, bars turn solid, motion changes (see glass(), press(), OnePlusApp). */
+val LocalFeed = staticCompositionLocalOf { false }
+
 /** Color experiences. Presets have their own light and dark accent (muted, not neon); [Custom] is user-defined. */
 enum class Accent(@StringRes val label: Int, val light: Color, val dark: Color) {
     Blue(R.string.color_blue, Color(0xFF2F6FEB), Color(0xFF5B9BFF)),
@@ -93,6 +99,7 @@ data class ThemePrefs(
     /** Glass look, as a multiplier of the built-in one: 1 = exactly as designed. See [GlassRange]. */
     val glassDensity: Float = 1f,
     val glassDepth: Float = 1f,
+    val style: UiStyle = UiStyle.Glass,
 ) {
     fun colorOf(a: Accent, dark: Boolean): Color =
         if (a == Accent.Custom) fit(hsv(hue, sat, value), dark) else a.color(dark)
@@ -121,13 +128,15 @@ private fun onColor(bg: Color): Color {
 private fun build(p: ThemePrefs, dark: Boolean): OneColors {
     val ac = p.accentColor(dark)
     val amoled = dark && p.mode == ThemeMode.Amoled
-    val bg = if (dark) Color(0xFF0A0E16) else Color(0xFFEEF2F9)
-    val glass = if (amoled) Color(0xFF16181D) else if (dark) Color(0xFF1A2333) else Color.White
+    val feed = p.style == UiStyle.Feed
+    // Feed: neutral, untinted greys (the accent only colours actions), like a video-feed app
+    val bg = if (feed) (if (dark) Color(0xFF0F0F0F) else Color.White) else if (dark) Color(0xFF0A0E16) else Color(0xFFEEF2F9)
+    val glass = if (feed) (if (dark) Color(0xFF212121) else Color(0xFFF1F1F1)) else if (amoled) Color(0xFF16181D) else if (dark) Color(0xFF1A2333) else Color.White
     val dim = if (dark) Color(0xFF94A3B8) else Color(0xFF64748B)
     return OneColors(
         // Amoled: the background is exactly black (no accent tint, no ambient glow) so those pixels stay off
-        bg = if (amoled) Color.Black else lerp(bg, ac, 0.03f), ambient = if (amoled) Color.Black else ac,
-        glass = lerp(glass, ac, 0.04f), glassTint = lerp(glass, ac, 0.12f),
+        bg = if (amoled) Color.Black else if (feed) bg else lerp(bg, ac, 0.03f), ambient = if (amoled || feed) Color.Black else ac,
+        glass = if (feed) glass else lerp(glass, ac, 0.04f), glassTint = if (feed) glass else lerp(glass, ac, 0.12f),
         border = if (dark) Color(0x26FFFFFF) else Color(0x2E5B6B8C),
         text = if (dark) Color(0xFFF1F5F9) else Color(0xFF0F172A), dim = dim,
         primary = ac, secondary = lerp(ac, dim, 0.5f), accent = ac, accentSoft = ac.copy(alpha = 0.16f),
@@ -171,6 +180,7 @@ fun OnePlusTheme(prefs: ThemePrefs, dark: Boolean, content: @Composable () -> Un
         LocalColors provides cur,
         LocalDarkTheme provides dark,
         LocalHideStatusBar provides prefs.hideStatusBar,
+        LocalFeed provides (prefs.style == UiStyle.Feed),
         LocalGlassStyle provides remember(prefs.glassDensity, prefs.glassDepth) { GlassStyle(prefs.glassDensity, prefs.glassDepth) },
         LocalLayoutDirection provides LayoutDirection.Rtl,
         content = content,
@@ -208,13 +218,14 @@ class ThemeStore(ctx: Context) {
                 ?: if (p.getBoolean("tv_mode", false)) DisplayMode.Tv else d.display,
             glassDensity = p.getFloat("glass_density", d.glassDensity).clean(GlassRange.DENSITY_MIN, GlassRange.DENSITY_MAX, d.glassDensity),
             glassDepth = p.getFloat("glass_depth", d.glassDepth).clean(GlassRange.DEPTH_MIN, GlassRange.DEPTH_MAX, d.glassDepth),
+            style = UiStyle.entries.firstOrNull { it.name == p.getString("style", null) } ?: d.style,
         )
     }.getOrDefault(ThemePrefs())
 
     fun save(t: ThemePrefs) {
         p.edit().putString("mode", t.mode.name).putString("accent", t.accent.name)
             .putFloat("hue", t.hue).putFloat("sat", t.sat).putFloat("val", t.value).putBoolean("hide_status", t.hideStatusBar).putString("display", t.display.name)
-            .putFloat("glass_density", t.glassDensity).putFloat("glass_depth", t.glassDepth).apply()
+            .putFloat("glass_density", t.glassDensity).putFloat("glass_depth", t.glassDepth).putString("style", t.style.name).apply()
     }
 
     private fun Float.clean(lo: Float, hi: Float, fallback: Float) =

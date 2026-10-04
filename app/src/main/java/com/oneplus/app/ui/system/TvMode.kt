@@ -182,9 +182,15 @@ fun Modifier.tvAutoFocus(key: Any? = Unit): Modifier {
     return focusRequester(me)
 }
 
-/** Space a page keeps clear below its content for the phone's bottom navigation island. TV Mode has none (its rail is at the side). */
+/** Space a page keeps clear below its content for the bottom navigation: the glass island, the flat Feed bar, or (TV Mode) almost none. */
 @Composable
-fun bottomNavSpace(): Dp = if (LocalTvMode.current) 24.dp else 112.dp
+fun bottomNavSpace(): Dp = if (LocalTvMode.current) 24.dp else if (LocalFeed.current) 64.dp else 112.dp
+
+/**
+ * How much of the physical left edge the TV rail covers. The pages are full width (the rail floats above them); each one pads its
+ * own content by this, so rows and grids rest clear of the rail yet can still slide underneath it.
+ */
+val LocalRailInset = staticCompositionLocalOf { 0.dp }
 
 private tailrec fun Context.findActivity(): Activity? = when (this) {
     is Activity -> this

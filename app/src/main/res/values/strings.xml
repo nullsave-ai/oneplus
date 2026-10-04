@@ -101,4 +101,10 @@
     <string name="sample_caption">هذا نص تجريبي للترجمة</string>
     <string name="player_extracting">جارٍ جلب الفيديو…</string>
     <string name="resolve_failed">تعذّر جلب فيديو هذا المنشور</string>
+
+    <string name="style_mode">نمط الواجهة</string>
+    <string name="style_glass">زجاجي</string>
+    <string name="style_feed">Feed</string>
+    <string name="tv_search">بحث</string>
+    <string name="settings_general">عام</string>
 </resources>

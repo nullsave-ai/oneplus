@@ -62,6 +62,7 @@ fun OneText(text: String, style: TextStyle, color: Color, modifier: Modifier = M
 @Composable
 fun Modifier.ambient(): Modifier {
     val c = LocalColors.current
+    if (LocalFeed.current) return background(c.bg) // Feed: one flat colour, no glow, no dither
     return background(c.bg).drawWithCache {
         // Fade to the same colour at alpha 0: fading to Color.Transparent (= transparent BLACK) is interpolated through gray
         // and leaves a dirty halo, most visible in day mode.
@@ -82,6 +83,7 @@ internal val Sheen = Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.10
 @Composable
 fun Modifier.glass(level: Int, radius: Dp): Modifier {
     val c = LocalColors.current
+    if (LocalFeed.current) return clip(RoundedCornerShape(minOf(radius, 14.dp))).background(c.glass) // Feed: a flat solid card
     val fx = LocalGlassEffects.current
     val g = LocalGlassStyle.current
     val shape = RoundedCornerShape(radius)
@@ -98,10 +100,12 @@ fun Modifier.glass(level: Int, radius: Dp): Modifier {
 fun Modifier.press(onClick: () -> Unit): Modifier {
     val src = remember { MutableInteractionSource() }
     val pressed by src.collectIsPressedAsState()
-    val s by animateFloatAsState(if (pressed) 0.96f else 1f, spring(0.6f, 500f), label = "press")
+    val feed = LocalFeed.current // Feed: a press dims the item instead of squeezing it
+    val s by animateFloatAsState(if (pressed && !feed) 0.96f else 1f, spring(0.6f, 500f), label = "press")
+    val dim by animateFloatAsState(if (pressed && feed) 0.6f else 1f, tween(90), label = "pressDim")
     val tv = LocalTvMode.current
     val click by rememberUpdatedState(onClick)
-    return graphicsLayer { scaleX = s; scaleY = s }.tvFocusRing(src).tvLockable()
+    return graphicsLayer { scaleX = s; scaleY = s; alpha = dim }.tvFocusRing(src).tvLockable()
         // a gamepad's A button is "OK" too (the remote's centre / Enter is already handled by clickable)
         .then(if (tv) Modifier.onKeyEvent { e -> (e.key == Key.ButtonA).also { if (it && e.type == KeyEventType.KeyUp) click() } } else Modifier)
         .clickable(src, null, onClick = onClick)
@@ -319,7 +323,7 @@ fun OneSlider(
                 .then(
                     if (tv) Modifier.tvLockable().onKeyEvent { e ->
                         val dir = if (e.key == Key.DirectionRight) 1 else if (e.key == Key.DirectionLeft) -1 else 0
-                        if (dir != 0 && e.type == KeyEventType.KeyDown) { change((value + dir * 0.03f).coerceIn(0f, 1f)); done() }
+                        if (dir != 0 && e.type == KeyEventType.KeyDown) { change((value + dir * 0.05f).coerceIn(0f, 1f)); done() }
                         dir != 0
                     }.focusable(interactionSource = src) else Modifier
                 )

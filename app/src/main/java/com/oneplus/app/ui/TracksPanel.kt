@@ -43,7 +43,8 @@ fun TracksPanel(
             listOf(R.string.tab_quality, R.string.tab_audio, R.string.tab_subs).map { stringResource(it) }, tab, onTab,
             height = 30.dp, textStyle = Small,
         )
-        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), Arrangement.spacedBy(4.dp)) {
+        // TV Mode: the remote lands on the first row when the panel opens
+        Column(Modifier.weight(1f).tvAutoFocus().verticalScroll(rememberScrollState()), Arrangement.spacedBy(4.dp)) {
             if (rows.isEmpty()) OneText(stringResource(R.string.track_none), Small, c.dim, Modifier.padding(6.dp))
             rows.forEach { OptionRow(it) }
             if (tab == 2) SubtitleStyleEditor(style, onStyle, onStyleDone)

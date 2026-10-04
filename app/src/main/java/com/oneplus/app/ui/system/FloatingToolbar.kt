@@ -62,9 +62,9 @@ fun topInset(): Dp = maxOf(
     WindowInsets.displayCutout.asPaddingValues().calculateTopPadding(),
 )
 
-/** Top inset screens should reserve so content starts below the floating toolbar. */
+/** Top inset screens should reserve so content starts below the toolbar (none to speak of in TV Mode: its toolbar only exists while searching). */
 @Composable
-fun toolbarInset(): Dp = topInset() + 84.dp
+fun toolbarInset(): Dp = topInset() + if (LocalTvMode.current) 12.dp else if (LocalFeed.current) 64.dp else 84.dp
 
 /**
  * Drop shadow painted only OUTSIDE the pill. A platform elevation shadow is drawn underneath the whole outline and
@@ -91,15 +91,17 @@ internal fun DrawScope.softShadow(r: CornerRadius, e: Float) {
 fun FloatingToolbar(
     title: String, context: String?, hasSearch: Boolean,
     query: String, onQuery: (String) -> Unit, progress: () -> Float, modifier: Modifier = Modifier,
+    startOpen: Boolean = false, onClosed: () -> Unit = {},
 ) {
     val c = LocalColors.current
     val fx = LocalGlassEffects.current
     val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
-    var searching by rememberSaveable { mutableStateOf(false) }
+    val flat = LocalFeed.current // Feed: a full-width solid bar that never shrinks into a pill
+    var searching by rememberSaveable { mutableStateOf(startOpen) }
     val morph by animateFloatAsState(if (searching) 1f else 0f, spring(0.82f, 500f), label = "search")
     val focus = remember { FocusRequester() }
     val fm = LocalFocusManager.current
-    val close = { fm.clearFocus(); onQuery(""); searching = false }
+    val close = { fm.clearFocus(); onQuery(""); searching = false; onClosed() }
     BackHandler(searching, close)
     LaunchedEffect(hasSearch) { if (!hasSearch && searching) close() }
     LaunchedEffect(searching) { if (searching) focus.requestFocus() }
@@ -108,15 +110,20 @@ fun FloatingToolbar(
     Box(
         modifier
             .layout { m, cs ->
-                val p = progress()
+                val p = if (flat) 0f else progress() // the flat bar keeps its size while scrolling
                 val full = cs.maxWidth
-                val compact = minOf(full, 232.dp.roundToPx())
+                val compact = if (flat) full else minOf(full, 232.dp.roundToPx())
                 val w = lerp(lerp(full, compact, p), full, morph)
                 val h = lerp(lerp(56.dp.roundToPx(), 48.dp.roundToPx(), p), 52.dp.roundToPx(), morph)
                 val pl = m.measure(Constraints.fixed(w, h))
                 layout(full, h) { pl.place((full - w) / 2, 0) }
             }
             .drawBehind {
+                if (flat) {
+                    drawRect(c.bg)
+                    drawRect(c.border.copy(alpha = c.border.alpha * max(progress(), morph)), Offset(0f, size.height - 1.dp.toPx()), Size(size.width, 1.dp.toPx()))
+                    return@drawBehind
+                }
                 val e = max(progress(), morph)
                 val r = CornerRadius(24.dp.toPx())
                 // Fully transparent at rest; the glass only exists once the page has scrolled / search is open.
@@ -128,7 +135,7 @@ fun FloatingToolbar(
     ) {
         if (morph < 1f) Row(
             Modifier.fillMaxSize().padding(start = 20.dp, end = if (hasSearch) 8.dp else 20.dp).graphicsLayer { alpha = 1f - morph },
-            if (hasSearch) Arrangement.SpaceBetween else Arrangement.Center, Alignment.CenterVertically,
+            if (hasSearch || flat) Arrangement.SpaceBetween else Arrangement.Center, Alignment.CenterVertically,
         ) {
             Crossfade(context ?: title, animationSpec = tween(220), label = "title") { t ->
                 OneText(t, OneType.Title, c.text, Modifier.graphicsLayer {

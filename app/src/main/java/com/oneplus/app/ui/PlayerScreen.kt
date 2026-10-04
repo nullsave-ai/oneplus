@@ -32,6 +32,8 @@ import androidx.compose.foundation.text.BasicText
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
@@ -175,19 +177,26 @@ fun PlayerScreen(
         if (pb == null) return@LaunchedEffect
         while (show) { pos = pb.position; buf = pb.bufferedPosition; delay(400) }
     }
+    val hideMs = if (LocalTvMode.current) 6000L else 3500L // a remote needs longer to get from the player to a button
     LaunchedEffect(show, tick, pb?.wantsPlay, scrub != null, failed, panelOpen) {
-        if (show && pb?.wantsPlay == true && scrub == null && !failed && !panelOpen) { delay(3500); show = false }
+        if (show && pb?.wantsPlay == true && scrub == null && !failed && !panelOpen) { delay(hideMs); show = false }
     }
     LaunchedEffect(pb?.ended) { if (pb?.ended == true) show = true }
     LaunchedEffect(hud) { if (hud != null) { lastHud = hud; delay(900); hud = null } }
 
     // TV Mode, fullscreen: the remote drives the player. Controls hidden: left / right = -10s / +10s, centre = play / pause,
     // up / down = show the controls. Controls shown: the D-pad moves between the buttons and the seek bar as usual.
+    // TV Mode, in place (Channels page): the player is a stop for the remote like any card; OK on it brings the controls up with the
+    // remote on the fullscreen button (OK again = fullscreen); from there left / right reach subtitles, audio and quality.
+    // The other keys keep moving through the page, and the controls give the remote back to the player when they hide.
     val tv = LocalTvMode.current
-    val keysOn = tv && fullscreen
+    val keysOn = tv
+    val keySrc = remember { MutableInteractionSource() }
+    val keyFocused by keySrc.collectIsFocusedAsState()
+    var inside by remember { mutableStateOf(false) } // the remote is on the player or on one of its buttons
     val keys = remember { FocusRequester() }   // the player itself, while the controls are hidden
     val first = remember { FocusRequester() }  // the play button, where focus lands when a key brings the controls up
-    var keyShown by remember { mutableStateOf(true) }
+    var keyShown by remember { mutableStateOf(fullscreen) }
     fun skip(dir: Int) {
         val p = playback ?: return
         if (!p.seekable) return
@@ -210,14 +219,16 @@ fun PlayerScreen(
                     if (p != null && !p.live) p.toggle()
                     show = true; keyShown = true; tick++; true
                 }
-                Key.DirectionLeft -> { skip(-1); true }
-                Key.DirectionRight -> { skip(1); true }
-                Key.DirectionUp, Key.DirectionDown -> { show = true; keyShown = true; tick++; true }
+                Key.DirectionLeft -> if (fullscreen) { skip(-1); true } else false
+                Key.DirectionRight -> if (fullscreen) { skip(1); true } else false
+                Key.DirectionUp, Key.DirectionDown -> if (fullscreen) { show = true; keyShown = true; tick++; true } else false
                 else -> false
             }
         }
     }
-    LaunchedEffect(keysOn, show, panelOpen) { if (keysOn && !show && !panelOpen) runCatching { keys.requestFocus() } }
+    LaunchedEffect(keysOn, show, panelOpen) { if (keysOn && !show && !panelOpen && (fullscreen || inside)) runCatching { keys.requestFocus() } }
+    var wasOpen by remember { mutableStateOf(false) } // closing the panel puts the remote back on the controls
+    LaunchedEffect(panelOpen) { if (panelOpen) wasOpen = true else if (wasOpen && keysOn) { wasOpen = false; show = true; keyShown = true; tick++ } }
 
     fun readBrightness(): Float {
         val b = window?.attributes?.screenBrightness ?: -1f
@@ -238,7 +249,18 @@ fun PlayerScreen(
 
     Box(
         Modifier.fillMaxSize().background(Color.Black)
-            .then(if (keysOn) Modifier.focusRequester(keys).onPreviewKeyEvent(onKey).tvLockable().focusable() else Modifier)
+            .then(
+                if (keysOn) Modifier.focusRequester(keys).onPreviewKeyEvent(onKey).tvLockable()
+                    .drawWithContent { // in place, the player shows it has the remote with a ring in the page's own language
+                        drawContent()
+                        if (keyFocused && !fullscreen) {
+                            val sw = 3.dp.toPx()
+                            drawRoundRect(c.text.copy(alpha = 0.95f), Offset(sw / 2f, sw / 2f), Size(size.width - sw, size.height - sw), CornerRadius(20.dp.toPx() - sw / 2f), Stroke(sw))
+                        }
+                    }
+                    .onFocusChanged { inside = it.hasFocus }.focusable(interactionSource = keySrc)
+                else Modifier
+            )
     ) {
         // 1) video
         val corner = with(LocalDensity.current) { 20.dp.toPx() }
@@ -417,7 +439,10 @@ fun PlayerScreen(
                     val qualities = pb.qualities
                     val bs = if (fullscreen) 44.dp else 36.dp
                     fun open(t: Int) { tab = t; panelOpen = true; tick++ }
-                    Row(Modifier.align(Alignment.BottomCenter).fillMaxWidth(), Arrangement.spacedBy(8.dp), Alignment.Bottom) {
+                    Row(
+                        Modifier.align(Alignment.BottomCenter).fillMaxWidth().then(if (keysOn && pb.live && fullscreen) Modifier.focusRequester(first) else Modifier),
+                        Arrangement.spacedBy(8.dp), Alignment.Bottom,
+                    ) {
                         if (pb.seekable) {
                             val dur = pb.durationMs
                             val shown = scrub?.let { (it * dur).toLong() } ?: pos
@@ -444,7 +469,7 @@ fun PlayerScreen(
                             Modifier.height(bs).press { open(0) }.vGlass(bs / 2).padding(horizontal = 12.dp), Alignment.Center,
                         ) { OneText(qualities.firstOrNull { it.selected }?.label ?: "", OneType.Caption, Color.White, maxLines = 1) }
                         if (fullscreen) GlassBtn({ fit = !fit; tick++ }, bs) { OneIconView(if (fit) OneIcon.Fit else OneIcon.Fill) { Color.White } }
-                        if (onToggleFullscreen != null) GlassBtn({ onToggleFullscreen() }, bs) {
+                        if (onToggleFullscreen != null) GlassBtn({ onToggleFullscreen() }, bs, if (keysOn && pb.live && !fullscreen) Modifier.focusRequester(first) else Modifier) {
                             OneIconView(if (fullscreen) OneIcon.Shrink else OneIcon.Expand) { Color.White }
                         }
                     }
@@ -481,8 +506,8 @@ internal fun Modifier.vGlass(radius: Dp): Modifier {
 }
 
 @Composable
-private fun GlassBtn(onClick: () -> Unit, size: Dp = 44.dp, content: @Composable BoxScope.() -> Unit) {
-    Box(Modifier.size(size).press(onClick).vGlass(size / 2), Alignment.Center, content = content)
+private fun GlassBtn(onClick: () -> Unit, size: Dp = 44.dp, modifier: Modifier = Modifier, content: @Composable BoxScope.() -> Unit) {
+    Box(modifier.size(size).press(onClick).vGlass(size / 2), Alignment.Center, content = content)
 }
 
 /** Dark fade at the top/bottom edge that keeps controls readable. Same hue at both ends + dither (no gray fringe, no banding). */
