@@ -58,11 +58,6 @@
     <string name="clear_body">سيُحذف سجل المشاهدة ومواضع المتابعة لكل الأفلام. قائمتي لن تتأثر.</string>
     <string name="clear_yes">مسح</string>
     <string name="clear_no">إلغاء</string>
-    <string name="list_empty">قائمتك فارغة. أضف الأفلام التي تعجبك من صفحة الفيلم وستظهر هنا.</string>
-    <string name="nav_title">شريط التنقل</string>
-    <string name="nav_opacity">كثافة الزجاج</string>
-    <string name="nav_depth">العمق</string>
-    <string name="nav_reset">استعادة الافتراضي</string>
     <string name="settings_hide_status">إخفاء شريط الإشعارات</string>
     <string name="sec_all">الكل</string>
     <string name="unit_sec">ث</string>

@@ -20,15 +20,13 @@ import androidx.compose.ui.unit.dp
 import com.oneplus.app.R
 import com.oneplus.app.data.Movie
 import com.oneplus.app.ui.system.*
-import java.util.Locale
-import kotlin.math.roundToInt
 
 private const val SwatchesPerRow = 4
 
 @Composable
 fun SettingsScreen(
-    effects: Boolean, onEffects: (Boolean) -> Unit, theme: ThemeController, scroll: ScrollState,
-    saved: List<Movie>, onMovie: (Int) -> Unit, onRemoveSaved: (Int) -> Unit,
+    effects: Boolean, onEffects: (Boolean) -> Unit, theme: ThemeController, scroll: ScrollState, wide: Boolean,
+    saved: List<Movie>, onMovie: (Int) -> Unit,
     onTelegram: () -> Unit, onClearHistory: () -> Unit,
 ) {
     val c = LocalColors.current
@@ -38,61 +36,59 @@ fun SettingsScreen(
     val bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 112.dp
     Box(Modifier.fillMaxSize(), Alignment.TopCenter) {
         Column(
-            Modifier.widthIn(max = 640.dp).fillMaxSize().verticalScroll(scroll)
-                .padding(start = 20.dp, end = 20.dp, top = toolbarInset(), bottom = bottom),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            Modifier.widthIn(max = 640.dp).fillMaxSize().verticalScroll(scroll).padding(top = toolbarInset(), bottom = bottom),
+            verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
-            // channel card: icon + two lines + chevron, like a feed entry
-            Row(
-                Modifier.fillMaxWidth().press(onTelegram).glass(2, 22.dp).padding(16.dp),
-                Arrangement.spacedBy(14.dp), Alignment.CenterVertically,
-            ) {
-                Box(Modifier.size(44.dp).background(c.accentSoft, CircleShape), Alignment.Center) { OneIconView(OneIcon.Send) { c.accent } }
-                Column(Modifier.weight(1f), Arrangement.spacedBy(2.dp)) {
-                    OneText(stringResource(R.string.settings_tg), OneType.Section, c.text, maxLines = 1)
-                    OneText(stringResource(R.string.settings_tg_sub), OneType.Caption, c.dim, maxLines = 1)
-                }
-                OneIconView(OneIcon.Next) { c.dim }
-            }
-            OneText(stringResource(R.string.color_title), OneType.Section, c.text, Modifier.padding(start = 4.dp, top = 8.dp))
-            Column(Modifier.fillMaxWidth().glass(2, 22.dp).animateContentSize()) {
-                SettingRow(stringResource(R.string.theme_mode)) {
-                    OneSegmented(
-                        ThemeMode.entries.map { stringResource(it.label) }, p.mode.ordinal,
-                        { i -> theme.update { copy(mode = ThemeMode.entries[i]) }; theme.save() },
-                        Modifier.width(216.dp),
-                    )
-                }
-                SettingRow(stringResource(R.string.color_row), Modifier.press { open = !open }) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        OneText(stringResource(p.accent.label), OneType.Body, c.dim)
-                        Box(Modifier.size(20.dp).background(c.accent, CircleShape))
+            // the viewer's saved movies come first and scroll sideways (edge to edge); everything below is the settings proper
+            if (saved.isNotEmpty()) SavedShelf(saved, wide, onMovie)
+            Column(Modifier.padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                // channel card: icon + two lines + chevron, like a feed entry
+                Row(
+                    Modifier.fillMaxWidth().press(onTelegram).glass(2, 22.dp).padding(16.dp),
+                    Arrangement.spacedBy(14.dp), Alignment.CenterVertically,
+                ) {
+                    Box(Modifier.size(44.dp).background(c.accentSoft, CircleShape), Alignment.Center) { OneIconView(OneIcon.Send) { c.accent } }
+                    Column(Modifier.weight(1f), Arrangement.spacedBy(2.dp)) {
+                        OneText(stringResource(R.string.settings_tg), OneType.Section, c.text, maxLines = 1)
+                        OneText(stringResource(R.string.settings_tg_sub), OneType.Caption, c.dim, maxLines = 1)
                     }
+                    OneIconView(OneIcon.Next) { c.dim }
                 }
-                if (open) Column(Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, bottom = 12.dp), Arrangement.spacedBy(8.dp)) {
-                    Accent.entries.chunked(SwatchesPerRow).forEach { row ->
-                        Row(Modifier.fillMaxWidth()) {
-                            row.forEach { a ->
-                                Swatch(a, p, a == p.accent, dark, { theme.update { copy(accent = a) }; theme.save() }, Modifier.weight(1f))
-                            }
-                            repeat(SwatchesPerRow - row.size) { Spacer(Modifier.weight(1f)) }
+                OneText(stringResource(R.string.color_title), OneType.Section, c.text, Modifier.padding(start = 4.dp, top = 8.dp))
+                Column(Modifier.fillMaxWidth().glass(2, 22.dp).animateContentSize()) {
+                    SettingRow(stringResource(R.string.theme_mode)) {
+                        OneSegmented(
+                            ThemeMode.entries.map { stringResource(it.label) }, p.mode.ordinal,
+                            { i -> theme.update { copy(mode = ThemeMode.entries[i]) }; theme.save() },
+                            Modifier.width(216.dp),
+                        )
+                    }
+                    SettingRow(stringResource(R.string.color_row), Modifier.press { open = !open }) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            OneText(stringResource(p.accent.label), OneType.Body, c.dim)
+                            Box(Modifier.size(20.dp).background(c.accent, CircleShape))
                         }
                     }
-                    if (p.accent == Accent.Custom) CustomPicker(theme)
+                    if (open) Column(Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, bottom = 12.dp), Arrangement.spacedBy(8.dp)) {
+                        Accent.entries.chunked(SwatchesPerRow).forEach { row ->
+                            Row(Modifier.fillMaxWidth()) {
+                                row.forEach { a ->
+                                    Swatch(a, p, a == p.accent, dark, { theme.update { copy(accent = a) }; theme.save() }, Modifier.weight(1f))
+                                }
+                                repeat(SwatchesPerRow - row.size) { Spacer(Modifier.weight(1f)) }
+                            }
+                        }
+                        if (p.accent == Accent.Custom) CustomPicker(theme)
+                    }
+                    SettingRow(stringResource(R.string.settings_effects)) { OneSwitch(effects, onEffects) }
+                    SettingRow(stringResource(R.string.settings_hide_status)) {
+                        OneSwitch(p.hideStatusBar) { theme.update { copy(hideStatusBar = it) }; theme.save() }
+                    }
                 }
-                SettingRow(stringResource(R.string.settings_effects)) { OneSwitch(effects, onEffects) }
-                SettingRow(stringResource(R.string.settings_hide_status)) {
-                    OneSwitch(p.hideStatusBar) { theme.update { copy(hideStatusBar = it) }; theme.save() }
+                Column(Modifier.fillMaxWidth().glass(2, 22.dp)) {
+                    SettingRow(stringResource(R.string.settings_clear), Modifier.press(onClearHistory)) {}
+                    SettingRow(stringResource(R.string.settings_version)) { OneText("1.0", OneType.Body, c.dim) }
                 }
-            }
-            OneText(stringResource(R.string.nav_title), OneType.Section, c.text, Modifier.padding(start = 4.dp, top = 8.dp))
-            Column(Modifier.fillMaxWidth().glass(2, 22.dp).padding(horizontal = 8.dp, vertical = 8.dp), Arrangement.spacedBy(2.dp)) {
-                NavSliders(theme)
-            }
-            SavedFeed(saved, onMovie, onRemoveSaved)
-            Column(Modifier.fillMaxWidth().glass(2, 22.dp)) {
-                SettingRow(stringResource(R.string.settings_clear), Modifier.press(onClearHistory)) {}
-                SettingRow(stringResource(R.string.settings_version)) { OneText("1.0", OneType.Body, c.dim) }
             }
         }
     }
@@ -118,39 +114,10 @@ private fun CustomPicker(theme: ThemeController) {
     }
 }
 
-/** Opacity and depth of the navigation island's glass. It is visible right below, so the sliders preview live. */
 @Composable
-private fun NavSliders(theme: ThemeController) {
-    val c = LocalColors.current
-    val p = theme.prefs
-    val track = remember(c) { Brush.horizontalGradient(listOf(c.dim.copy(alpha = 0.10f), c.accent.copy(alpha = 0.60f))) }
-    PickerRow(
-        R.string.nav_opacity, unlerp(NavGlass.OPACITY_MIN, NavGlass.OPACITY_MAX, p.navOpacity),
-        { f -> theme.update { copy(navOpacity = lerpF(NavGlass.OPACITY_MIN, NavGlass.OPACITY_MAX, f)) } }, theme::save, track,
-        percent(p.navOpacity),
-    )
-    PickerRow(
-        R.string.nav_depth, p.navDepth,
-        { f -> theme.update { copy(navDepth = f) } }, theme::save, track,
-        percent(p.navDepth),
-    )
-    val isDefault = p.navOpacity == NavGlass.OPACITY_DEFAULT && p.navDepth == NavGlass.DEPTH_DEFAULT
-    SettingRow(
-        stringResource(R.string.nav_reset),
-        Modifier.press { if (!isDefault) { theme.update { copy(navOpacity = NavGlass.OPACITY_DEFAULT, navDepth = NavGlass.DEPTH_DEFAULT) }; theme.save() } },
-    ) {}
-}
-
-private fun percent(v: Float) = String.format(Locale.US, "%d%%", (v * 100f).roundToInt())
-
-@Composable
-private fun PickerRow(label: Int, value: Float, onChange: (Float) -> Unit, onDone: () -> Unit, track: Brush, hint: String? = null) {
-    val c = LocalColors.current
+private fun PickerRow(label: Int, value: Float, onChange: (Float) -> Unit, onDone: () -> Unit, track: Brush) {
     Column {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp).padding(top = 6.dp), Arrangement.SpaceBetween) {
-            OneText(stringResource(label), OneType.Caption, c.dim)
-            if (hint != null) OneText(hint, OneType.Caption, c.dim)
-        }
+        OneText(stringResource(label), OneType.Caption, LocalColors.current.dim, Modifier.padding(start = 4.dp, top = 6.dp))
         OneSlider(value, onChange, onDone, track)
     }
 }

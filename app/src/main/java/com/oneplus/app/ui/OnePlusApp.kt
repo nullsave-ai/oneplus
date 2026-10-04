@@ -177,8 +177,8 @@ fun OnePlusApp(theme: ThemeController, vm: MainViewModel = viewModel()) {
                             portrait, channelsList, { slot = it }, pickGroup, playInline,
                         )
                         else -> SettingsScreen(
-                            fx, { fx = it }, theme, settingsScroll,
-                            library.list.mapNotNull { byId[it] }, { id -> focus.clearFocus(); movieId = id }, library::toggle,
+                            fx, { fx = it }, theme, settingsScroll, wide,
+                            library.list.mapNotNull { byId[it] }, { id -> focus.clearFocus(); movieId = id },
                             { openTelegram(ctx) }, { showClear = true },
                         )
                     }
@@ -229,7 +229,7 @@ fun OnePlusApp(theme: ThemeController, vm: MainViewModel = viewModel()) {
             val navShow by animateFloatAsState(if (covered) 0f else 1f, tween(160), label = "nav")
             val navAlpha = { navShow * (1f - maxOf(detail.depth, matchesP.value)) }
             LiquidNav(
-                tab, { tab = it }, theme.prefs.navOpacity, theme.prefs.navDepth,
+                tab, { tab = it },
                 Modifier.align(Alignment.BottomCenter)
                     .layout { m, c ->
                         val pl = m.measure(c)
@@ -252,12 +252,9 @@ fun OnePlusApp(theme: ThemeController, vm: MainViewModel = viewModel()) {
 private val Tabs = listOf(OneIcon.Home to R.string.tab_home, OneIcon.Channels to R.string.tab_channels, OneIcon.Settings to R.string.tab_settings)
 private val NavSpring = spring<Float>(0.62f, 380f)
 
-/**
- * Floating glass island. The indicator is a blob drawn per frame only while it moves (stretch/squash by velocity).
- * [opacity] and [depth] are the user's glass settings (see [navGlass]).
- */
+/** Floating glass island. The indicator is a blob drawn per frame only while it moves (stretch/squash by velocity). */
 @Composable
-fun LiquidNav(selected: Int, onSelect: (Int) -> Unit, opacity: Float, depth: Float, modifier: Modifier = Modifier) {
+fun LiquidNav(selected: Int, onSelect: (Int) -> Unit, modifier: Modifier = Modifier) {
     val c = LocalColors.current
     val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
     val pos = remember { Animatable(selected.toFloat()) }
@@ -273,7 +270,7 @@ fun LiquidNav(selected: Int, onSelect: (Int) -> Unit, opacity: Float, depth: Flo
     }
     Box(
         modifier.navigationBarsPadding().padding(start = 16.dp, end = 16.dp, bottom = 16.dp)
-            .widthIn(max = 400.dp).fillMaxWidth().height(64.dp).navGlass(opacity, depth, 28.dp)
+            .widthIn(max = 400.dp).fillMaxWidth().height(64.dp).glass(3, 28.dp)
             .onSizeChanged { widthPx = it.width.toFloat() }
             .pointerInput(selected, rtl) {
                 detectHorizontalDragGestures(onDragEnd = { settle() }, onDragCancel = { settle() }) { change, dx ->
