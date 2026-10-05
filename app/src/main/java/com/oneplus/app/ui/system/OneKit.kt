@@ -23,6 +23,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -69,6 +70,17 @@ fun OneText(text: String, style: TextStyle, color: Color, modifier: Modifier = M
 fun Modifier.ambient(): Modifier {
     val c = LocalColors.current
     if (LocalFeed.current) return background(c.bg) // Feed: one flat colour, no glow, no dither
+    if (LocalLook.current.aurora) { // Aurora: three slow curtains of light (mint, app colour, magenta) drifting across the top of the page
+        val turn = rememberInfiniteTransition(label = "sky").animateFloat(0f, 6.2832f, infiniteRepeatable(tween(24000, easing = LinearEasing)), label = "t")
+        val night = c.bg.luminance() < 0.2f
+        return background(c.bg).drawBehind {
+            val t = turn.value; val a = if (night) 0.30f else 0.15f; val w = size.width
+            listOf(AuroraMint to 0f, c.accent to 2.1f, AuroraPink to 4.2f).forEach { (col, ph) ->
+                val o = Offset(w * (0.5f + 0.45f * sin(t + ph)), size.height * (0.16f + 0.08f * cos(t * 0.7f + ph)))
+                scale(0.55f, 1.7f, o) { drawCircle(Brush.radialGradient(listOf(col.copy(alpha = a), col.copy(alpha = 0f)), o, w * 0.6f), w * 0.6f, o) } // tall, so it reads as a curtain
+            }
+        }
+    }
     if (LocalLook.current.cosmic) return background(c.bg).drawWithCache { // Orbit: a nebula and a fixed star field
         val night = c.bg.luminance() < 0.2f
         val glowA = Brush.radialGradient(listOf(c.accent.copy(alpha = if (night) 0.20f else 0.10f), c.accent.copy(alpha = 0f)),
@@ -110,24 +122,23 @@ fun Modifier.glass(level: Int, radius: Dp): Modifier {
     val fx = LocalGlassEffects.current
     val g = LocalGlassStyle.current
     val shape = RoundedCornerShape(radius)
-    if (LocalLook.current.sheet) { // Strata: an opaque sheet; each level a touch lighter than the one under it, lifted by a soft shadow (depth scales it)
-        val lift = if (fx) drawBehind { softShadow(CornerRadius(radius.toPx()), 2f * g.depth) } else this
-        return lift.clip(shape).background(lerp(c.glass, c.text, 0.015f * level)).border(0.5.dp, c.border, shape)
-    }
     val sheen = remember(g.depth) { if (g.depth == 1f) Sheen else Brush.verticalGradient(listOf(Color.White.copy(alpha = (0.10f * g.depth).coerceIn(0f, 1f)), Color.White.copy(alpha = 0f))) }
     val edge = if (g.depth == 1f) c.border else c.border.copy(alpha = (c.border.alpha * g.depth).coerceIn(0f, 1f))
     val tint = ((if (fx) GlassAlpha[level - 1] else 0.94f) * g.density).coerceIn(0f, 1f)
     val lift = if (fx && g.depth > 1f) drawBehind { softShadow(CornerRadius(radius.toPx()), (g.depth - 1f) * 3f) } else this
     val base = lift.clip(shape).background(c.glass.copy(alpha = tint))
     val face = if (fx) base.background(sheen) else base
-    if (LocalLook.current.cosmic) { // Orbit: the edge is a lit rim, brighter where the light hits
-        val rim = remember(c.accent) { Brush.linearGradient(listOf(c.accent.copy(alpha = 0.75f), c.accent.copy(alpha = 0.08f), NebulaViolet.copy(alpha = 0.45f))) }
+    val k = LocalLook.current
+    if (k.cosmic || k.aurora) { // Orbit / Aurora: the edge is a lit rim, brighter where the light hits
+        val rim = remember(c.accent, k.aurora) { Brush.linearGradient(listOf(c.accent.copy(alpha = 0.75f), c.accent.copy(alpha = 0.08f), (if (k.aurora) AuroraPink else NebulaViolet).copy(alpha = 0.45f))) }
         return face.border(1.dp, rim, shape)
     }
     return face.border(0.5.dp, edge, shape)
 }
 
 private val NebulaViolet = Color(0xFFB36BFF)
+internal val AuroraMint = Color(0xFF3DFFC0)
+internal val AuroraPink = Color(0xFFFF4FD8)
 
 /** Press physics (no ripple): scale down, spring back. */
 @Composable

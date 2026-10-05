@@ -62,27 +62,26 @@ val OrbitLook = Look(
     nav = { selected, onSelect, m -> OrbitNav(selected, onSelect, m) },
 )
 
-/** Layers: a full-bleed hero under sheets that rise over each other and fold back into the depth; a top sheet, a capsule dock. */
-val StrataLook = Look(
-    id = "Strata", label = R.string.style_strata, blurb = R.string.style_strata_blurb,
-    solid = false, top = 64.dp, bottom = 88.dp, collapseAt = 40.dp, sheet = true,
-    // light on a darker ground in BOTH modes: sheets are the lightest layer, the page the deepest
-    palette = { dark, amoled, _ ->
+/** Northern lights: a light you walk through. Gates on a turning cube, drifting rows, a dock that opens portals and shoots beams. */
+val AuroraLook = Look(
+    id = "Aurora", label = R.string.style_aurora, blurb = R.string.style_aurora_blurb,
+    solid = false, top = 72.dp, bottom = 120.dp, collapseAt = 40.dp, aurora = true,
+    palette = { dark, _, _ ->
         if (dark) Palette(
-            Color(0xFF0B0B10), if (amoled) Color(0xFF16161C) else Color(0xFF1D1D26),
-            border = Color(0x1FFFFFFF), text = Color(0xFFF3F3F8), dim = Color(0xFF9696A6),
+            Color(0xFF040B0D), Color(0xFF0B1A1E),
+            border = Color(0x3366FFD1), text = Color(0xFFE8FFF7), dim = Color(0xFF7FA79C),
         ) else Palette(
-            Color(0xFFD8D5CE), Color(0xFFFDFCFA),
-            border = Color(0x1F000000), text = Color(0xFF15151B), dim = Color(0xFF6C6A66),
+            Color(0xFFEBF7F3), Color.White,
+            border = Color(0x2E1F7A66), text = Color(0xFF0A2420), dim = Color(0xFF4F7A70),
         )
     },
-    home = { a -> StrataHome(a) },
-    header = { a, m -> StrataHeader(a, m) },
-    nav = { selected, onSelect, m -> StrataNav(selected, onSelect, m) },
+    home = { a -> AuroraHome(a) },
+    header = { a, m -> AuroraHeader(a, m) },
+    nav = { selected, onSelect, m -> AuroraNav(selected, onSelect, m) },
 )
 
 /** Every look the user can pick, in the order of the picker. */
-val Looks = listOf(GlassLook, FeedLook, OrbitLook, StrataLook)
+val Looks = listOf(GlassLook, FeedLook, OrbitLook, AuroraLook)
 
 /** The look stored under [id]; anything unknown (an old or damaged value) falls back to the first. */
 fun lookOf(id: String?): Look = Looks.firstOrNull { it.id == id } ?: Looks[0]

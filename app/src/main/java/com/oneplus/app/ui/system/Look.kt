@@ -65,15 +65,12 @@ class Look(
     val collapseAt: Dp,
     /** Deep-space dress: a star field behind the pages and a luminous rim on glass surfaces. */
     val cosmic: Boolean = false,
-    /** Layers dress: opaque sheets lifted by a soft shadow instead of glass (see glass()), and pages that rise into place. */
-    val sheet: Boolean = false,
+    /** Northern-lights dress: drifting curtains of light behind the pages and a lit rim on glass surfaces. */
+    val aurora: Boolean = false,
     val palette: (dark: Boolean, amoled: Boolean, tv: Boolean) -> Palette,
     val home: @Composable (HomeArgs) -> Unit,
     val header: @Composable (HeaderArgs, Modifier) -> Unit,
     val nav: @Composable (selected: Int, onSelect: (Int) -> Unit, modifier: Modifier) -> Unit,
-) {
-    /** The look's tuning page is the card-size slider (solid and sheet looks) rather than the glass pad. */
-    val sized: Boolean get() = solid || sheet
-}
+)
 
 val LocalLook = staticCompositionLocalOf<Look> { GlassLook }

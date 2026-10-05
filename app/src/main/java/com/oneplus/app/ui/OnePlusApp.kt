@@ -11,6 +11,7 @@ import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
@@ -224,12 +225,12 @@ fun OnePlusApp(theme: ThemeController, vm: MainViewModel = viewModel()) {
                     if (tv) {
                         (slideInHorizontally(tween(280)) { dir * it / 5 } + fadeIn(tween(280))) togetherWith
                             (slideOutHorizontally(tween(200)) { -dir * it / 5 } + fadeOut(tween(120)))
+                    } else if (look.aurora) { // rise: the new page lifts out of the light, the old one sinks away
+                        (fadeIn(tween(420)) + slideInVertically(tween(480, easing = FastOutSlowInEasing)) { it / 10 } + scaleIn(tween(480, easing = FastOutSlowInEasing), 0.94f)) togetherWith
+                            (fadeOut(tween(220)) + slideOutVertically(tween(320)) { -it / 14 } + scaleOut(tween(320), 1.04f))
                     } else if (look.cosmic) { // warp: the new page rushes in from far away while the old one falls back
                         (fadeIn(tween(420)) + scaleIn(tween(520, easing = FastOutSlowInEasing), 1.18f)) togetherWith
                             (fadeOut(tween(260)) + scaleOut(tween(420), 0.86f))
-                    } else if (look.sheet) { // layers: the new page rises into place over the old one, which sinks back
-                        (fadeIn(tween(360)) + slideInVertically(tween(480, easing = FastOutSlowInEasing)) { it / 12 }) togetherWith
-                            (fadeOut(tween(220)) + scaleOut(tween(360), 0.94f))
                     } else if (feed) {
                         (slideInHorizontally(tween(380, easing = FastOutSlowInEasing)) { dir * it / 6 } + fadeIn(tween(380)) + scaleIn(tween(380, easing = FastOutSlowInEasing), 0.94f)) togetherWith
                             (slideOutHorizontally(tween(260)) { -dir * it / 6 } + fadeOut(tween(160)) + scaleOut(tween(260), 0.94f))
