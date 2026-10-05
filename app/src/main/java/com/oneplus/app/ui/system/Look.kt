@@ -65,6 +65,8 @@ class Look(
     val collapseAt: Dp,
     /** Deep-space dress: a star field behind the pages and a luminous rim on glass surfaces. */
     val cosmic: Boolean = false,
+    /** Paper cut-out dress: square corners, thick ink outlines, hard offset shadows in the app colour, a dotted page. */
+    val brutal: Boolean = false,
     val palette: (dark: Boolean, amoled: Boolean, tv: Boolean) -> Palette,
     val home: @Composable (HomeArgs) -> Unit,
     val header: @Composable (HeaderArgs, Modifier) -> Unit,

@@ -62,8 +62,26 @@ val OrbitLook = Look(
     nav = { selected, onSelect, m -> OrbitNav(selected, onSelect, m) },
 )
 
+/** Paper cut-outs: the opposite of Orbit. Flat, square, inked, grounded; hanging cards that swing, sheets that slide over each other. */
+val CutoutLook = Look(
+    id = "Cutout", label = R.string.style_cutout, blurb = R.string.style_cutout_blurb,
+    solid = true, top = 64.dp, bottom = 84.dp, collapseAt = 40.dp, brutal = true,
+    palette = { dark, amoled, _ ->
+        if (dark) Palette(
+            if (amoled) Color.Black else Color(0xFF15131C), Color(0xFF211E2B),
+            border = Color(0xFFF2EEFF), text = Color(0xFFF7F4FF), dim = Color(0xFFA9A3BE),
+        ) else Palette(
+            Color(0xFFE9E9EE), Color.White,
+            border = Color(0xFF111111), text = Color(0xFF111111), dim = Color(0xFF5E5E6B),
+        )
+    },
+    home = { a -> CutoutHome(a) },
+    header = { a, m -> CutoutHeader(a, m) },
+    nav = { selected, onSelect, m -> CutoutNav(selected, onSelect, m) },
+)
+
 /** Every look the user can pick, in the order of the picker. */
-val Looks = listOf(GlassLook, FeedLook, OrbitLook)
+val Looks = listOf(GlassLook, FeedLook, OrbitLook, CutoutLook)
 
 /** The look stored under [id]; anything unknown (an old or damaged value) falls back to the first. */
 fun lookOf(id: String?): Look = Looks.firstOrNull { it.id == id } ?: Looks[0]

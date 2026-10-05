@@ -10,7 +10,9 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.animation.core.Animatable
@@ -226,6 +228,9 @@ fun OnePlusApp(theme: ThemeController, vm: MainViewModel = viewModel()) {
                     } else if (look.cosmic) { // warp: the new page rushes in from far away while the old one falls back
                         (fadeIn(tween(420)) + scaleIn(tween(520, easing = FastOutSlowInEasing), 1.18f)) togetherWith
                             (fadeOut(tween(260)) + scaleOut(tween(420), 0.86f))
+                    } else if (look.brutal) { // sheets: the new page slides up over the old one, which sinks a little
+                        slideInVertically(tween(380, easing = FastOutSlowInEasing)) { it } togetherWith
+                            (slideOutVertically(tween(380, easing = FastOutSlowInEasing)) { -it / 6 } + fadeOut(tween(320)))
                     } else if (feed) {
                         (slideInHorizontally(tween(380, easing = FastOutSlowInEasing)) { dir * it / 6 } + fadeIn(tween(380)) + scaleIn(tween(380, easing = FastOutSlowInEasing), 0.94f)) togetherWith
                             (slideOutHorizontally(tween(260)) { -dir * it / 6 } + fadeOut(tween(160)) + scaleOut(tween(260), 0.94f))
