@@ -223,6 +223,9 @@ fun OnePlusApp(theme: ThemeController, vm: MainViewModel = viewModel()) {
                     if (tv) {
                         (slideInHorizontally(tween(280)) { dir * it / 5 } + fadeIn(tween(280))) togetherWith
                             (slideOutHorizontally(tween(200)) { -dir * it / 5 } + fadeOut(tween(120)))
+                    } else if (look.cosmic) { // warp: the new page rushes in from far away while the old one falls back
+                        (fadeIn(tween(420)) + scaleIn(tween(520, easing = FastOutSlowInEasing), 1.18f)) togetherWith
+                            (fadeOut(tween(260)) + scaleOut(tween(420), 0.86f))
                     } else if (feed) {
                         (slideInHorizontally(tween(380, easing = FastOutSlowInEasing)) { dir * it / 6 } + fadeIn(tween(380)) + scaleIn(tween(380, easing = FastOutSlowInEasing), 0.94f)) togetherWith
                             (slideOutHorizontally(tween(260)) { -dir * it / 6 } + fadeOut(tween(160)) + scaleOut(tween(260), 0.94f))

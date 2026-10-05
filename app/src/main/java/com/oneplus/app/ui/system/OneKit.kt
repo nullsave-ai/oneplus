@@ -69,6 +69,19 @@ fun OneText(text: String, style: TextStyle, color: Color, modifier: Modifier = M
 fun Modifier.ambient(): Modifier {
     val c = LocalColors.current
     if (LocalFeed.current) return background(c.bg) // Feed: one flat colour, no glow, no dither
+    if (LocalLook.current.cosmic) return background(c.bg).drawWithCache { // Orbit: a nebula and a fixed star field
+        val night = c.bg.luminance() < 0.2f
+        val glowA = Brush.radialGradient(listOf(c.accent.copy(alpha = if (night) 0.20f else 0.10f), c.accent.copy(alpha = 0f)),
+            Offset(size.width * 0.9f, 0f), size.maxDimension * 0.75f)
+        val glowB = Brush.radialGradient(listOf(NebulaViolet.copy(alpha = if (night) 0.16f else 0.08f), NebulaViolet.copy(alpha = 0f)),
+            Offset(0f, size.height * 0.95f), size.maxDimension * 0.7f)
+        val rnd = kotlin.random.Random(11)
+        val stars = if (night) List(70) { Triple(Offset(rnd.nextFloat() * size.width, rnd.nextFloat() * size.height), 0.5f + rnd.nextFloat() * 1.1f, 0.15f + rnd.nextFloat() * 0.55f) } else emptyList()
+        onDrawBehind {
+            drawRect(glowA); drawRect(glowB)
+            stars.forEach { (o, r, a) -> drawCircle(c.text.copy(alpha = a), r.dp.toPx(), o) }
+        }
+    }
     return background(c.bg).drawWithCache {
         // Fade to the same colour at alpha 0: fading to Color.Transparent (= transparent BLACK) is interpolated through gray
         // and leaves a dirty halo, most visible in day mode.
@@ -102,8 +115,15 @@ fun Modifier.glass(level: Int, radius: Dp): Modifier {
     val tint = ((if (fx) GlassAlpha[level - 1] else 0.94f) * g.density).coerceIn(0f, 1f)
     val lift = if (fx && g.depth > 1f) drawBehind { softShadow(CornerRadius(radius.toPx()), (g.depth - 1f) * 3f) } else this
     val base = lift.clip(shape).background(c.glass.copy(alpha = tint))
-    return (if (fx) base.background(sheen) else base).border(0.5.dp, edge, shape)
+    val face = if (fx) base.background(sheen) else base
+    if (LocalLook.current.cosmic) { // Orbit: the edge is a lit rim, brighter where the light hits
+        val rim = remember(c.accent) { Brush.linearGradient(listOf(c.accent.copy(alpha = 0.75f), c.accent.copy(alpha = 0.08f), NebulaViolet.copy(alpha = 0.45f))) }
+        return face.border(1.dp, rim, shape)
+    }
+    return face.border(0.5.dp, edge, shape)
 }
+
+private val NebulaViolet = Color(0xFFB36BFF)
 
 /** Press physics (no ripple): scale down, spring back. */
 @Composable

@@ -244,7 +244,7 @@ internal fun LuxPoster(m: Movie, modifier: Modifier, onClick: () -> Unit) {
 
 /** One match as a card: time, the two teams, the competition. A live match is outlined in the accent. */
 @Composable
-private fun MatchCard(m: Match, modifier: Modifier, onClick: () -> Unit) {
+internal fun MatchCard(m: Match, modifier: Modifier, onClick: () -> Unit) {
     val c = LocalColors.current
     val shape = RoundedCornerShape(24.dp)
     Column(

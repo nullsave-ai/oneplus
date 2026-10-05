@@ -63,6 +63,8 @@ class Look(
     val bottom: Dp,
     /** How far the page scrolls before [HeaderArgs.collapse] reaches 1. */
     val collapseAt: Dp,
+    /** Deep-space dress: a star field behind the pages and a luminous rim on glass surfaces. */
+    val cosmic: Boolean = false,
     val palette: (dark: Boolean, amoled: Boolean, tv: Boolean) -> Palette,
     val home: @Composable (HomeArgs) -> Unit,
     val header: @Composable (HeaderArgs, Modifier) -> Unit,

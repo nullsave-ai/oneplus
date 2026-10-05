@@ -44,8 +44,26 @@ val FeedLook = Look(
     nav = { selected, onSelect, m -> FeedBar(selected, onSelect, m) },
 )
 
+/** Deep space: planets instead of posters, a star field, orbiting nav, 3D coverflow scrolling, a warp between pages. */
+val OrbitLook = Look(
+    id = "Orbit", label = R.string.style_orbit, blurb = R.string.style_orbit_blurb,
+    solid = false, top = 72.dp, bottom = 112.dp, collapseAt = 48.dp, cosmic = true,
+    palette = { dark, _, _ ->
+        if (dark) Palette(
+            Color(0xFF04050E), Color(0xFF0D1124),
+            border = Color(0x33AFC4FF), text = Color(0xFFEAF0FF), dim = Color(0xFF8A93B8),
+        ) else Palette(
+            Color(0xFFEEF0FC), Color.White,
+            border = Color(0x2E3B4BA0), text = Color(0xFF0B1030), dim = Color(0xFF5C6490),
+        )
+    },
+    home = { a -> OrbitHome(a) },
+    header = { a, m -> OrbitHeader(a, m) },
+    nav = { selected, onSelect, m -> OrbitNav(selected, onSelect, m) },
+)
+
 /** Every look the user can pick, in the order of the picker. */
-val Looks = listOf(GlassLook, FeedLook)
+val Looks = listOf(GlassLook, FeedLook, OrbitLook)
 
 /** The look stored under [id]; anything unknown (an old or damaged value) falls back to the first. */
 fun lookOf(id: String?): Look = Looks.firstOrNull { it.id == id } ?: Looks[0]
