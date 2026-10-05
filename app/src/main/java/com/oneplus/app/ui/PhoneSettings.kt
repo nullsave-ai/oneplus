@@ -237,7 +237,7 @@ private fun StylePage(theme: ThemeController) {
             pair.forEach { l ->
                 Tile(l == p.look, stringResource(l.label), stringResource(l.blurb), { theme.update { copy(look = l) }; theme.save() }, Modifier.weight(1f)) {
                     val pal = l.palette(dark, false, false)
-                    Canvas(Modifier.fillMaxSize()) { mini(pal, dark, l.solid, accent, l.cosmic, l.aurora) }
+                    Canvas(Modifier.fillMaxSize()) { mini(pal, dark, l.solid, accent, l.cosmic, l.aurora, l.pitch) }
                 }
             }
             if (pair.size == 1) Spacer(Modifier.weight(1f))
@@ -259,10 +259,10 @@ private fun ModePage(theme: ThemeController) {
                         val day = look.palette(false, false, false)
                         val night = look.palette(true, false, false)
                         when (m) {
-                            ThemeMode.Light -> mini(day, false, look.solid, accent, look.cosmic, look.aurora)
-                            ThemeMode.Dark -> mini(night, true, look.solid, accent, look.cosmic, look.aurora)
-                            ThemeMode.Amoled -> mini(look.palette(true, true, false).let { Palette(Color.Black, it.surface, it.border, it.text, it.dim) }, true, look.solid, accent, look.cosmic, look.aurora)
-                            ThemeMode.System -> { mini(day, false, look.solid, accent, look.cosmic, look.aurora); clipRect(left = size.width / 2f) { mini(night, true, look.solid, accent, look.cosmic, look.aurora) } }
+                            ThemeMode.Light -> mini(day, false, look.solid, accent, look.cosmic, look.aurora, look.pitch)
+                            ThemeMode.Dark -> mini(night, true, look.solid, accent, look.cosmic, look.aurora, look.pitch)
+                            ThemeMode.Amoled -> mini(look.palette(true, true, false).let { Palette(Color.Black, it.surface, it.border, it.text, it.dim) }, true, look.solid, accent, look.cosmic, look.aurora, look.pitch)
+                            ThemeMode.System -> { mini(day, false, look.solid, accent, look.cosmic, look.aurora, look.pitch); clipRect(left = size.width / 2f) { mini(night, true, look.solid, accent, look.cosmic, look.aurora, look.pitch) } }
                         }
                     }
                 }
@@ -349,7 +349,7 @@ private fun Tile(selected: Boolean, title: String, sub: String?, onClick: () -> 
  * A miniature of the Home screen painted from a look's palette: header, a hero card, two cards, the nav bar. A solid look gets
  * opaque cards with hairlines and a full-width bar; a translucent one gets frosted cards over a colour blob and a floating pill.
  */
-private fun DrawScope.mini(pal: Palette, dark: Boolean, solid: Boolean, accent: Color, cosmic: Boolean = false, aurora: Boolean = false) {
+private fun DrawScope.mini(pal: Palette, dark: Boolean, solid: Boolean, accent: Color, cosmic: Boolean = false, aurora: Boolean = false, pitch: Boolean = false) {
     val u = size.width / 100f
     val text = pal.text(dark); val dim = pal.dim(dark); val edge = pal.border(dark)
     val face = pal.surface.copy(alpha = if (solid) 1f else 0.62f)
@@ -357,6 +357,19 @@ private fun DrawScope.mini(pal: Palette, dark: Boolean, solid: Boolean, accent: 
     fun edged(x: Float, y: Float, w: Float, h: Float, r: Float) =
         drawRoundRect(edge, Offset(x * u, y * u), Size(w * u, h * u), CornerRadius(r * u), Stroke(0.7f * u))
     drawRect(pal.bg)
+    if (pitch) { // Pitch: mown stripes, a scoreboard, a cut-corner big screen, player cards, a pitch dock with the ball
+        for (i in 0 until 8 step 2) drawRect(text.copy(alpha = 0.05f), Offset(0f, i * 14f * u), Size(100f * u, 14f * u))
+        drawRect(face, Offset(0f, 0f), Size(100f * u, 17f * u)); drawRect(PitchGold, Offset(38f * u, 16f * u), Size(24f * u, 1f * u))
+        box(8f, 6f, 30f, 5f, 1.5f, text); box(72f, 5.5f, 20f, 6f, 1.5f, Color.Black.copy(alpha = 0.45f)); box(75f, 7.4f, 14f, 2.4f, 1f, PitchGold)
+        val big = Path().apply { moveTo(16f * u, 22f * u); lineTo(92f * u, 22f * u); lineTo(92f * u, 52f * u); lineTo(84f * u, 60f * u); lineTo(8f * u, 60f * u); lineTo(8f * u, 30f * u); close() }
+        drawPath(big, Brush.linearGradient(listOf(accent.copy(alpha = 0.65f), face), Offset(8f * u, 22f * u), Offset(92f * u, 60f * u))); drawPath(big, edge, style = Stroke(0.7f * u))
+        box(14f, 50f, 26f, 4f, 2f, Color.White.copy(alpha = 0.9f)); box(70f, 25f, 16f, 6f, 1.5f, PitchGold)
+        val tiers = listOf(Color(0xFFF7E08A) to Color(0xFF9A6C1B), Color(0xFFEEF3F6) to Color(0xFF59656E), Color(0xFFE9B98A) to Color(0xFF55331A))
+        tiers.forEachIndexed { i, (a, b) -> val x = 8f + i * 31f; drawRoundRect(Brush.verticalGradient(listOf(a, b), 66f * u, 92f * u), Offset(x * u, 66f * u), Size(27f * u, 26f * u), CornerRadius(4f * u)) }
+        drawRoundRect(Color(0xFF0F4A30), Offset(8f * u, 97f * u), Size(84f * u, 14f * u), CornerRadius(5f * u)); drawRoundRect(Color.White.copy(alpha = 0.5f), Offset(10f * u, 99f * u), Size(80f * u, 10f * u), CornerRadius(3f * u), Stroke(0.6f * u))
+        drawCircle(Color.White, 3.6f * u, Offset(50f * u, 95f * u)); drawCircle(Color(0xFF14181A), 1.3f * u, Offset(50f * u, 95f * u))
+        return
+    }
     if (aurora) { // Aurora: light curtains, a crystal capsule, an arched gate, small gates, a dock with a beam
         drawCircle(AuroraMint.copy(alpha = 0.30f), 24f * u, Offset(24f * u, 30f * u)); drawCircle(AuroraPink.copy(alpha = 0.24f), 24f * u, Offset(80f * u, 60f * u))
         box(22f, 6f, 56f, 8f, 4f, face); edged(22f, 6f, 56f, 8f, 4f); box(40f, 8.8f, 20f, 2.6f, 1.3f, text)

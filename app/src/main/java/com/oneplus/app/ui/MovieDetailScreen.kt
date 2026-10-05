@@ -139,9 +139,10 @@ fun MovieDetailHost(state: DetailState, movies: List<Movie>, lib: Library, movie
 private fun MovieDetail(m: Movie, all: List<Movie>, lib: Library, onBack: () -> Unit, onOpen: (Int) -> Unit, onPlay: (Int) -> Unit) {
     val c = LocalColors.current
     val scroll = rememberScrollState()
+    val pitch = LocalLook.current.pitch
     val lux = LocalLux.current
     val seen = remember(m.id) { mutableSetOf<Int>() }
-    val heroH = topInset() + if (lux) 420.dp else 330.dp
+    val heroH = topInset() + if (lux || pitch) 420.dp else 330.dp
     val heroPx = with(LocalDensity.current) { heroH.toPx() }
     val added = m.id in lib.list
     val similar = remember(m.id, all) {
@@ -154,7 +155,7 @@ private fun MovieDetail(m: Movie, all: List<Movie>, lib: Library, onBack: () -> 
             Modifier.fillMaxSize().verticalScroll(scroll)
                 .padding(bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 32.dp)
         ) {
-            if (lux) LuxHero(m, duration, heroH, scroll) else Hero(m, duration, heroH, scroll)
+            if (pitch) PitchHero(m, duration, heroH, scroll) else if (lux) LuxHero(m, duration, heroH, scroll) else Hero(m, duration, heroH, scroll)
             Box(Modifier.fillMaxWidth(), Alignment.TopCenter) {
                 Column(Modifier.widthIn(max = 720.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(24.dp)) {
                     Row(Modifier.padding(horizontal = 20.dp), Arrangement.spacedBy(12.dp)) {
@@ -164,6 +165,7 @@ private fun MovieDetail(m: Movie, all: List<Movie>, lib: Library, onBack: () -> 
                             { lib.toggle(m.id) }, Modifier.weight(1f), primary = false,
                         )
                     }
+                    if (pitch) PitchStats(m)
                     Genres(m.genres)
                     Section(R.string.movie_story, 1, seen) { Story(m.synopsis) }
                     Section(R.string.movie_cast, 2, seen) {
@@ -275,7 +277,7 @@ private fun LuxHero(m: Movie, duration: String, height: Dp, scroll: ScrollState)
 @Composable
 private fun TopBar(title: String, scroll: ScrollState, heroPx: Float, onBack: () -> Unit, modifier: Modifier) {
     val c = LocalColors.current
-    if (LocalLux.current) Box(
+    if (LocalLux.current || LocalLook.current.pitch) Box(
         modifier.fillMaxWidth().height(topInset())
             .graphicsLayer { alpha = ((scroll.value - heroPx * 0.55f) / (heroPx * 0.1f)).coerceIn(0f, 1f) }.background(c.bg)
     )
@@ -297,7 +299,7 @@ private fun TopBar(title: String, scroll: ScrollState, heroPx: Float, onBack: ()
 @Composable
 private fun Genres(genres: List<String>) {
     val c = LocalColors.current
-    val lux = LocalLux.current // Feed: outlined pills instead of tinted tags
+    val lux = LocalLux.current || LocalLook.current.pitch // Feed / Pitch: outlined pills instead of tinted tags
     FlowRow(Modifier.padding(horizontal = 20.dp), Arrangement.spacedBy(8.dp), Arrangement.spacedBy(8.dp)) {
         genres.forEach { g ->
             OneText(
@@ -352,9 +354,10 @@ private fun InfoRow(@StringRes label: Int, value: String) {
 /** Feed: numbered serif heading that fades up once, staggered (see [reveal]); otherwise the plain heading. */
 @Composable
 private fun Section(@StringRes title: Int, n: Int, seen: MutableSet<Int>, content: @Composable () -> Unit) {
-    val lux = LocalLux.current
+    val pitch = LocalLook.current.pitch
+    val lux = LocalLux.current || pitch
     Column(Modifier.then(if (lux) Modifier.reveal(n, seen) else Modifier), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        if (lux) SectionHead(title, n)
+        if (pitch) PitchHead(n, title) else if (lux) SectionHead(title, n)
         else OneText(stringResource(title), OneType.Section, LocalColors.current.text, Modifier.padding(horizontal = 20.dp))
         content()
     }

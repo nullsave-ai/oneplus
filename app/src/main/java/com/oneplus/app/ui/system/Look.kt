@@ -67,6 +67,8 @@ class Look(
     val cosmic: Boolean = false,
     /** Northern-lights dress: drifting curtains of light behind the pages and a lit rim on glass surfaces. */
     val aurora: Boolean = false,
+    /** Football dress: night pitch with floodlights, squarer chalk-lined surfaces. */
+    val pitch: Boolean = false,
     val palette: (dark: Boolean, amoled: Boolean, tv: Boolean) -> Palette,
     val home: @Composable (HomeArgs) -> Unit,
     val header: @Composable (HeaderArgs, Modifier) -> Unit,

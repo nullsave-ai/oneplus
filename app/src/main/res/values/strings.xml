@@ -118,5 +118,8 @@
     <string name="style_orbit_blurb">فضاء عميق: كواكب ونجوم وتمرير ثلاثي الأبعاد</string>
     <string name="style_aurora">شفق</string>
     <string name="style_aurora_blurb">ضوء شمالي: بوابات على مكعّب، صفوف تنجرف، ومنافذ ضوء</string>
+    <string name="style_pitch">ملعب</string>
+    <string name="style_pitch_blurb">ليلة مباراة: لوحة نتائج وكرة تتدحرج وبطاقات لاعبين</string>
+    <string name="pitch_rating">التقييم</string>
     <string name="display_confirm">اضغط مرة أخرى للتأكيد</string>
 </resources>

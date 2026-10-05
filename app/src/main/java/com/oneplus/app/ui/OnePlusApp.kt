@@ -225,6 +225,9 @@ fun OnePlusApp(theme: ThemeController, vm: MainViewModel = viewModel()) {
                     if (tv) {
                         (slideInHorizontally(tween(280)) { dir * it / 5 } + fadeIn(tween(280))) togetherWith
                             (slideOutHorizontally(tween(200)) { -dir * it / 5 } + fadeOut(tween(120)))
+                    } else if (look.pitch) { // pan: the camera swings across to the next page
+                        (slideInHorizontally(tween(340, easing = FastOutSlowInEasing)) { dir * it } + fadeIn(tween(240))) togetherWith
+                            (slideOutHorizontally(tween(340, easing = FastOutSlowInEasing)) { -dir * it / 3 } + fadeOut(tween(200)))
                     } else if (look.aurora) { // rise: the new page lifts out of the light, the old one sinks away
                         (fadeIn(tween(420)) + slideInVertically(tween(480, easing = FastOutSlowInEasing)) { it / 10 } + scaleIn(tween(480, easing = FastOutSlowInEasing), 0.94f)) togetherWith
                             (fadeOut(tween(220)) + slideOutVertically(tween(320)) { -it / 14 } + scaleOut(tween(320), 1.04f))

@@ -22,6 +22,7 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.*
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.input.key.Key
@@ -70,6 +71,14 @@ fun OneText(text: String, style: TextStyle, color: Color, modifier: Modifier = M
 fun Modifier.ambient(): Modifier {
     val c = LocalColors.current
     if (LocalFeed.current) return background(c.bg) // Feed: one flat colour, no glow, no dither
+    if (LocalLook.current.pitch) { // Pitch: mown stripes under stadium floodlights that breathe
+        val breath = rememberInfiniteTransition(label = "lights").animateFloat(0.55f, 1f, infiniteRepeatable(tween(3600, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "b")
+        return background(c.bg).drawBehind {
+            val band = 76.dp.toPx(); var y = 0f
+            while (y < size.height) { drawRect(c.text.copy(alpha = 0.035f), Offset(0f, y), Size(size.width, band)); y += band * 2f }
+            if (c.bg != Color.Black) floodlights(breath.value * (if (c.bg.luminance() < 0.2f) 1f else 0.35f))
+        }
+    }
     if (LocalLook.current.aurora) { // Aurora: three slow curtains of light (mint, app colour, magenta) drifting across the top of the page
         val turn = rememberInfiniteTransition(label = "sky").animateFloat(0f, 6.2832f, infiniteRepeatable(tween(24000, easing = LinearEasing)), label = "t")
         val night = c.bg.luminance() < 0.2f
@@ -121,24 +130,37 @@ fun Modifier.glass(level: Int, radius: Dp): Modifier {
     }
     val fx = LocalGlassEffects.current
     val g = LocalGlassStyle.current
-    val shape = RoundedCornerShape(radius)
+    val k = LocalLook.current
+    val shape = RoundedCornerShape(if (k.pitch) minOf(radius, 12.dp) else radius) // Pitch: squarer, like a kit badge
     val sheen = remember(g.depth) { if (g.depth == 1f) Sheen else Brush.verticalGradient(listOf(Color.White.copy(alpha = (0.10f * g.depth).coerceIn(0f, 1f)), Color.White.copy(alpha = 0f))) }
     val edge = if (g.depth == 1f) c.border else c.border.copy(alpha = (c.border.alpha * g.depth).coerceIn(0f, 1f))
     val tint = ((if (fx) GlassAlpha[level - 1] else 0.94f) * g.density).coerceIn(0f, 1f)
     val lift = if (fx && g.depth > 1f) drawBehind { softShadow(CornerRadius(radius.toPx()), (g.depth - 1f) * 3f) } else this
     val base = lift.clip(shape).background(c.glass.copy(alpha = tint))
     val face = if (fx) base.background(sheen) else base
-    val k = LocalLook.current
     if (k.cosmic || k.aurora) { // Orbit / Aurora: the edge is a lit rim, brighter where the light hits
         val rim = remember(c.accent, k.aurora) { Brush.linearGradient(listOf(c.accent.copy(alpha = 0.75f), c.accent.copy(alpha = 0.08f), (if (k.aurora) AuroraPink else NebulaViolet).copy(alpha = 0.45f))) }
         return face.border(1.dp, rim, shape)
     }
-    return face.border(0.5.dp, edge, shape)
+    return face.border(if (k.pitch) 1.dp else 0.5.dp, edge, shape) // Pitch: chalk-line border
 }
 
 private val NebulaViolet = Color(0xFFB36BFF)
 internal val AuroraMint = Color(0xFF3DFFC0)
 internal val AuroraPink = Color(0xFFFF4FD8)
+internal val PitchGold = Color(0xFFFFC83D)
+internal val PitchRed = Color(0xFFFF3B30)
+
+/** Two cones of stadium light falling from the top corners, and a bright bulb at each. */
+internal fun DrawScope.floodlights(a: Float) {
+    val w = size.width; val h = size.height
+    for (left in booleanArrayOf(true, false)) {
+        val x = if (left) 0f else w; val s = if (left) 1f else -1f
+        val cone = Path().apply { moveTo(x, 0f); lineTo(x + s * w * 0.28f, 0f); lineTo(x + s * w * 0.95f, h * 0.5f); lineTo(x + s * w * 0.3f, h * 0.5f); close() }
+        drawPath(cone, Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.10f * a), Color.White.copy(alpha = 0f)), 0f, h * 0.5f))
+        drawCircle(Brush.radialGradient(listOf(Color.White.copy(alpha = 0.26f * a), Color.White.copy(alpha = 0f)), Offset(x, 0f), w * 0.4f), w * 0.4f, Offset(x, 0f))
+    }
+}
 
 /** Press physics (no ripple): scale down, spring back. */
 @Composable

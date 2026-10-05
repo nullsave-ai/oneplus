@@ -80,8 +80,26 @@ val AuroraLook = Look(
     nav = { selected, onSelect, m -> AuroraNav(selected, onSelect, m) },
 )
 
+/** Football night: floodlit pitch, a hanging scoreboard, a dock with a rolling ball, collectible player cards. */
+val PitchLook = Look(
+    id = "Pitch", label = R.string.style_pitch, blurb = R.string.style_pitch_blurb,
+    solid = false, top = 72.dp, bottom = 120.dp, collapseAt = 40.dp, pitch = true,
+    palette = { dark, _, _ ->
+        if (dark) Palette(
+            Color(0xFF06130D), Color(0xFF0E2218),
+            border = Color(0x40F5FFE9), text = Color(0xFFF4FFF1), dim = Color(0xFF8FB39C),
+        ) else Palette(
+            Color(0xFFEAF5E6), Color.White,
+            border = Color(0x3314532D), text = Color(0xFF08210F), dim = Color(0xFF4F7557),
+        )
+    },
+    home = { a -> PitchHome(a) },
+    header = { a, m -> PitchHeader(a, m) },
+    nav = { selected, onSelect, m -> PitchNav(selected, onSelect, m) },
+)
+
 /** Every look the user can pick, in the order of the picker. */
-val Looks = listOf(GlassLook, FeedLook, OrbitLook, AuroraLook)
+val Looks = listOf(GlassLook, FeedLook, OrbitLook, AuroraLook, PitchLook)
 
 /** The look stored under [id]; anything unknown (an old or damaged value) falls back to the first. */
 fun lookOf(id: String?): Look = Looks.firstOrNull { it.id == id } ?: Looks[0]
