@@ -31,15 +31,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.drawscope.drawOutline
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
@@ -101,8 +103,15 @@ private val Spark = burst(4, 0.28f)
 
 /** The sticker: hard shadow, flat fill, thick ink outline. */
 private fun Modifier.sticker(shape: Shape, fill: Color, ink: Color, shadow: Color, off: Dp = 3.dp): Modifier =
-    drawBehind { translate(off.toPx(), off.toPx()) { drawOutline(shape.createOutline(size, layoutDirection, this), shadow) } }
-        .clip(shape).background(fill).border(2.dp, ink, shape)
+    drawBehind {
+        translate(off.toPx(), off.toPx()) {
+            when (val o = shape.createOutline(size, layoutDirection, this)) {
+                is Outline.Rectangle -> drawRect(shadow, topLeft = Offset(o.rect.left, o.rect.top), size = o.rect.size)
+                is Outline.Rounded -> drawRoundRect(shadow, topLeft = Offset(o.roundRect.left, o.roundRect.top), size = Size(o.roundRect.width, o.roundRect.height), cornerRadius = CornerRadius(o.roundRect.bottomLeftCornerRadius.x, o.roundRect.bottomLeftCornerRadius.y))
+                is Outline.Generic -> drawPath(o.path, shadow)
+            }
+        }
+    }.clip(shape).background(fill).border(2.dp, ink, shape)
 
 /** Text with a fat ink outline (a stroked copy underneath, the fill on top). */
 @Composable
