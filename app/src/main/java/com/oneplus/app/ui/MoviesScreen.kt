@@ -66,6 +66,7 @@ fun MoviesHost(open: Boolean, movies: List<Movie>, portrait: Boolean, onMovie: (
 @Composable
 private fun MoviesScreen(movies: List<Movie>, portrait: Boolean, onMovie: (Int) -> Unit, onClose: () -> Unit) {
     val c = LocalColors.current
+    val lux = LocalLux.current // Feed: the title is plain serif text, not a pill
     val tv = LocalTvMode.current // TV Mode: the number of columns always follows the width (never a fixed 3)
     var genre by rememberSaveable { mutableStateOf<String?>(null) }
     var year by rememberSaveable { mutableIntStateOf(0) }       // 0 = all
@@ -101,7 +102,7 @@ private fun MoviesScreen(movies: List<Movie>, portrait: Boolean, onMovie: (Int) 
         // header: back · title + count · filter
         Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 12.dp), Arrangement.spacedBy(8.dp), Alignment.CenterVertically) {
             Box(Modifier.size(44.dp).tvAutoFocus().press(onClose).glass(3, 22.dp), Alignment.Center) { OneIconView(OneIcon.Back) { c.text } }
-            Box(Modifier.weight(1f).height(44.dp).glass(3, 22.dp), Alignment.Center) {
+            Box(Modifier.weight(1f).height(44.dp).then(if (lux && !searching) Modifier else Modifier.glass(3, 22.dp)), if (lux && !searching) Alignment.CenterStart else Alignment.Center) {
                 if (searching) Row(Modifier.fillMaxSize().padding(start = 14.dp, end = 2.dp), Arrangement.spacedBy(8.dp), Alignment.CenterVertically) {
                     OneIconView(OneIcon.Search) { c.accent }
                     BasicTextField(
@@ -115,8 +116,8 @@ private fun MoviesScreen(movies: List<Movie>, portrait: Boolean, onMovie: (Int) 
                         },
                     )
                     Box(Modifier.size(40.dp).press(closeSearch), Alignment.Center) { OneIconView(OneIcon.Close) { c.dim } }
-                } else Row(Modifier.padding(horizontal = 16.dp), Arrangement.spacedBy(8.dp), Alignment.CenterVertically) {
-                    OneText(stringResource(R.string.movies_title), OneType.Section, c.text, maxLines = 1)
+                } else Row(Modifier.padding(horizontal = if (lux) 6.dp else 16.dp), Arrangement.spacedBy(8.dp), Alignment.CenterVertically) {
+                    OneText(stringResource(R.string.movies_title), if (lux) OneType.Lux else OneType.Section, c.text, maxLines = 1)
                     OneDot(c.dim)
                     OneText("${shown.size}", OneType.Section, c.dim)
                 }

@@ -182,9 +182,9 @@ fun Modifier.tvAutoFocus(key: Any? = Unit): Modifier {
     return focusRequester(me)
 }
 
-/** Space a page keeps clear below its content for the bottom navigation: the glass island, the flat Feed bar, or (TV Mode) almost none. */
+/** Space a page keeps clear below its content for the bottom navigation (the look's own bar, or almost none in TV Mode). */
 @Composable
-fun bottomNavSpace(): Dp = if (LocalTvMode.current) 24.dp else if (LocalFeed.current) 64.dp else 112.dp
+fun bottomNavSpace(): Dp = if (LocalTvMode.current) 24.dp else LocalLook.current.bottom
 
 /**
  * How much of the physical left edge the TV rail covers. The pages are full width (the rail floats above them); each one pads its

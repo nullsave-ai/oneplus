@@ -7,6 +7,7 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -88,9 +89,9 @@ internal val Sheen = Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.10
 @Composable
 fun Modifier.glass(level: Int, radius: Dp): Modifier {
     val c = LocalColors.current
-    if (LocalFeed.current) { // Feed: a flat solid card (phone: hairline border, corners follow the user's roundness)
+    if (LocalFeed.current) { // Feed: a flat solid card (phone: hairline border)
         if (!LocalLux.current) return clip(RoundedCornerShape(minOf(radius, 14.dp))).background(c.glass)
-        val s = RoundedCornerShape(radius * LocalFeedLook.current.round)
+        val s = RoundedCornerShape(radius)
         return clip(s).background(c.glass).border(0.5.dp, c.border, s)
     }
     val fx = LocalGlassEffects.current
@@ -130,6 +131,19 @@ fun Modifier.reveal(index: Int, seen: MutableSet<Int>): Modifier {
     val p = remember { Animatable(if (done) 1f else 0f) }
     LaunchedEffect(Unit) { if (!done) { delay(index * 80L); p.animateTo(1f, tween(560, easing = FastOutSlowInEasing)); seen += index } }
     return graphicsLayer { alpha = p.value; translationY = (1f - p.value) * 32.dp.toPx() }
+}
+
+/**
+ * A card sliding off either end of its row shrinks and fades a little, so the row seems to curve away from the finger.
+ * [key] is the item's key in [state]. Reads the row's layout in the draw phase only: scrolling never recomposes.
+ */
+fun Modifier.edgeFx(state: LazyListState, key: Any): Modifier = graphicsLayer {
+    val info = state.layoutInfo
+    val item = info.visibleItemsInfo.firstOrNull { it.key == key } ?: return@graphicsLayer
+    val out = maxOf(info.viewportStartOffset - item.offset, item.offset + item.size - info.viewportEndOffset).coerceAtLeast(0) / item.size.toFloat()
+    val f = ((out - 0.08f) / 0.92f).coerceIn(0f, 1f)
+    val k = 1f - 0.14f * f
+    scaleX = k; scaleY = k; alpha = 1f - 0.45f * f
 }
 
 // ---- Icons (custom, 24dp grid, 1.75 stroke) ------------------------------
@@ -381,8 +395,9 @@ fun OneButton(text: String, icon: OneIcon?, onClick: () -> Unit, modifier: Modif
     val c = LocalColors.current
     val fg = if (primary) c.onAccent else c.text
     val base = modifier.height(52.dp).press(onClick)
+    val r = if (LocalLux.current) 26.dp else 18.dp // Feed: full pills
     Row(
-        (if (primary) base.clip(RoundedCornerShape(18.dp)).background(c.accent) else base.glass(2, 18.dp)).padding(horizontal = 16.dp),
+        (if (primary) base.clip(RoundedCornerShape(r)).background(c.accent) else base.glass(2, r)).padding(horizontal = 16.dp),
         Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally), Alignment.CenterVertically,
     ) {
         if (icon != null) OneIconView(icon) { fg }
@@ -395,14 +410,16 @@ fun OneButton(text: String, icon: OneIcon?, onClick: () -> Unit, modifier: Modif
 fun OneChip(text: String, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val c = LocalColors.current
     val p by animateFloatAsState(if (selected) 1f else 0f, tween(180), label = "chip")
-    val shape = RoundedCornerShape(14.dp)
+    val lux = LocalLux.current // Feed: a pill that inverts when chosen (ink on ivory, ivory on ink)
+    val shape = if (lux) CircleShape else RoundedCornerShape(14.dp)
+    val on = if (lux) c.text else c.selection
     Box(
         modifier.height(36.dp).press(onClick).clip(shape)
-            .drawBehind { drawRect(lerp(c.dim.copy(alpha = 0.10f), c.selection, p)) }
-            .border(0.5.dp, lerp(c.border, c.accent.copy(alpha = 0.5f), p), shape)
+            .drawBehind { drawRect(lerp(if (lux) c.text.copy(alpha = 0f) else c.dim.copy(alpha = 0.10f), on, p)) }
+            .border(0.5.dp, lerp(c.border, if (lux) c.text else c.accent.copy(alpha = 0.5f), p), shape)
             .padding(horizontal = 14.dp),
         Alignment.Center,
-    ) { OneText(text, OneType.Body, lerp(c.dim, c.accent, p), maxLines = 1) }
+    ) { OneText(text, OneType.Body, lerp(c.dim, if (lux) c.bg else c.accent, p), maxLines = 1) }
 }
 
 /** Separator dot, drawn (no text glyph). */

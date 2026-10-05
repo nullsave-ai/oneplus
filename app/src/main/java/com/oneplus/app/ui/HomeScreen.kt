@@ -172,6 +172,7 @@ internal fun Team(name: String) {
 
 @Composable
 internal fun Poster(movie: Movie, modifier: Modifier, onClick: () -> Unit) {
+    if (LocalLux.current) { LuxPoster(movie, modifier, onClick); return } // Feed: the title sits under the artwork
     val c = LocalColors.current
     val fill = remember(c) { Brush.linearGradient(listOf(c.accent.copy(alpha = 0.40f), c.dim.copy(alpha = 0.22f))) }
     Box(modifier.aspectRatio(2f / 3f).press(onClick).clip(RoundedCornerShape(16.dp)).background(fill)) {

@@ -11,6 +11,8 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
@@ -137,7 +139,9 @@ fun MovieDetailHost(state: DetailState, movies: List<Movie>, lib: Library, movie
 private fun MovieDetail(m: Movie, all: List<Movie>, lib: Library, onBack: () -> Unit, onOpen: (Int) -> Unit, onPlay: (Int) -> Unit) {
     val c = LocalColors.current
     val scroll = rememberScrollState()
-    val heroH = topInset() + 330.dp
+    val lux = LocalLux.current
+    val seen = remember(m.id) { mutableSetOf<Int>() }
+    val heroH = topInset() + if (lux) 420.dp else 330.dp
     val heroPx = with(LocalDensity.current) { heroH.toPx() }
     val added = m.id in lib.list
     val similar = remember(m.id, all) {
@@ -150,7 +154,7 @@ private fun MovieDetail(m: Movie, all: List<Movie>, lib: Library, onBack: () -> 
             Modifier.fillMaxSize().verticalScroll(scroll)
                 .padding(bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 32.dp)
         ) {
-            Hero(m, duration, heroH, scroll)
+            if (lux) LuxHero(m, duration, heroH, scroll) else Hero(m, duration, heroH, scroll)
             Box(Modifier.fillMaxWidth(), Alignment.TopCenter) {
                 Column(Modifier.widthIn(max = 720.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(24.dp)) {
                     Row(Modifier.padding(horizontal = 20.dp), Arrangement.spacedBy(12.dp)) {
@@ -161,22 +165,23 @@ private fun MovieDetail(m: Movie, all: List<Movie>, lib: Library, onBack: () -> 
                         )
                     }
                     Genres(m.genres)
-                    Section(R.string.movie_story) { Story(m.synopsis) }
-                    Section(R.string.movie_cast) {
+                    Section(R.string.movie_story, 1, seen) { Story(m.synopsis) }
+                    Section(R.string.movie_cast, 2, seen) {
                         LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                             items(m.cast) { name -> CastMember(name) }
                         }
                     }
-                    Section(R.string.movie_details) {
+                    Section(R.string.movie_details, 3, seen) {
                         Column(Modifier.padding(horizontal = 20.dp).fillMaxWidth().glass(2, 22.dp).padding(vertical = 4.dp)) {
                             InfoRow(R.string.movie_director, m.director)
                             InfoRow(R.string.movie_year, m.year.toString())
                             InfoRow(R.string.movie_duration, duration)
                         }
                     }
-                    if (similar.isNotEmpty()) Section(R.string.movie_similar) {
-                        LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            items(similar, key = { it.id }) { s -> Poster(s, Modifier.width(124.dp)) { onOpen(s.id) } }
+                    if (similar.isNotEmpty()) Section(R.string.movie_similar, 4, seen) {
+                        val row = rememberLazyListState()
+                        LazyRow(state = row, contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            items(similar, key = { it.id }) { s -> Poster(s, Modifier.width(124.dp).edgeFx(row, s.id)) { onOpen(s.id) } }
                         }
                     }
                 }
@@ -233,10 +238,47 @@ private fun Hero(m: Movie, duration: String, height: Dp, scroll: ScrollState) {
     }
 }
 
-/** Floating glass back button; the title pill fades in once the hero has scrolled away. */
+/**
+ * Feed's hero: the artwork fills the top edge to edge and drifts at half the speed of the page; the title block lifts and fades
+ * as the page scrolls, so the hero seems to dissolve into the content instead of being pushed off.
+ */
+@Composable
+private fun LuxHero(m: Movie, duration: String, height: Dp, scroll: ScrollState) {
+    val c = LocalColors.current
+    val fill = remember(c) { Brush.linearGradient(listOf(c.accent.copy(alpha = 0.55f), c.glass)) }
+    val fade = remember(c) { Brush.verticalGradient(0.35f to c.bg.copy(alpha = 0f), 1f to c.bg) }
+    Box(Modifier.fillMaxWidth().height(height).clipToBounds().background(fill)) {
+        val art = Modifier.matchParentSize().graphicsLayer { translationY = scroll.value * 0.5f; scaleX = 1.12f; scaleY = 1.12f }
+        if (m.backdrop.isNotBlank()) RemoteImage(m.backdrop, art)
+        else OneText(m.title.take(1), OneType.LuxHero.copy(fontSize = 240.sp, lineHeight = 260.sp), c.text.copy(alpha = 0.10f), Modifier.align(Alignment.Center).graphicsLayer { translationY = scroll.value * 0.5f })
+        Box(Modifier.matchParentSize().background(fade))
+        Column(
+            Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(start = 20.dp, end = 20.dp, bottom = 24.dp)
+                .graphicsLayer { translationY = -scroll.value * 0.25f; alpha = (1f - scroll.value / (size.height * 2.5f)).coerceIn(0f, 1f) },
+            Arrangement.spacedBy(10.dp),
+        ) {
+            OneText(m.genres.joinToString(" · "), OneType.Caption, c.accent, maxLines = 1)
+            OneText(m.title, OneType.LuxHero.copy(fontSize = 36.sp, lineHeight = 44.sp), c.text, maxLines = 2)
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                OneText("${m.year}", OneType.Caption, c.dim)
+                OneDot(c.dim)
+                OneText(duration, OneType.Caption, c.dim)
+                OneDot(c.dim)
+                OneIconView(OneIcon.Star, Modifier.size(16.dp)) { c.accent }
+                OneText(String.format(Locale.US, "%.1f", m.rating), OneType.Section, c.text)
+            }
+        }
+    }
+}
+
+/** Floating glass back button; the title pill fades in once the hero has scrolled away. Feed adds a solid strip behind the status bar. */
 @Composable
 private fun TopBar(title: String, scroll: ScrollState, heroPx: Float, onBack: () -> Unit, modifier: Modifier) {
     val c = LocalColors.current
+    if (LocalLux.current) Box(
+        modifier.fillMaxWidth().height(topInset())
+            .graphicsLayer { alpha = ((scroll.value - heroPx * 0.55f) / (heroPx * 0.1f)).coerceIn(0f, 1f) }.background(c.bg)
+    )
     Row(
         modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = topInset() + 12.dp),
         Arrangement.spacedBy(8.dp), Alignment.CenterVertically,
@@ -255,9 +297,13 @@ private fun TopBar(title: String, scroll: ScrollState, heroPx: Float, onBack: ()
 @Composable
 private fun Genres(genres: List<String>) {
     val c = LocalColors.current
+    val lux = LocalLux.current // Feed: outlined pills instead of tinted tags
     FlowRow(Modifier.padding(horizontal = 20.dp), Arrangement.spacedBy(8.dp), Arrangement.spacedBy(8.dp)) {
         genres.forEach { g ->
-            OneText(g, OneType.Caption, c.accent, Modifier.background(c.accentSoft, RoundedCornerShape(12.dp)).padding(horizontal = 12.dp, vertical = 6.dp))
+            OneText(
+                g, OneType.Caption, if (lux) c.text else c.accent,
+                (if (lux) Modifier.border(0.5.dp, c.border, CircleShape) else Modifier.background(c.accentSoft, RoundedCornerShape(12.dp))).padding(horizontal = 12.dp, vertical = 6.dp),
+            )
         }
     }
 }
@@ -303,10 +349,13 @@ private fun InfoRow(@StringRes label: Int, value: String) {
     }
 }
 
+/** Feed: numbered serif heading that fades up once, staggered (see [reveal]); otherwise the plain heading. */
 @Composable
-private fun Section(@StringRes title: Int, content: @Composable () -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        OneText(stringResource(title), OneType.Section, LocalColors.current.text, Modifier.padding(horizontal = 20.dp))
+private fun Section(@StringRes title: Int, n: Int, seen: MutableSet<Int>, content: @Composable () -> Unit) {
+    val lux = LocalLux.current
+    Column(Modifier.then(if (lux) Modifier.reveal(n, seen) else Modifier), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        if (lux) SectionHead(title, n)
+        else OneText(stringResource(title), OneType.Section, LocalColors.current.text, Modifier.padding(horizontal = 20.dp))
         content()
     }
 }

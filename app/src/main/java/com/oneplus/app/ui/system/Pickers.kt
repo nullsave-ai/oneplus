@@ -76,7 +76,7 @@ fun OnePad(
             Box(
                 Modifier.offset { IntOffset((x.coerceIn(0f, 1f) * w - 14.dp.toPx()).roundToInt(), ((1f - y.coerceIn(0f, 1f)) * h - 14.dp.toPx()).roundToInt()) }
                     .align(Alignment.TopStart)
-                    .graphicsLayer { scaleX = s; scaleY = s; shadowElevation = 6.dp.toPx(); shape = CircleShape; clip = true }
+                    .graphicsLayer { scaleX = s; scaleY = s; shadowElevation = 6.dp.toPx(); shape = CircleShape }
                     .size(28.dp).background(Color.White, CircleShape).border(3.dp, c.accent, CircleShape)
             )
         }

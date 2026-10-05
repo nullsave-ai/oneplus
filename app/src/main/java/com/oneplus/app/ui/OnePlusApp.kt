@@ -76,6 +76,7 @@ import kotlin.math.roundToInt
 fun OnePlusApp(theme: ThemeController, vm: MainViewModel = viewModel()) {
     val state by vm.state.collectAsStateWithLifecycle()
     val tv = LocalTvMode.current
+    val look = LocalLook.current
     val feed = LocalFeed.current
     val feedLayout = tv || feed // TV Mode always uses the feed layout; the phone uses it when the Feed style is on
     var tvSearch by rememberSaveable { mutableStateOf(false) } // TV Mode: the search field is a floating bar that exists only while searching
@@ -115,14 +116,25 @@ fun OnePlusApp(theme: ThemeController, vm: MainViewModel = viewModel()) {
     val channelsList = rememberLazyListState()
     val pages = rememberSaveableStateHolder() // each page keeps its own remembered state (expanded rows, inner scroll positions) while another tab is shown
     val settingsScroll = rememberScrollState()
-    val range = with(LocalDensity.current) { 96.dp.toPx() }
+    val subScroll = rememberScrollState() // the settings sub-page that is open (only one at a time)
+    var sPage by rememberSaveable { mutableIntStateOf(-1) } // phone settings: -1 = the list, otherwise the sub-page that is open
+    val range = with(LocalDensity.current) { look.collapseAt.toPx() }
     val progress = rememberToolbarProgress {
         when (tab) {
             0 -> scrollTarget(homeList.firstVisibleItemIndex, homeList.firstVisibleItemScrollOffset, range)
             1 -> scrollTarget(channelsList.firstVisibleItemIndex, channelsList.firstVisibleItemScrollOffset, range) // the player stays put; the channel list drives the toolbar
-            else -> scrollTarget(0, settingsScroll.value, range)
+            else -> scrollTarget(0, (if (sPage >= 0) subScroll else settingsScroll).value, range)
         }
     }
+    // The header leaves while the page scrolls down and returns on the first scroll up. (Channels keeps its player under it: no hiding.)
+    val reveal = rememberToolbarReveal(tab * 10 + sPage) {
+        when (tab) {
+            0 -> homeList.firstVisibleItemIndex * 100_000 + homeList.firstVisibleItemScrollOffset
+            1 -> 0
+            else -> (if (sPage >= 0) subScroll else settingsScroll).value
+        }
+    }
+    BackHandler(tab == 2 && sPage >= 0 && !tv) { sPage = -1 }
     val nearChannels by remember {
         derivedStateOf {
             val info = homeList.layoutInfo
@@ -226,8 +238,7 @@ fun OnePlusApp(theme: ThemeController, vm: MainViewModel = viewModel()) {
                             val onAllChannels = { tab = 1 }
                             val onMatches = { id: Int -> focus.clearFocus(); matchFocus = id; showMatches = true }
                             if (tv) FeedHome(state, homeList, wide, library, onMovie, onChannel, onAllMovies, onAllChannels, onMatches)
-                            else if (feed) LuxHome(state, homeList, portrait, library, onMovie, onChannel, onAllMovies, onAllChannels, onMatches)
-                            else HomeScreen(state, homeList, wide, library, onMovie, onChannel, onAllMovies, onAllChannels, onMatches)
+                            else look.home(HomeArgs(state, homeList, portrait, wide, library, onMovie, onChannel, onAllMovies, onAllChannels, onMatches))
                         }
                         1 -> {
                             val playing = if (playKind == 2) playId else -1
@@ -235,7 +246,7 @@ fun OnePlusApp(theme: ThemeController, vm: MainViewModel = viewModel()) {
                             else ChannelsScreen(state.data.channels, state.query.isNotBlank(), playing, group, portrait, channelsList, { slot = it }, pickGroup, playInline)
                         }
                         else -> SettingsScreen(
-                            fx, { fx = it }, theme, settingsScroll, wide,
+                            fx, { fx = it }, theme, settingsScroll, subScroll, sPage, { sPage = it }, wide,
                             library.list.mapNotNull { byId[it] }, { id -> focus.clearFocus(); movieId = id },
                             { openTelegram(ctx) }, { showClear = true },
                         )
@@ -243,17 +254,18 @@ fun OnePlusApp(theme: ThemeController, vm: MainViewModel = viewModel()) {
                     }
                 }
                 // TV Mode has no toolbar (its space belongs to the page); a search from the rail opens it as a floating field.
-                if (!tv || tvSearch) FloatingToolbar(
-                    title = stringResource(if (tab == 0) R.string.app_name else Tabs[tab].second),
-                    context = if (tab == 0 && nearChannels) stringResource(R.string.tab_channels) else null,
-                    hasSearch = tab != 2, query = state.query, onQuery = vm::onQuery, progress = progress,
-                    modifier = Modifier.align(Alignment.TopCenter)
-                        .then(
-                            if (feed && !tv) Modifier.padding(top = topInset())
-                            else Modifier.widthIn(max = 880.dp).padding(start = 16.dp, end = 16.dp, top = topInset() + 12.dp)
-                        )
-                        .then(if (tv) Modifier.absolutePadding(left = TvRailSpace) else Modifier),
-                    startOpen = tv, onClosed = { tvSearch = false },
+                // The phone's header belongs to the look. On an open settings sub-page it carries that page's name and a back button.
+                val inSub = tab == 2 && sPage >= 0 && !tv
+                val title = stringResource(if (inSub) settingsTitle(sPage, look) else if (tab == 0) R.string.app_name else Tabs[tab].second)
+                val context = if (tab == 0 && nearChannels) stringResource(R.string.tab_channels) else null
+                if (tv) { if (tvSearch) FloatingToolbar(
+                    title, context, hasSearch = tab != 2, query = state.query, onQuery = vm::onQuery, progress = progress,
+                    modifier = Modifier.align(Alignment.TopCenter).widthIn(max = 880.dp).padding(start = 16.dp, end = 16.dp, top = topInset() + 12.dp)
+                        .absolutePadding(left = TvRailSpace),
+                    startOpen = true, onClosed = { tvSearch = false },
+                ) } else look.header(
+                    HeaderArgs(title, context, tab != 2, state.query, vm::onQuery, progress, reveal, if (inSub) ({ sPage = -1 }) else null),
+                    Modifier.align(Alignment.TopCenter),
                 )
                 }
                 }
@@ -314,8 +326,7 @@ fun OnePlusApp(theme: ThemeController, vm: MainViewModel = viewModel()) {
                     tab, { tab = it }, { if (tab == 2) tab = 0; tvSearch = true }, railFocus,
                     navMod.align(AbsoluteAlignment.CenterLeft).absolutePadding(left = 16.dp),
                 )
-                else if (feed) FeedBar(tab, { tab = it }, navMod.align(Alignment.BottomCenter))
-                else LiquidNav(tab, { tab = it }, navMod.align(Alignment.BottomCenter))
+                else look.nav(tab, { tab = it }, navMod.align(Alignment.BottomCenter))
             }
             if (showTg) TelegramDialog(
                 onSkip = { showTg = false; telegramSkipped(ctx) },
@@ -373,7 +384,7 @@ private fun TvRail(selected: Int, onSelect: (Int) -> Unit, onSearch: () -> Unit,
  * instead of a marker that appears on each tab separately.
  */
 @Composable
-private fun FeedBar(selected: Int, onSelect: (Int) -> Unit, modifier: Modifier = Modifier) {
+internal fun FeedBar(selected: Int, onSelect: (Int) -> Unit, modifier: Modifier = Modifier) {
     val c = LocalColors.current
     val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
     val pos by animateFloatAsState(selected.toFloat(), spring(0.8f, 380f), label = "feedLine")

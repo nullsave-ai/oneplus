@@ -111,4 +111,8 @@
     <string name="style_feed">Feed</string>
     <string name="tv_search">بحث</string>
     <string name="settings_general">عام</string>
+    <string name="settings_screen">الشاشة</string>
+    <string name="style_glass_blurb">شفاف وعائم، يتلوّن بلون التطبيق</string>
+    <string name="style_feed_blurb">بطاقات صلبة وخطوط دقيقة وعناوين تحريرية</string>
+    <string name="display_confirm">اضغط مرة أخرى للتأكيد</string>
 </resources>

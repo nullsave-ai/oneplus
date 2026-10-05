@@ -16,6 +16,8 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
 import com.oneplus.app.R
+import com.oneplus.app.ui.GlassLook
+import com.oneplus.app.ui.lookOf
 
 /** Semantic tokens. Composables read these only; raw colors live in this file. */
 @Immutable
@@ -43,10 +45,7 @@ fun ThemeMode.resolveDark(): Boolean = when (this) {
     ThemeMode.Dark, ThemeMode.Amoled -> true
 }
 
-/** Two complete looks. [Glass] = floating translucent surfaces; [Feed] = flat, solid, content-first (cards, flat bars, slide transitions). */
-enum class UiStyle(@StringRes val label: Int) { Glass(R.string.style_glass), Feed(R.string.style_feed) }
-
-/** True while the [UiStyle.Feed] look is on: surfaces turn flat, bars turn solid, motion changes (see glass(), press(), OnePlusApp). */
+/** True while a solid look ([Look.solid], e.g. Feed) is on: surfaces turn flat, bars turn solid, motion changes (see glass(), press(), OnePlusApp). */
 val LocalFeed = staticCompositionLocalOf { false }
 
 /** Color experiences. Presets have their own light and dark accent (muted, not neon); [Custom] is user-defined. */
@@ -77,21 +76,15 @@ class GlassStyle(val density: Float = 1f, val depth: Float = 1f)
 
 val LocalGlassStyle = staticCompositionLocalOf { GlassStyle() }
 
-/** Ranges of the phone Feed controls: card size and how round the corners are (1 = as designed). */
-object FeedRange {
-    const val SIZE_MIN = 0.8f
-    const val SIZE_MAX = 1.3f
-    const val ROUND_MIN = 0f
-    const val ROUND_MAX = 2f
+/** Range of the phone Feed's card-size control (1 = as designed). The corner radius is not adjustable: the designed one stays. */
+object CardRange {
+    const val MIN = 0.8f
+    const val MAX = 1.3f
 }
 
-/** The phone Feed look: [size] scales the cards, [round] scales their corner radius. */
-@Immutable
-class FeedLook(val size: Float = 1f, val round: Float = 1f)
+val LocalCardScale = staticCompositionLocalOf { 1f }
 
-val LocalFeedLook = staticCompositionLocalOf { FeedLook() }
-
-/** True only for the phone's Feed style (the luxury look). TV Mode keeps its own feed look untouched. */
+/** True only for a solid look on the phone (Feed's editorial dress). TV Mode keeps its own feed look untouched. */
 val LocalLux = staticCompositionLocalOf { false }
 
 /** Allowed ranges for the custom color (keeps it away from white/black/gray where an accent stops working). */
@@ -121,10 +114,10 @@ data class ThemePrefs(
     /** Glass look, as a multiplier of the built-in one: 1 = exactly as designed. See [GlassRange]. */
     val glassDensity: Float = 1f,
     val glassDepth: Float = 1f,
-    val style: UiStyle = UiStyle.Glass,
-    /** Phone Feed look. See [FeedRange]. */
+    /** The phone's look (see Look.kt); stored by id. */
+    val look: Look = GlassLook,
+    /** Card size of the solid looks. See [CardRange]. */
     val feedSize: Float = 1f,
-    val feedRound: Float = 1f,
 ) {
     fun colorOf(a: Accent, dark: Boolean): Color =
         if (a == Accent.Custom) fit(hsv(hue, sat, value), dark) else a.color(dark)
@@ -153,21 +146,14 @@ private fun onColor(bg: Color): Color {
 private fun build(p: ThemePrefs, dark: Boolean, tv: Boolean): OneColors {
     val ac = p.accentColor(dark)
     val amoled = dark && p.mode == ThemeMode.Amoled
-    val feed = p.style == UiStyle.Feed
-    val lux = feed && !tv // the phone's Feed: ink black / warm ivory, hairline borders (TV keeps the neutral feed greys)
-    // Feed: neutral, untinted greys (the accent only colours actions), like a video-feed app
-    val bg = if (lux) (if (dark) Color(0xFF0B0B0E) else Color(0xFFF6F3EE))
-        else if (feed) (if (dark) Color(0xFF0F0F0F) else Color.White) else if (dark) Color(0xFF0A0E16) else Color(0xFFEEF2F9)
-    val glass = if (lux) (if (amoled) Color(0xFF111114) else if (dark) Color(0xFF16161B) else Color.White)
-        else if (feed) (if (dark) Color(0xFF212121) else Color(0xFFF1F1F1)) else if (amoled) Color(0xFF16181D) else if (dark) Color(0xFF1A2333) else Color.White
-    val dim = if (lux) (if (dark) Color(0xFF9B968D) else Color(0xFF7A746A)) else if (dark) Color(0xFF94A3B8) else Color(0xFF64748B)
+    val flat = p.look.solid // a solid look keeps its palette pure (no accent tint, no glow); a translucent one is tinted by the accent
+    val pal = p.look.palette(dark, amoled, tv)
     return OneColors(
         // Amoled: the background is exactly black (no accent tint, no ambient glow) so those pixels stay off
-        bg = if (amoled) Color.Black else if (feed) bg else lerp(bg, ac, 0.03f), ambient = if (amoled || feed) Color.Black else ac,
-        glass = if (feed) glass else lerp(glass, ac, 0.04f), glassTint = if (feed) glass else lerp(glass, ac, 0.12f),
-        border = if (lux) (if (dark) Color(0x1FFFFFFF) else Color(0x24402F14)) else if (dark) Color(0x26FFFFFF) else Color(0x2E5B6B8C),
-        text = if (lux) (if (dark) Color(0xFFF3EFE8) else Color(0xFF16130F)) else if (dark) Color(0xFFF1F5F9) else Color(0xFF0F172A), dim = dim,
-        primary = ac, secondary = lerp(ac, dim, 0.5f), accent = ac, accentSoft = ac.copy(alpha = 0.16f),
+        bg = if (amoled) Color.Black else if (flat) pal.bg else lerp(pal.bg, ac, 0.03f), ambient = if (amoled || flat) Color.Black else ac,
+        glass = if (flat) pal.surface else lerp(pal.surface, ac, 0.04f), glassTint = if (flat) pal.surface else lerp(pal.surface, ac, 0.12f),
+        border = pal.border(dark), text = pal.text(dark), dim = pal.dim(dark),
+        primary = ac, secondary = lerp(ac, pal.dim(dark), 0.5f), accent = ac, accentSoft = ac.copy(alpha = 0.16f),
         selection = ac.copy(alpha = 0.20f), active = ac, focus = ac,
         success = if (dark) Color(0xFF4CC38A) else Color(0xFF2EA66B),
         warning = if (dark) Color(0xFFF0B455) else Color(0xFFD99A2B),
@@ -203,7 +189,7 @@ val LocalHideStatusBar = staticCompositionLocalOf { false }
 fun OnePlusTheme(prefs: ThemePrefs, dark: Boolean, content: @Composable () -> Unit) {
     val tv = LocalTvMode.current
     val target = remember(prefs, dark, tv) { build(prefs, dark, tv) }
-    val look = remember(prefs.mode, prefs.style, dark, tv) { Any() } // a new object = a different look
+    val look = remember(prefs.mode, prefs.look, dark, tv) { Any() } // a new object = a different look
     var cur by remember(look) { mutableStateOf(target) }               // re-created in the same composition: no frame of old colours
     LaunchedEffect(target) {
         val start = cur
@@ -217,10 +203,11 @@ fun OnePlusTheme(prefs: ThemePrefs, dark: Boolean, content: @Composable () -> Un
         LocalColors provides cur,
         LocalDarkTheme provides dark,
         LocalHideStatusBar provides prefs.hideStatusBar,
-        LocalFeed provides (prefs.style == UiStyle.Feed),
-        LocalLux provides (prefs.style == UiStyle.Feed && !tv),
+        LocalLook provides prefs.look,
+        LocalFeed provides prefs.look.solid,
+        LocalLux provides (prefs.look.solid && !tv),
         LocalGlassStyle provides remember(prefs.glassDensity, prefs.glassDepth) { GlassStyle(prefs.glassDensity, prefs.glassDepth) },
-        LocalFeedLook provides remember(prefs.feedSize, prefs.feedRound) { FeedLook(prefs.feedSize, prefs.feedRound) },
+        LocalCardScale provides prefs.feedSize,
         LocalLayoutDirection provides LayoutDirection.Rtl,
         content = content,
     )
@@ -257,17 +244,16 @@ class ThemeStore(ctx: Context) {
                 ?: if (p.getBoolean("tv_mode", false)) DisplayMode.Tv else d.display,
             glassDensity = p.getFloat("glass_density", d.glassDensity).clean(GlassRange.DENSITY_MIN, GlassRange.DENSITY_MAX, d.glassDensity),
             glassDepth = p.getFloat("glass_depth", d.glassDepth).clean(GlassRange.DEPTH_MIN, GlassRange.DEPTH_MAX, d.glassDepth),
-            style = UiStyle.entries.firstOrNull { it.name == p.getString("style", null) } ?: d.style,
-            feedSize = p.getFloat("feed_size", d.feedSize).clean(FeedRange.SIZE_MIN, FeedRange.SIZE_MAX, d.feedSize),
-            feedRound = p.getFloat("feed_round", d.feedRound).clean(FeedRange.ROUND_MIN, FeedRange.ROUND_MAX, d.feedRound),
+            look = lookOf(p.getString("style", null)), // "style" is the key (and "Glass" / "Feed" the ids) earlier builds already stored
+            feedSize = p.getFloat("feed_size", d.feedSize).clean(CardRange.MIN, CardRange.MAX, d.feedSize),
         )
     }.getOrDefault(ThemePrefs())
 
     fun save(t: ThemePrefs) {
         p.edit().putString("mode", t.mode.name).putString("accent", t.accent.name)
             .putFloat("hue", t.hue).putFloat("sat", t.sat).putFloat("val", t.value).putBoolean("hide_status", t.hideStatusBar).putString("display", t.display.name)
-            .putFloat("glass_density", t.glassDensity).putFloat("glass_depth", t.glassDepth).putString("style", t.style.name)
-            .putFloat("feed_size", t.feedSize).putFloat("feed_round", t.feedRound).apply()
+            .putFloat("glass_density", t.glassDensity).putFloat("glass_depth", t.glassDepth).putString("style", t.look.id)
+            .putFloat("feed_size", t.feedSize).apply()
     }
 
     private fun Float.clean(lo: Float, hi: Float, fallback: Float) =
