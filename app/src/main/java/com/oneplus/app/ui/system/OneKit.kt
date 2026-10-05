@@ -22,8 +22,6 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.*
-import androidx.compose.ui.graphics.PointMode
-import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -70,13 +68,6 @@ fun OneText(text: String, style: TextStyle, color: Color, modifier: Modifier = M
 @Composable
 fun Modifier.ambient(): Modifier {
     val c = LocalColors.current
-    if (LocalLook.current.brutal && !LocalTvMode.current) return background(c.bg).drawWithCache { // Cutout: a quiet dot grid, like cutting-mat paper
-        val step = 22.dp.toPx()
-        val pts = ArrayList<Offset>()
-        var y = step / 2f
-        while (y < size.height) { var x = step / 2f; while (x < size.width) { pts += Offset(x, y); x += step }; y += step }
-        onDrawBehind { drawPoints(pts, PointMode.Points, c.border.copy(alpha = 0.22f), 2.dp.toPx(), StrokeCap.Round) }
-    }
     if (LocalFeed.current) return background(c.bg) // Feed: one flat colour, no glow, no dither
     if (LocalLook.current.cosmic) return background(c.bg).drawWithCache { // Orbit: a nebula and a fixed star field
         val night = c.bg.luminance() < 0.2f
@@ -111,7 +102,6 @@ internal val Sheen = Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.10
 @Composable
 fun Modifier.glass(level: Int, radius: Dp): Modifier {
     val c = LocalColors.current
-    if (LocalLook.current.brutal && !LocalTvMode.current) return slab(c.glass, c.accent, minOf(radius, 8.dp)) // Cutout: a paper slab with a hard colour shadow
     if (LocalFeed.current) { // Feed: a flat solid card (phone: hairline border)
         if (!LocalLux.current) return clip(RoundedCornerShape(minOf(radius, 14.dp))).background(c.glass)
         val s = RoundedCornerShape(radius)
@@ -120,6 +110,10 @@ fun Modifier.glass(level: Int, radius: Dp): Modifier {
     val fx = LocalGlassEffects.current
     val g = LocalGlassStyle.current
     val shape = RoundedCornerShape(radius)
+    if (LocalLook.current.sheet) { // Strata: an opaque sheet; each level a touch lighter than the one under it, lifted by a soft shadow (depth scales it)
+        val lift = if (fx) drawBehind { softShadow(CornerRadius(radius.toPx()), 2f * g.depth) } else this
+        return lift.clip(shape).background(lerp(c.glass, c.text, 0.015f * level)).border(0.5.dp, c.border, shape)
+    }
     val sheen = remember(g.depth) { if (g.depth == 1f) Sheen else Brush.verticalGradient(listOf(Color.White.copy(alpha = (0.10f * g.depth).coerceIn(0f, 1f)), Color.White.copy(alpha = 0f))) }
     val edge = if (g.depth == 1f) c.border else c.border.copy(alpha = (c.border.alpha * g.depth).coerceIn(0f, 1f))
     val tint = ((if (fx) GlassAlpha[level - 1] else 0.94f) * g.density).coerceIn(0f, 1f)
@@ -135,15 +129,6 @@ fun Modifier.glass(level: Int, radius: Dp): Modifier {
 
 private val NebulaViolet = Color(0xFFB36BFF)
 
-/** Cutout's surface: [fill], a 2dp outline in the palette ink, and a hard (unblurred) [shadow] [lift] down and right. */
-@Composable
-fun Modifier.slab(fill: Color, shadow: Color, r: Dp, lift: Dp = 4.dp): Modifier {
-    val c = LocalColors.current
-    val s = RoundedCornerShape(r)
-    return drawBehind { val o = lift.toPx(); drawRoundRect(shadow, Offset(o, o), size, CornerRadius(r.toPx())) }
-        .clip(s).background(fill).border(2.dp, c.border, s)
-}
-
 /** Press physics (no ripple): scale down, spring back. */
 @Composable
 fun Modifier.press(onClick: () -> Unit): Modifier {
@@ -154,9 +139,7 @@ fun Modifier.press(onClick: () -> Unit): Modifier {
     val dim by animateFloatAsState(if (pressed && feed) 0.6f else 1f, tween(90), label = "pressDim")
     val tv = LocalTvMode.current
     val click by rememberUpdatedState(onClick)
-    val cut = LocalLook.current.brutal && !tv // Cutout: a press pushes the slab down into its own shadow
-    val sink by animateFloatAsState(if (pressed && cut) 1f else 0f, spring(0.7f, 700f), label = "pressSink")
-    return graphicsLayer { scaleX = s; scaleY = s; alpha = dim; translationX = sink * 3.dp.toPx(); translationY = sink * 3.dp.toPx() }.tvFocusRing(src).tvLockable()
+    return graphicsLayer { scaleX = s; scaleY = s; alpha = dim }.tvFocusRing(src).tvLockable()
         // a gamepad's A button is "OK" too (the remote's centre / Enter is already handled by clickable)
         .then(if (tv) Modifier.onKeyEvent { e -> (e.key == Key.ButtonA).also { if (it && e.type == KeyEventType.KeyUp) click() } } else Modifier)
         .clickable(src, null, onClick = onClick)

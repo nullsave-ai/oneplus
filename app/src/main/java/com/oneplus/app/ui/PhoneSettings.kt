@@ -62,7 +62,7 @@ internal fun settingsTitle(page: Int, look: Look): Int = when (page) {
     PageStyle -> R.string.style_mode
     PageMode -> R.string.theme_mode
     PageColor -> R.string.color_row
-    PageTune -> if (look.solid) R.string.look_feed else R.string.glass_title
+    PageTune -> if (look.sized) R.string.look_feed else R.string.glass_title
     else -> R.string.display_mode
 }
 
@@ -131,8 +131,8 @@ private fun SettingsList(
             NavRow(OneIcon.Sun, Indigo, R.string.theme_mode, stringResource(p.mode.label)) { onPage(PageMode) }
             NavRow(OneIcon.Star, Pink, R.string.color_row, stringResource(p.accent.label), dot = c.accent) { onPage(PageColor) }
             NavRow(
-                OneIcon.Settings, Teal, if (p.look.solid) R.string.look_feed else R.string.glass_title,
-                "${((if (p.look.solid) p.feedSize else p.glassDensity) * 100f).roundToInt()}%", last = true,
+                OneIcon.Settings, Teal, if (p.look.sized) R.string.look_feed else R.string.glass_title,
+                "${((if (p.look.sized) p.feedSize else p.glassDensity) * 100f).roundToInt()}%", last = true,
             ) { onPage(PageTune) }
         }
         Group(R.string.settings_screen) {
@@ -235,7 +235,7 @@ private fun StylePage(theme: ThemeController) {
             pair.forEach { l ->
                 Tile(l == p.look, stringResource(l.label), stringResource(l.blurb), { theme.update { copy(look = l) }; theme.save() }, Modifier.weight(1f)) {
                     val pal = l.palette(dark, false, false)
-                    Canvas(Modifier.fillMaxSize()) { mini(pal, dark, l.solid, accent, l.cosmic, l.brutal) }
+                    Canvas(Modifier.fillMaxSize()) { mini(pal, dark, l.solid, accent, l.cosmic, l.sheet) }
                 }
             }
             if (pair.size == 1) Spacer(Modifier.weight(1f))
@@ -257,10 +257,10 @@ private fun ModePage(theme: ThemeController) {
                         val day = look.palette(false, false, false)
                         val night = look.palette(true, false, false)
                         when (m) {
-                            ThemeMode.Light -> mini(day, false, look.solid, accent, look.cosmic, look.brutal)
-                            ThemeMode.Dark -> mini(night, true, look.solid, accent, look.cosmic, look.brutal)
-                            ThemeMode.Amoled -> mini(look.palette(true, true, false).let { Palette(Color.Black, it.surface, it.border, it.text, it.dim) }, true, look.solid, accent, look.cosmic, look.brutal)
-                            ThemeMode.System -> { mini(day, false, look.solid, accent, look.cosmic, look.brutal); clipRect(left = size.width / 2f) { mini(night, true, look.solid, accent, look.cosmic, look.brutal) } }
+                            ThemeMode.Light -> mini(day, false, look.solid, accent, look.cosmic, look.sheet)
+                            ThemeMode.Dark -> mini(night, true, look.solid, accent, look.cosmic, look.sheet)
+                            ThemeMode.Amoled -> mini(look.palette(true, true, false).let { Palette(Color.Black, it.surface, it.border, it.text, it.dim) }, true, look.solid, accent, look.cosmic, look.sheet)
+                            ThemeMode.System -> { mini(day, false, look.solid, accent, look.cosmic, look.sheet); clipRect(left = size.width / 2f) { mini(night, true, look.solid, accent, look.cosmic, look.sheet) } }
                         }
                     }
                 }
@@ -275,7 +275,7 @@ private fun ModePage(theme: ThemeController) {
 private fun TunePage(theme: ThemeController, effects: Boolean, onEffects: (Boolean) -> Unit) {
     val c = LocalColors.current
     val p = theme.prefs
-    if (!p.look.solid) {
+    if (!p.look.sized) {
         Panel {
             SettingRow(stringResource(R.string.settings_effects)) { OneSwitch(effects, onEffects) }
             LookPad(theme)
@@ -347,7 +347,7 @@ private fun Tile(selected: Boolean, title: String, sub: String?, onClick: () -> 
  * A miniature of the Home screen painted from a look's palette: header, a hero card, two cards, the nav bar. A solid look gets
  * opaque cards with hairlines and a full-width bar; a translucent one gets frosted cards over a colour blob and a floating pill.
  */
-private fun DrawScope.mini(pal: Palette, dark: Boolean, solid: Boolean, accent: Color, cosmic: Boolean = false, brutal: Boolean = false) {
+private fun DrawScope.mini(pal: Palette, dark: Boolean, solid: Boolean, accent: Color, cosmic: Boolean = false, sheet: Boolean = false) {
     val u = size.width / 100f
     val text = pal.text(dark); val dim = pal.dim(dark); val edge = pal.border(dark)
     val face = pal.surface.copy(alpha = if (solid) 1f else 0.62f)
@@ -355,17 +355,6 @@ private fun DrawScope.mini(pal: Palette, dark: Boolean, solid: Boolean, accent: 
     fun edged(x: Float, y: Float, w: Float, h: Float, r: Float) =
         drawRoundRect(edge, Offset(x * u, y * u), Size(w * u, h * u), CornerRadius(r * u), Stroke(0.7f * u))
     drawRect(pal.bg)
-    if (brutal) { // Cutout: a tilted title tag, a card deck with hard shadows, a nav of square tabs with the chosen one raised
-        fun slab(x: Float, y: Float, w: Float, h: Float, fill: Color) {
-            box(x + 2.2f, y + 2.2f, w, h, 1.5f, accent); box(x, y, w, h, 1.5f, fill); drawRoundRect(edge, Offset(x * u, y * u), Size(w * u, h * u), CornerRadius(1.5f * u), Stroke(1.1f * u))
-        }
-        slab(8f, 7f, 30f, 8f, accent)
-        slab(32f, 24f, 36f, 44f, pal.surface); slab(10f, 30f, 30f, 38f, pal.surface.copy(alpha = 0.85f)); slab(60f, 30f, 30f, 38f, pal.surface.copy(alpha = 0.85f))
-        box(36f, 56f, 28f, 3.2f, 1.6f, text)
-        slab(36f, 74f, 28f, 7f, text)
-        for (i in 0..2) slab(4f + i * 31f, if (i == 1) 90f else 97f, 29f, if (i == 1) 25f else 18f, if (i == 1) accent else pal.bg)
-        return
-    }
     if (cosmic) { // Orbit: nebula, a few stars, a planet with its ring between two small ones, a dock with a lifted planet
         drawCircle(accent.copy(alpha = 0.35f), 30f * u, Offset(86f * u, 6f * u))
         drawCircle(Color(0xFFB36BFF).copy(alpha = 0.22f), 26f * u, Offset(8f * u, 100f * u))
@@ -382,6 +371,17 @@ private fun DrawScope.mini(pal: Palette, dark: Boolean, solid: Boolean, accent: 
         box(30f, 70f, 40f, 4f, 2f, text); box(38f, 77f, 24f, 2.6f, 1.3f, dim)
         box(14f, 99f, 72f, 12f, 6f, pal.surface.copy(alpha = 0.7f)); edged(14f, 99f, 72f, 12f, 6f)
         planet(50f, 98f, 4.5f, 1f)
+        return
+    }
+    if (sheet) { // Strata: a hero, one sheet folded back behind another, a top sheet, a capsule dock
+        drawRect(Brush.verticalGradient(listOf(accent.copy(alpha = 0.85f), pal.bg), 0f, 78f * u), size = Size(100f * u, 78f * u))
+        box(13f, 28f, 40f, 6f, 3f, Color.White.copy(alpha = 0.9f)); box(13f, 38f, 26f, 3.4f, 1.7f, Color.White.copy(alpha = 0.6f))
+        box(7f, 50f, 86f, 10f, 5f, pal.surface.copy(alpha = 0.5f))
+        box(0f, 56f, 100f, 60f, 9f, pal.surface); edged(0f, 56f, 100f, 60f, 9f)
+        box(8f, 64f, 28f, 4.2f, 2.1f, text)
+        for (x in floatArrayOf(8f, 38f, 68f)) { box(x, 73f, 24f, 18f, 5f, pal.surface); edged(x, 73f, 24f, 18f, 5f) }
+        box(0f, 0f, 100f, 15f, 6f, pal.surface); edged(0f, 0f, 100f, 15f, 6f); box(8f, 5.5f, 26f, 4.4f, 2.2f, text)
+        box(28f, 100f, 44f, 11f, 5.5f, pal.surface); edged(28f, 100f, 44f, 11f, 5.5f); box(32f, 102f, 18f, 7f, 3.5f, accent.copy(alpha = 0.5f))
         return
     }
     if (!solid) { drawCircle(accent.copy(alpha = 0.55f), 26f * u, Offset(78f * u, 40f * u)); drawCircle(accent.copy(alpha = 0.30f), 18f * u, Offset(22f * u, 78f * u)) }

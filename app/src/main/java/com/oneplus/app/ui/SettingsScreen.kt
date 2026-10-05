@@ -65,7 +65,7 @@ fun SettingsScreen(
             SettingRow(stringResource(R.string.style_mode)) {
                 OneSegmented(
                     Looks.map { stringResource(it.label) }, Looks.indexOf(p.look),
-                    { i -> theme.update { copy(look = Looks[i]) }; theme.save() }, Modifier.width(84.dp * Looks.size),
+                    { i -> theme.update { copy(look = Looks[i]) }; theme.save() }, Modifier.width(72.dp * Looks.size),
                 )
             }
             SettingRow(stringResource(R.string.theme_mode)) {
