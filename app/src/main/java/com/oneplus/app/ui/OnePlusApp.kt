@@ -16,6 +16,7 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -225,6 +226,9 @@ fun OnePlusApp(theme: ThemeController, vm: MainViewModel = viewModel()) {
                     if (tv) {
                         (slideInHorizontally(tween(280)) { dir * it / 5 } + fadeIn(tween(280))) togetherWith
                             (slideOutHorizontally(tween(200)) { -dir * it / 5 } + fadeOut(tween(120)))
+                    } else if (look.anime) { // pop: the new page springs in with an overshoot, the old one flashes away
+                        (fadeIn(tween(260)) + scaleIn(tween(460, easing = CubicBezierEasing(0.2f, 1.35f, 0.4f, 1f)), 0.82f)) togetherWith
+                            (fadeOut(tween(160)) + scaleOut(tween(220), 1.12f))
                     } else if (look.pitch) { // pan: the camera swings across to the next page
                         (slideInHorizontally(tween(340, easing = FastOutSlowInEasing)) { dir * it } + fadeIn(tween(240))) togetherWith
                             (slideOutHorizontally(tween(340, easing = FastOutSlowInEasing)) { -dir * it / 3 } + fadeOut(tween(200)))

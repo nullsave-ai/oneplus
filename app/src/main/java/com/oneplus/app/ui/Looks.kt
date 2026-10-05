@@ -98,8 +98,26 @@ val PitchLook = Look(
     nav = { selected, onSelect, m -> PitchNav(selected, onSelect, m) },
 )
 
+/** Japanese anime / manga: stickers with ink outlines, speed lines, halftone, falling sakura, comic-panel dock. */
+val AnimeLook = Look(
+    id = "Anime", label = R.string.style_anime, blurb = R.string.style_anime_blurb,
+    solid = false, top = 72.dp, bottom = 112.dp, collapseAt = 40.dp, anime = true,
+    palette = { dark, _, _ ->
+        if (dark) Palette(
+            Color(0xFF140C2E), Color(0xFF211548),
+            border = Color(0xCCFFE6F3), text = Color(0xFFFFF5FA), dim = Color(0xFFB8A6E8),
+        ) else Palette(
+            Color(0xFFFFF0F6), Color.White,
+            border = Color(0xCC1D1033), text = Color(0xFF1D1033), dim = Color(0xFF6E5C8E),
+        )
+    },
+    home = { a -> AnimeHome(a) },
+    header = { a, m -> AnimeHeader(a, m) },
+    nav = { selected, onSelect, m -> AnimeNav(selected, onSelect, m) },
+)
+
 /** Every look the user can pick, in the order of the picker. */
-val Looks = listOf(GlassLook, FeedLook, OrbitLook, AuroraLook, PitchLook)
+val Looks = listOf(GlassLook, FeedLook, OrbitLook, AuroraLook, PitchLook, AnimeLook)
 
 /** The look stored under [id]; anything unknown (an old or damaged value) falls back to the first. */
 fun lookOf(id: String?): Look = Looks.firstOrNull { it.id == id } ?: Looks[0]

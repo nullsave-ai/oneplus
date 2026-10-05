@@ -140,9 +140,10 @@ private fun MovieDetail(m: Movie, all: List<Movie>, lib: Library, onBack: () -> 
     val c = LocalColors.current
     val scroll = rememberScrollState()
     val pitch = LocalLook.current.pitch
+    val anime = LocalLook.current.anime
     val lux = LocalLux.current
     val seen = remember(m.id) { mutableSetOf<Int>() }
-    val heroH = topInset() + if (lux || pitch) 420.dp else 330.dp
+    val heroH = topInset() + if (lux || pitch || anime) 420.dp else 330.dp
     val heroPx = with(LocalDensity.current) { heroH.toPx() }
     val added = m.id in lib.list
     val similar = remember(m.id, all) {
@@ -155,7 +156,7 @@ private fun MovieDetail(m: Movie, all: List<Movie>, lib: Library, onBack: () -> 
             Modifier.fillMaxSize().verticalScroll(scroll)
                 .padding(bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 32.dp)
         ) {
-            if (pitch) PitchHero(m, duration, heroH, scroll) else if (lux) LuxHero(m, duration, heroH, scroll) else Hero(m, duration, heroH, scroll)
+            if (anime) AnimeHero(m, duration, heroH, scroll) else if (pitch) PitchHero(m, duration, heroH, scroll) else if (lux) LuxHero(m, duration, heroH, scroll) else Hero(m, duration, heroH, scroll)
             Box(Modifier.fillMaxWidth(), Alignment.TopCenter) {
                 Column(Modifier.widthIn(max = 720.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(24.dp)) {
                     Row(Modifier.padding(horizontal = 20.dp), Arrangement.spacedBy(12.dp)) {
@@ -277,7 +278,7 @@ private fun LuxHero(m: Movie, duration: String, height: Dp, scroll: ScrollState)
 @Composable
 private fun TopBar(title: String, scroll: ScrollState, heroPx: Float, onBack: () -> Unit, modifier: Modifier) {
     val c = LocalColors.current
-    if (LocalLux.current || LocalLook.current.pitch) Box(
+    if (LocalLux.current || LocalLook.current.pitch || LocalLook.current.anime) Box(
         modifier.fillMaxWidth().height(topInset())
             .graphicsLayer { alpha = ((scroll.value - heroPx * 0.55f) / (heroPx * 0.1f)).coerceIn(0f, 1f) }.background(c.bg)
     )
@@ -299,12 +300,13 @@ private fun TopBar(title: String, scroll: ScrollState, heroPx: Float, onBack: ()
 @Composable
 private fun Genres(genres: List<String>) {
     val c = LocalColors.current
-    val lux = LocalLux.current || LocalLook.current.pitch // Feed / Pitch: outlined pills instead of tinted tags
+    val thick = LocalLook.current.anime
+    val lux = LocalLux.current || LocalLook.current.pitch || thick // Feed / Pitch / Anime: outlined pills instead of tinted tags
     FlowRow(Modifier.padding(horizontal = 20.dp), Arrangement.spacedBy(8.dp), Arrangement.spacedBy(8.dp)) {
         genres.forEach { g ->
             OneText(
                 g, OneType.Caption, if (lux) c.text else c.accent,
-                (if (lux) Modifier.border(0.5.dp, c.border, CircleShape) else Modifier.background(c.accentSoft, RoundedCornerShape(12.dp))).padding(horizontal = 12.dp, vertical = 6.dp),
+                (if (lux) Modifier.border(if (thick) 2.dp else 0.5.dp, c.border, CircleShape) else Modifier.background(c.accentSoft, RoundedCornerShape(12.dp))).padding(horizontal = 12.dp, vertical = 6.dp),
             )
         }
     }
@@ -355,9 +357,10 @@ private fun InfoRow(@StringRes label: Int, value: String) {
 @Composable
 private fun Section(@StringRes title: Int, n: Int, seen: MutableSet<Int>, content: @Composable () -> Unit) {
     val pitch = LocalLook.current.pitch
-    val lux = LocalLux.current || pitch
+    val anime = LocalLook.current.anime
+    val lux = LocalLux.current || pitch || anime
     Column(Modifier.then(if (lux) Modifier.reveal(n, seen) else Modifier), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        if (pitch) PitchHead(n, title) else if (lux) SectionHead(title, n)
+        if (anime) AnimeHead(n, title) else if (pitch) PitchHead(n, title) else if (lux) SectionHead(title, n)
         else OneText(stringResource(title), OneType.Section, LocalColors.current.text, Modifier.padding(horizontal = 20.dp))
         content()
     }

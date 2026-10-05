@@ -24,6 +24,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -71,6 +72,23 @@ fun OneText(text: String, style: TextStyle, color: Color, modifier: Modifier = M
 fun Modifier.ambient(): Modifier {
     val c = LocalColors.current
     if (LocalFeed.current) return background(c.bg) // Feed: one flat colour, no glow, no dither
+    if (LocalLook.current.anime) { // Anime: dusk sky, a halftone screentone in the corner, petals that drift down and sway
+        val fall = rememberInfiniteTransition(label = "petals").animateFloat(0f, 1f, infiniteRepeatable(tween(26000, easing = LinearEasing)), label = "t")
+        val petals = remember { val r = kotlin.random.Random(5); List(16) { floatArrayOf(r.nextFloat(), r.nextFloat(), (1 + r.nextInt(2)).toFloat(), r.nextFloat() * 6.28f, 0.7f + r.nextFloat() * 0.7f) } }
+        val dusk = remember(c) { Brush.verticalGradient(listOf(c.bg, lerp(c.bg, c.accent, 0.14f))) }
+        return background(dusk).drawBehind {
+            val cell = 16.dp.toPx(); val reach = size.width * 0.95f
+            var y = 0f
+            while (y < 280.dp.toPx()) { var x = 0f
+                while (x < size.width) { val r = (1f - kotlin.math.hypot(size.width - x, y) / reach) * 5.dp.toPx(); if (r > 0.6f) drawCircle(c.accent.copy(alpha = 0.22f), r, Offset(x, y)); x += cell }
+                y += cell }
+            val t = fall.value
+            petals.forEach { p ->
+                val px = p[0] * size.width + sin(t * 6.2832f * 3f + p[3]) * 26.dp.toPx(); val py = ((p[1] + t * p[2]) % 1f) * (size.height + 20.dp.toPx()) - 10.dp.toPx()
+                rotate(t * 720f + p[3] * 57f, Offset(px, py)) { drawOval(Sakura.copy(alpha = 0.85f), Offset(px - 6.dp.toPx() * p[4], py - 3.5f.dp.toPx() * p[4]), Size(12.dp.toPx() * p[4], 7.dp.toPx() * p[4])) }
+            }
+        }
+    }
     if (LocalLook.current.pitch) { // Pitch: mown stripes under stadium floodlights that breathe
         val breath = rememberInfiniteTransition(label = "lights").animateFloat(0.55f, 1f, infiniteRepeatable(tween(3600, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "b")
         return background(c.bg).drawBehind {
@@ -131,6 +149,11 @@ fun Modifier.glass(level: Int, radius: Dp): Modifier {
     val fx = LocalGlassEffects.current
     val g = LocalGlassStyle.current
     val k = LocalLook.current
+    if (k.anime) { // Anime: a sticker: flat fill, thick ink outline, hard offset shadow in the accent colour
+        val s = RoundedCornerShape(minOf(radius, 16.dp))
+        return drawBehind { drawRoundRect(c.accent.copy(alpha = 0.7f), Offset(3.dp.toPx(), 3.dp.toPx()), size, CornerRadius(minOf(radius, 16.dp).toPx())) }
+            .clip(s).background(c.glass).border(2.dp, c.border, s)
+    }
     val shape = RoundedCornerShape(if (k.pitch) minOf(radius, 12.dp) else radius) // Pitch: squarer, like a kit badge
     val sheen = remember(g.depth) { if (g.depth == 1f) Sheen else Brush.verticalGradient(listOf(Color.White.copy(alpha = (0.10f * g.depth).coerceIn(0f, 1f)), Color.White.copy(alpha = 0f))) }
     val edge = if (g.depth == 1f) c.border else c.border.copy(alpha = (c.border.alpha * g.depth).coerceIn(0f, 1f))
@@ -150,6 +173,8 @@ internal val AuroraMint = Color(0xFF3DFFC0)
 internal val AuroraPink = Color(0xFFFF4FD8)
 internal val PitchGold = Color(0xFFFFC83D)
 internal val PitchRed = Color(0xFFFF3B30)
+internal val Sakura = Color(0xFFFFB7D5)
+internal val AnimeYellow = Color(0xFFFFD84D)
 
 /** Two cones of stadium light falling from the top corners, and a bright bulb at each. */
 internal fun DrawScope.floodlights(a: Float) {

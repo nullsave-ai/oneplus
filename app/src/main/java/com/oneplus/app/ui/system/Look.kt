@@ -69,6 +69,8 @@ class Look(
     val aurora: Boolean = false,
     /** Football dress: night pitch with floodlights, squarer chalk-lined surfaces. */
     val pitch: Boolean = false,
+    /** Anime dress: sunset sky with halftone and falling petals, thick-outlined stickers with hard shadows. */
+    val anime: Boolean = false,
     val palette: (dark: Boolean, amoled: Boolean, tv: Boolean) -> Palette,
     val home: @Composable (HomeArgs) -> Unit,
     val header: @Composable (HeaderArgs, Modifier) -> Unit,

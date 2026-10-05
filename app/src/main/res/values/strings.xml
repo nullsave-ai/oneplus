@@ -121,5 +121,7 @@
     <string name="style_pitch">ملعب</string>
     <string name="style_pitch_blurb">ليلة مباراة: لوحة نتائج وكرة تتدحرج وبطاقات لاعبين</string>
     <string name="pitch_rating">التقييم</string>
+    <string name="style_anime">أنمي 桜</string>
+    <string name="style_anime_blurb">مانغا وأنمي: ستيكرات بحبر سميك، خطوط سرعة، وبتلات ساكورا</string>
     <string name="display_confirm">اضغط مرة أخرى للتأكيد</string>
 </resources>

@@ -237,7 +237,7 @@ private fun StylePage(theme: ThemeController) {
             pair.forEach { l ->
                 Tile(l == p.look, stringResource(l.label), stringResource(l.blurb), { theme.update { copy(look = l) }; theme.save() }, Modifier.weight(1f)) {
                     val pal = l.palette(dark, false, false)
-                    Canvas(Modifier.fillMaxSize()) { mini(pal, dark, l.solid, accent, l.cosmic, l.aurora, l.pitch) }
+                    Canvas(Modifier.fillMaxSize()) { mini(pal, dark, l.solid, accent, l.cosmic, l.aurora, l.pitch, l.anime) }
                 }
             }
             if (pair.size == 1) Spacer(Modifier.weight(1f))
@@ -259,10 +259,10 @@ private fun ModePage(theme: ThemeController) {
                         val day = look.palette(false, false, false)
                         val night = look.palette(true, false, false)
                         when (m) {
-                            ThemeMode.Light -> mini(day, false, look.solid, accent, look.cosmic, look.aurora, look.pitch)
-                            ThemeMode.Dark -> mini(night, true, look.solid, accent, look.cosmic, look.aurora, look.pitch)
-                            ThemeMode.Amoled -> mini(look.palette(true, true, false).let { Palette(Color.Black, it.surface, it.border, it.text, it.dim) }, true, look.solid, accent, look.cosmic, look.aurora, look.pitch)
-                            ThemeMode.System -> { mini(day, false, look.solid, accent, look.cosmic, look.aurora, look.pitch); clipRect(left = size.width / 2f) { mini(night, true, look.solid, accent, look.cosmic, look.aurora, look.pitch) } }
+                            ThemeMode.Light -> mini(day, false, look.solid, accent, look.cosmic, look.aurora, look.pitch, look.anime)
+                            ThemeMode.Dark -> mini(night, true, look.solid, accent, look.cosmic, look.aurora, look.pitch, look.anime)
+                            ThemeMode.Amoled -> mini(look.palette(true, true, false).let { Palette(Color.Black, it.surface, it.border, it.text, it.dim) }, true, look.solid, accent, look.cosmic, look.aurora, look.pitch, look.anime)
+                            ThemeMode.System -> { mini(day, false, look.solid, accent, look.cosmic, look.aurora, look.pitch, look.anime); clipRect(left = size.width / 2f) { mini(night, true, look.solid, accent, look.cosmic, look.aurora, look.pitch, look.anime) } }
                         }
                     }
                 }
@@ -349,7 +349,7 @@ private fun Tile(selected: Boolean, title: String, sub: String?, onClick: () -> 
  * A miniature of the Home screen painted from a look's palette: header, a hero card, two cards, the nav bar. A solid look gets
  * opaque cards with hairlines and a full-width bar; a translucent one gets frosted cards over a colour blob and a floating pill.
  */
-private fun DrawScope.mini(pal: Palette, dark: Boolean, solid: Boolean, accent: Color, cosmic: Boolean = false, aurora: Boolean = false, pitch: Boolean = false) {
+private fun DrawScope.mini(pal: Palette, dark: Boolean, solid: Boolean, accent: Color, cosmic: Boolean = false, aurora: Boolean = false, pitch: Boolean = false, anime: Boolean = false) {
     val u = size.width / 100f
     val text = pal.text(dark); val dim = pal.dim(dark); val edge = pal.border(dark)
     val face = pal.surface.copy(alpha = if (solid) 1f else 0.62f)
@@ -357,6 +357,25 @@ private fun DrawScope.mini(pal: Palette, dark: Boolean, solid: Boolean, accent: 
     fun edged(x: Float, y: Float, w: Float, h: Float, r: Float) =
         drawRoundRect(edge, Offset(x * u, y * u), Size(w * u, h * u), CornerRadius(r * u), Stroke(0.7f * u))
     drawRect(pal.bg)
+    if (anime) { // Anime: dusk sky, halftone, petals, a slanted title plate, a tilted splash card, covers, a dock of three comic panels
+        drawRect(Brush.verticalGradient(listOf(pal.bg, lerp(pal.bg, accent, 0.18f))))
+        for (gx in 0..7) for (gy in 0..4) { val r = (1.6f - (gy + (7 - gx)) * 0.16f).coerceAtLeast(0f); if (r > 0.2f) drawCircle(accent.copy(alpha = 0.4f), r * u, Offset((50f + gx * 7f) * u, (4f + gy * 7f) * u)) }
+        fun plate(x: Float, y: Float, w: Float, h: Float, fill: Color, shadow: Color) {
+            val k = h * 0.28f
+            fun path(dx: Float) = Path().apply { moveTo((x + k + dx) * u, (y + dx) * u); lineTo((x + w + dx) * u, (y + dx) * u); lineTo((x + w - k + dx) * u, (y + h + dx) * u); lineTo((x + dx) * u, (y + h + dx) * u); close() }
+            drawPath(path(1.4f), shadow); drawPath(path(0f), fill); drawPath(path(0f), edge, style = Stroke(1f * u))
+        }
+        plate(8f, 6f, 62f, 11f, face.copy(alpha = 1f), accent.copy(alpha = 0.75f)); box(16f, 9.6f, 28f, 3.6f, 1.8f, text); drawCircle(accent, 1.6f * u, Offset(62f * u, 11.5f * u))
+        drawCircle(Color(0xFFFFD84D), 3.6f * u, Offset(88f * u, 11.5f * u))
+        drawRoundRect(accent.copy(alpha = 0.7f), Offset(11f * u, 27f * u), Size(84f * u, 36f * u), CornerRadius(7f * u))
+        drawRoundRect(Brush.linearGradient(listOf(accent.copy(alpha = 0.8f), face), Offset(8f * u, 24f * u), Offset(92f * u, 60f * u)), Offset(8f * u, 24f * u), Size(84f * u, 36f * u), CornerRadius(7f * u))
+        drawRoundRect(edge, Offset(8f * u, 24f * u), Size(84f * u, 36f * u), CornerRadius(7f * u), Stroke(1.1f * u))
+        drawCircle(Color(0xFFFFD84D), 6f * u, Offset(82f * u, 34f * u)); box(14f, 50f, 30f, 4f, 2f, Color.White.copy(alpha = 0.9f))
+        for (i in 0..2) { val x = 8f + i * 31f; drawRoundRect(accent.copy(alpha = 0.7f), Offset((x + 1.2f) * u, 69.2f * u), Size(26f * u, 24f * u), CornerRadius(3f * u)); drawRoundRect(face.copy(alpha = 1f), Offset(x * u, 68f * u), Size(26f * u, 24f * u), CornerRadius(3f * u)); drawRoundRect(edge, Offset(x * u, 68f * u), Size(26f * u, 24f * u), CornerRadius(3f * u), Stroke(1f * u)) }
+        plate(8f, 98f, 26f, 13f, face.copy(alpha = 1f), accent.copy(alpha = 0.75f)); plate(37f, 94f, 26f, 13f, accent, Color(0xFFFFD84D)); plate(66f, 98f, 26f, 13f, face.copy(alpha = 1f), accent.copy(alpha = 0.75f))
+        for ((px, py) in listOf(22f to 70f, 70f to 66f, 92f to 80f)) drawOval(Color(0xFFFFB7D5), Offset(px * u, py * u), Size(4.5f * u, 2.6f * u))
+        return
+    }
     if (pitch) { // Pitch: mown stripes, a scoreboard, a cut-corner big screen, player cards, a pitch dock with the ball
         for (i in 0 until 8 step 2) drawRect(text.copy(alpha = 0.05f), Offset(0f, i * 14f * u), Size(100f * u, 14f * u))
         drawRect(face, Offset(0f, 0f), Size(100f * u, 17f * u)); drawRect(PitchGold, Offset(38f * u, 16f * u), Size(24f * u, 1f * u))
