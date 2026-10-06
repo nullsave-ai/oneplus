@@ -2,9 +2,10 @@ package com.oneplus.app.ui
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.oneplus.app.data.AppConfig
 import com.oneplus.app.data.HomeData
 import com.oneplus.app.data.HomeRepository
-import com.oneplus.app.data.SampleRepository
+import com.oneplus.app.data.RemoteFeedRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 
@@ -15,7 +16,7 @@ data class UiState(val query: String = "", val data: HomeData = EmptyHome, val a
 
 private const val MaxQuery = 64
 
-class MainViewModel(repo: HomeRepository = SampleRepository()) : ViewModel() {
+class MainViewModel(private val repo: HomeRepository = RemoteFeedRepository()) : ViewModel() {
     private val query = MutableStateFlow("")
 
     val state: StateFlow<UiState> = combine(repo.data, query) { d, q ->
@@ -25,6 +26,9 @@ class MainViewModel(repo: HomeRepository = SampleRepository()) : ViewModel() {
             d.channels.filter { q in it.name },
         ), d)
     }.flowOn(Dispatchers.Default).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), UiState())
+
+    val config: StateFlow<AppConfig> = repo.config
+        .stateIn(viewModelScope, SharingStarted.Eagerly, AppConfig())
 
     fun onQuery(q: String) { query.value = q.take(MaxQuery) }
 }

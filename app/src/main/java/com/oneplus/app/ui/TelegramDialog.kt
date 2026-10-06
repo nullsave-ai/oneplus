@@ -68,3 +68,33 @@ fun ClearHistoryDialog(onCancel: () -> Unit, onConfirm: () -> Unit) {
         OneButton(stringResource(R.string.clear_no), null, { leave(onCancel) }, Modifier.fillMaxWidth().tvAutoFocus(), primary = false) // the remote starts on the safe choice
     }
 }
+
+/**
+ * Force update modal dialog. Back press is blocked so older versions remain locked until updated.
+ */
+@Composable
+fun ForceUpdateDialog(config: com.oneplus.app.data.AppConfig) {
+    androidx.activity.compose.BackHandler(enabled = true) {}
+    val c = LocalColors.current
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+
+    OneDialog(onDismiss = {}) { _ ->
+        Box(Modifier.size(64.dp).background(c.accentSoft, CircleShape), Alignment.Center) {
+            OneIconView(OneIcon.Send, Modifier.size(32.dp)) { c.accent }
+        }
+        OneText(config.updateTitle, OneType.Title.copy(textAlign = TextAlign.Center), c.text, Modifier.padding(top = 4.dp))
+        OneText(config.updateMessage, OneType.Body.copy(textAlign = TextAlign.Center), c.dim)
+        OneButton(
+            text = "تحديث الآن (تحميل أحدث إصدار)",
+            icon = OneIcon.Send,
+            onClick = {
+                val url = config.updateUrl.ifBlank { "https://github.com/nullsave-ai/oneplus/releases/latest" }
+                runCatching {
+                    ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                }
+            },
+            modifier = Modifier.padding(top = 10.dp).fillMaxWidth().tvAutoFocus()
+        )
+    }
+}
+

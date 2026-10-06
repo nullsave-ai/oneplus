@@ -49,13 +49,14 @@ jobs:
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main'
         with:
-          tag_name: v1.0.${{ github.run_number }}
-          name: "OnePlus v1.0.${{ github.run_number }} (Release)"
-          body: |
-            ### تطبيق وان+ (OnePlus App - منظومة قنوات نيتفلاي Netfly TV المباشرة):
-            * دمج محرك نيتفلاي المباشر وتفعيل جسر API الديناميكي (Clientgosdk 3.0.4).
-            * تشغيل باقة beIN SPORTS HD بالكامل (1 إلى 9 + NEWS + XTRA) وباقات الكأس و MBC مع الحماية من الشاشة السوداء.
-            * حذف القنوات التالفة والملغاة بالكامل (SSC و AFC).
-          files: dist/*.apk
+            tag_name: v2.0.${{ github.run_number }}
+            name: "ONE+ v2.0.${{ github.run_number }} (Release)"
+            body: |
+              ### تطبيق وان+ (ONE+ v2.0 - الإصدار الثاني المحدث):
+              * ربط مكتبة الأفلام السحابية بنظام تصفية صارم على مستوى الـ API لمنع أي محتوى إباحي أو غير لائق (+18).
+              * الربط مع لوحة التحكم وسيرفر Firebase (apklive) كجسر سحابي آمن ومحمي.
+              * دعم نظام التحديثات الإجبارية وقفل الإصدارات القديمة عبر لوحة التحكم.
+              * إمكانية التثبيت والتحديث المباشر فوق النسخ السابقة دون الحاجة لحذفها.
+            files: dist/*.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

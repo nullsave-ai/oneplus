@@ -78,6 +78,11 @@ import kotlin.math.roundToInt
 @Composable
 fun OnePlusApp(theme: ThemeController, vm: MainViewModel = viewModel()) {
     val state by vm.state.collectAsStateWithLifecycle()
+    val config by vm.config.collectAsStateWithLifecycle()
+    val isAppOutdated = remember(config) {
+        val currentVer = com.oneplus.app.BuildConfig.VERSION_CODE
+        (currentVer < config.minVersionCode) || (config.forceUpdate && currentVer < config.latestVersionCode)
+    }
     val tv = LocalTvMode.current
     val look = LocalLook.current
     val feed = LocalFeed.current
@@ -330,14 +335,18 @@ fun OnePlusApp(theme: ThemeController, vm: MainViewModel = viewModel()) {
             CompositionLocalProvider(LocalTvLock provides lockBase, LocalTvTabs provides tvTabs) {
                 look.nav(tab, onTab, navMod.align(Alignment.BottomCenter))
             }
-            if (showTg) TelegramDialog(
-                onSkip = { showTg = false; telegramSkipped(ctx) },
-                onJoin = { showTg = false; telegramJoined(ctx); openTelegram(ctx) },
-            )
-            if (showClear) ClearHistoryDialog(
-                onCancel = { showClear = false },
-                onConfirm = { showClear = false; library.clearHistory() },
-            )
+            if (isAppOutdated) {
+                ForceUpdateDialog(config)
+            } else {
+                if (showTg) TelegramDialog(
+                    onSkip = { showTg = false; telegramSkipped(ctx) },
+                    onJoin = { showTg = false; telegramJoined(ctx); openTelegram(ctx) },
+                )
+                if (showClear) ClearHistoryDialog(
+                    onCancel = { showClear = false },
+                    onConfirm = { showClear = false; library.clearHistory() },
+                )
+            }
         }
     }
 }
