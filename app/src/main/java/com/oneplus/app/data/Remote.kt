@@ -18,8 +18,9 @@ private const val MaxBytes = 5_000_000
 
 /** The catalogue comes from the panel's api.php; when it cannot be reached the sample data is shown instead. */
 class RemoteRepository(private val url: String) : HomeRepository {
+    override val config: Flow<AppConfig> = kotlinx.coroutines.flow.flowOf(AppConfig())
     override val data: Flow<HomeData> = flow {
-        emit(runCatching { parse(JSONObject(download() ?: error("empty"))) }.getOrNull() ?: SampleRepository().data.first())
+        emit(runCatching { parse(JSONObject(download() ?: error("empty"))) }.getOrNull() ?: RemoteFeedRepository().data.first())
     }.flowOn(Dispatchers.IO)
 
     private fun download(): String? {
