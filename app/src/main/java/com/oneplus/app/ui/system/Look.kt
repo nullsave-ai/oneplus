@@ -17,11 +17,11 @@ import com.oneplus.app.ui.UiState
  * hands them (colours, surface type, bar sizes) or call the slots it owns (header, nav bar, home).
  *
  * To add a look (say "Mono"):
- *   1. write its header / nav / home composables (copy the closest ones in FeedHeader.kt, OnePlusApp.kt, LuxHome.kt);
+ *   1. write its header / nav / home composables (copy the closest ones, e.g. OrbitLook.kt);
  *   2. declare `val MonoLook = Look(...)` in ui/Looks.kt and add it to `Looks`;
  *   3. add its name (and blurb) to strings.xml.
  * The style picker, the stored choice, the colours and the surfaces (glass() / ambient()) follow by themselves.
- * Pages shared by every look (details, lists, settings) read `solid` and the palette, so they already wear the new look.
+ * Pages shared by every look (details, lists, settings) read the palette, so they already wear the new look.
  */
 
 /** Colours a look brings. A null [border] / [text] / [dim] means the standard one (see the accessors). */
@@ -56,8 +56,6 @@ class Look(
     val id: String,
     @StringRes val label: Int,
     @StringRes val blurb: Int,
-    /** Surfaces: false = translucent glass tinted by the app colour; true = flat, solid, hairline borders, pure palette. */
-    val solid: Boolean,
     /** Room the header takes above the pages, and the nav bar below them (without the system insets). */
     val top: Dp,
     val bottom: Dp,
@@ -65,13 +63,11 @@ class Look(
     val collapseAt: Dp,
     /** Deep-space dress: a star field behind the pages and a luminous rim on glass surfaces. */
     val cosmic: Boolean = false,
-    /** Northern-lights dress: drifting curtains of light behind the pages and a lit rim on glass surfaces. */
-    val aurora: Boolean = false,
     /** Football dress: night pitch with floodlights, squarer chalk-lined surfaces. */
     val pitch: Boolean = false,
     /** Anime dress: sunset sky with halftone and falling petals, thick-outlined stickers with hard shadows. */
     val anime: Boolean = false,
-    val palette: (dark: Boolean, amoled: Boolean, tv: Boolean) -> Palette,
+    val palette: (dark: Boolean, amoled: Boolean) -> Palette,
     val home: @Composable (HomeArgs) -> Unit,
     val header: @Composable (HeaderArgs, Modifier) -> Unit,
     val nav: @Composable (selected: Int, onSelect: (Int) -> Unit, modifier: Modifier) -> Unit,

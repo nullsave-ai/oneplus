@@ -1,0 +1,7 @@
+<!-- The tile shown in the Android TV launcher (16:9, 320 x 180dp): the icon, square, in the middle. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@color/ic_launcher_background" />
+    <item>
+        <inset android:drawable="@drawable/ic_launcher_foreground" android:insetLeft="70dp" android:insetRight="70dp" />
+    </item>
+</layer-list>

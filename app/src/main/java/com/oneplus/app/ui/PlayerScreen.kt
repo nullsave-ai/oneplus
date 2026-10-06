@@ -44,6 +44,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
@@ -55,7 +56,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.focusable
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.ui.focus.FocusRequester
@@ -77,13 +80,9 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.core.view.WindowCompat
-import androidx.core.view.WindowInsetsCompat
-import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import com.oneplus.app.R
-import com.oneplus.app.player.Playback
 import com.oneplus.app.ui.system.*
 import kotlinx.coroutines.delay
 import kotlin.math.abs
@@ -110,6 +109,7 @@ private tailrec fun Context.findActivity(): Activity? = when (this) {
  * drag horizontally = scrub (VOD) · drag vertically on the left half = brightness, right half = volume.
  * Controls are floating dark glass and hide themselves 3.5s after the last interaction while playing.
  */
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun PlayerScreen(
     session: PlayerSession, fullscreen: Boolean, onToggleFullscreen: (() -> Unit)?, onClose: () -> Unit,
@@ -131,19 +131,15 @@ fun PlayerScreen(
             window?.let { w -> val lp = w.attributes; lp.screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE; w.attributes = lp }
         }
     }
-    val keepStatusHidden by rememberUpdatedState(LocalHideStatusBar.current)
-    // Immersive landscape only in fullscreen; restored when leaving it (or the player).
+    val bars = LocalSystemBars.current
+    // Immersive landscape only in fullscreen; restored when leaving it (or the player). The bars come back the way the user set them.
     DisposableEffect(activity, fullscreen) {
         if (!fullscreen) return@DisposableEffect onDispose { }
-        val controller = window?.let { WindowCompat.getInsetsController(it, view) }
         val oldOrientation = activity?.requestedOrientation ?: ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
         activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-        controller?.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-        controller?.hide(WindowInsetsCompat.Type.systemBars())
+        bars?.let { it.immersive = true; it.apply() }
         onDispose {
-            // Give the bars back the way the user set them: the status bar stays hidden if that is their choice.
-            controller?.show(WindowInsetsCompat.Type.navigationBars())
-            if (!keepStatusHidden) controller?.show(WindowInsetsCompat.Type.statusBars())
+            bars?.let { it.immersive = false; it.apply() }
             activity?.requestedOrientation = oldOrientation
         }
     }
@@ -214,6 +210,9 @@ fun PlayerScreen(
             Key.MediaPause -> { if (p != null && !p.live && p.wantsPlay) p.toggle(); tick++; true }
             Key.MediaFastForward, Key.MediaNext -> { skip(1); true }
             Key.MediaRewind, Key.MediaPrevious -> { skip(-1); true }
+            // Stop / Escape leave like Back does; Menu / Info open the quality panel
+            Key.MediaStop, Key.Escape -> { if (panelOpen) panelOpen = false else if (fullscreen && onToggleFullscreen != null) onToggleFullscreen() else onClose(); true }
+            Key.Menu, Key.Info -> if (p != null && !panelOpen) { tab = 0; panelOpen = true; tick++; true } else false
             else -> if (show) { tick++; false } else when (e.key) {
                 Key.DirectionCenter, Key.Enter, Key.NumPadEnter, Key.ButtonA, Key.ButtonSelect -> {
                     if (p != null && !p.live) p.toggle()
@@ -487,7 +486,8 @@ fun PlayerScreen(
                 CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
                     if (pb != null) TracksPanel(
                         pb, tab, { tab = it }, style, { style = it }, { style.save(app) },
-                        safe.padding(8.dp).width(232.dp).fillMaxHeight(),
+                        // TV Mode: the remote stays inside the panel while it is open (Back closes it)
+                        safe.padding(8.dp).width(232.dp).fillMaxHeight().then(if (tv) Modifier.focusProperties { exit = { FocusRequester.Cancel } }.focusGroup() else Modifier),
                     )
                 }
             }

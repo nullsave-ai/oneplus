@@ -1,20 +1,15 @@
 package com.oneplus.app.ui
 
-import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.*
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -72,9 +67,17 @@ internal fun GlassSliders(theme: ThemeController) {
             "${(p.glassDepth * 100f).roundToInt()}%",
         )
     }
-    if (p.glassDensity != 1f || p.glassDepth != 1f) {
-        SettingRow(stringResource(R.string.glass_reset), Modifier.press { theme.update { copy(glassDensity = 1f, glassDepth = 1f) }; theme.save() }) {}
-    }
+    GlassReset(theme)
+}
+
+/** "Reset" row: only there while the glass differs from the defaults. */
+@Composable
+private fun GlassReset(theme: ThemeController) {
+    val p = theme.prefs
+    if (p.glassDensity != GlassRange.DENSITY_DEFAULT || p.glassDepth != GlassRange.DEPTH_DEFAULT) SettingRow(
+        stringResource(R.string.glass_reset),
+        Modifier.press { theme.update { copy(glassDensity = GlassRange.DENSITY_DEFAULT, glassDepth = GlassRange.DEPTH_DEFAULT) }; theme.save() },
+    ) {}
 }
 
 @Composable
@@ -149,10 +152,7 @@ internal fun LookPad(theme: ThemeController) {
             OneText("${stringResource(R.string.glass_depth)}  ${(p.glassDepth * 100f).roundToInt()}%", OneType.Caption, c.dim)
         }
     }
-    if (p.glassDensity != 1f || p.glassDepth != 1f) SettingRow(
-        stringResource(R.string.glass_reset),
-        Modifier.press { theme.update { copy(glassDensity = 1f, glassDepth = 1f) }; theme.save() },
-    ) {}
+    GlassReset(theme)
 }
 
 @Composable

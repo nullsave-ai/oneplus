@@ -85,8 +85,7 @@ fun OnePlusApp(theme: ThemeController, vm: MainViewModel = viewModel()) {
     }
     val tv = LocalTvMode.current
     val look = LocalLook.current
-    val feed = LocalFeed.current
-    val noDepth = tv || feed // the pages do not shrink behind the details page on a TV, nor in the Feed style
+    val noDepth = tv // the pages do not shrink behind the details page on a TV
     val ctx = LocalContext.current
     val focus = LocalFocusManager.current
     // Low-RAM devices start with the light glass tier.

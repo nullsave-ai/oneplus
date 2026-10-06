@@ -12,8 +12,8 @@ import com.oneplus.app.ui.system.*
 /** Translucent, tinted by the app colour; a floating pill header and a floating nav island. */
 val GlassLook = Look(
     id = "Glass", label = R.string.style_glass, blurb = R.string.style_glass_blurb,
-    solid = false, top = 84.dp, bottom = 112.dp, collapseAt = 96.dp,
-    palette = { dark, amoled, _ ->
+    top = 84.dp, bottom = 112.dp, collapseAt = 96.dp,
+    palette = { dark, amoled ->
         Palette(if (dark) Color(0xFF0A0E16) else Color(0xFFEEF2F9), if (amoled) Color(0xFF16181D) else if (dark) Color(0xFF1A2333) else Color.White)
     },
     home = { a -> HomeScreen(a.state, a.list, a.wide, a.lib, a.onMovie, a.onChannel, a.onAllMovies, a.onAllChannels, a.onMatches) },
@@ -26,27 +26,11 @@ val GlassLook = Look(
     nav = { selected, onSelect, m -> LiquidNav(selected, onSelect, m) },
 )
 
-/** Editorial: ink black / warm ivory, hairlines, serif headlines; a header that collapses and slides away, a hero carousel. */
-val FeedLook = Look(
-    id = "Feed", label = R.string.style_feed, blurb = R.string.style_feed_blurb,
-    solid = true, top = 68.dp, bottom = 64.dp, collapseAt = 56.dp,
-    palette = { dark, amoled, tv ->
-        Palette(
-            if (dark) Color(0xFF0B0B0E) else Color(0xFFF6F3EE), if (amoled) Color(0xFF111114) else if (dark) Color(0xFF16161B) else Color.White,
-            border = if (dark) Color(0x1FFFFFFF) else Color(0x24402F14),
-            text = if (dark) Color(0xFFF3EFE8) else Color(0xFF16130F), dim = if (dark) Color(0xFF9B968D) else Color(0xFF7A746A),
-        )
-    },
-    home = { a -> LuxHome(a) },
-    header = { a, m -> FeedHeader(a, m) },
-    nav = { selected, onSelect, m -> FeedBar(selected, onSelect, m) },
-)
-
 /** Deep space: planets instead of posters, a star field, orbiting nav, 3D coverflow scrolling, a warp between pages. */
 val OrbitLook = Look(
     id = "Orbit", label = R.string.style_orbit, blurb = R.string.style_orbit_blurb,
-    solid = false, top = 72.dp, bottom = 112.dp, collapseAt = 48.dp, cosmic = true,
-    palette = { dark, _, _ ->
+    top = 72.dp, bottom = 112.dp, collapseAt = 48.dp, cosmic = true,
+    palette = { dark, _ ->
         if (dark) Palette(
             Color(0xFF04050E), Color(0xFF0D1124),
             border = Color(0x33AFC4FF), text = Color(0xFFEAF0FF), dim = Color(0xFF8A93B8),
@@ -60,29 +44,11 @@ val OrbitLook = Look(
     nav = { selected, onSelect, m -> OrbitNav(selected, onSelect, m) },
 )
 
-/** Northern lights: a light you walk through. Gates on a turning cube, drifting rows, a dock that opens portals and shoots beams. */
-val AuroraLook = Look(
-    id = "Aurora", label = R.string.style_aurora, blurb = R.string.style_aurora_blurb,
-    solid = false, top = 72.dp, bottom = 120.dp, collapseAt = 40.dp, aurora = true,
-    palette = { dark, _, _ ->
-        if (dark) Palette(
-            Color(0xFF040B0D), Color(0xFF0B1A1E),
-            border = Color(0x3366FFD1), text = Color(0xFFE8FFF7), dim = Color(0xFF7FA79C),
-        ) else Palette(
-            Color(0xFFEBF7F3), Color.White,
-            border = Color(0x2E1F7A66), text = Color(0xFF0A2420), dim = Color(0xFF4F7A70),
-        )
-    },
-    home = { a -> AuroraHome(a) },
-    header = { a, m -> AuroraHeader(a, m) },
-    nav = { selected, onSelect, m -> AuroraNav(selected, onSelect, m) },
-)
-
 /** Football night: floodlit pitch, a hanging scoreboard, a dock with a rolling ball, collectible player cards. */
 val PitchLook = Look(
     id = "Pitch", label = R.string.style_pitch, blurb = R.string.style_pitch_blurb,
-    solid = false, top = 72.dp, bottom = 120.dp, collapseAt = 40.dp, pitch = true,
-    palette = { dark, _, _ ->
+    top = 72.dp, bottom = 120.dp, collapseAt = 40.dp, pitch = true,
+    palette = { dark, _ ->
         if (dark) Palette(
             Color(0xFF06130D), Color(0xFF0E2218),
             border = Color(0x40F5FFE9), text = Color(0xFFF4FFF1), dim = Color(0xFF8FB39C),
@@ -99,8 +65,8 @@ val PitchLook = Look(
 /** Japanese anime / manga: stickers with ink outlines, speed lines, halftone, falling sakura, comic-panel dock. */
 val AnimeLook = Look(
     id = "Anime", label = R.string.style_anime, blurb = R.string.style_anime_blurb,
-    solid = false, top = 72.dp, bottom = 112.dp, collapseAt = 40.dp, anime = true,
-    palette = { dark, _, _ ->
+    top = 72.dp, bottom = 112.dp, collapseAt = 40.dp, anime = true,
+    palette = { dark, _ ->
         if (dark) Palette(
             Color(0xFF140C2E), Color(0xFF211548),
             border = Color(0xCCFFE6F3), text = Color(0xFFFFF5FA), dim = Color(0xFFB8A6E8),
@@ -115,7 +81,7 @@ val AnimeLook = Look(
 )
 
 /** Every look the user can pick, in the order of the picker. */
-val Looks = listOf(GlassLook, FeedLook, OrbitLook, AuroraLook, PitchLook, AnimeLook)
+val Looks = listOf(GlassLook, OrbitLook, PitchLook, AnimeLook)
 
 /** The look stored under [id]; anything unknown (an old or damaged value) falls back to the first. */
 fun lookOf(id: String?): Look = Looks.firstOrNull { it.id == id } ?: Looks[0]

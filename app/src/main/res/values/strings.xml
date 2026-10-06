@@ -62,13 +62,12 @@
     <string name="clear_yes">مسح</string>
     <string name="clear_no">إلغاء</string>
     <string name="settings_hide_status">إخفاء شريط الإشعارات</string>
+    <string name="settings_hide_nav">إخفاء أزرار التنقل</string>
     <string name="glass_title">الزجاج</string>
     <string name="glass_density">الكثافة</string>
     <string name="glass_depth">العمق</string>
     <string name="glass_reset">استعادة الافتراضي</string>
-    <string name="look_feed">البطاقات</string>
-    <string name="look_round">الاستدارة</string>
-    <string name="lux_featured">مختارات اليوم</string>
+    <string name="featured">مختارات اليوم</string>
     <string name="display_mode">وضع العرض</string>
     <string name="display_auto">تلقائي</string>
     <string name="display_phone">هاتف</string>
@@ -108,16 +107,11 @@
 
     <string name="style_mode">نمط الواجهة</string>
     <string name="style_glass">زجاجي</string>
-    <string name="style_feed">Feed</string>
-    <string name="tv_search">بحث</string>
     <string name="settings_general">عام</string>
     <string name="settings_screen">الشاشة</string>
     <string name="style_glass_blurb">شفاف وعائم، يتلوّن بلون التطبيق</string>
-    <string name="style_feed_blurb">بطاقات صلبة وخطوط دقيقة وعناوين تحريرية</string>
     <string name="style_orbit">مدار</string>
     <string name="style_orbit_blurb">فضاء عميق: كواكب ونجوم وتمرير ثلاثي الأبعاد</string>
-    <string name="style_aurora">شفق</string>
-    <string name="style_aurora_blurb">ضوء شمالي: بوابات على مكعّب، صفوف تنجرف، ومنافذ ضوء</string>
     <string name="style_pitch">ملعب</string>
     <string name="style_pitch_blurb">ليلة مباراة: لوحة نتائج وكرة تتدحرج وبطاقات لاعبين</string>
     <string name="pitch_rating">التقييم</string>

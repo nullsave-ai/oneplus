@@ -83,20 +83,20 @@ fun rememberToolbarReveal(key: Any, pos: () -> Int): () -> Float {
     return { a.value }
 }
 
-/** Top inset screens should reserve so content starts below the header (the look's own, in TV Mode too). */
+/** Top inset screens should reserve so content starts below the header (and, in TV Mode, the navigation under it). */
 @Composable
-fun toolbarInset(): Dp = topInset() + LocalLook.current.top
+fun toolbarInset(): Dp = topInset() + LocalLook.current.top + LocalTvNavHeight.current
 
 /** The search field of a header: open / closed, its morph (0..1), focus and Back. Shared by every look's header. */
 class Search(val open: Boolean, val morph: Float, val focus: FocusRequester, val show: () -> Unit, val close: () -> Unit)
 
 @Composable
-fun rememberSearch(hasSearch: Boolean, startOpen: Boolean, onQuery: (String) -> Unit, onClosed: () -> Unit): Search {
-    var searching by rememberSaveable { mutableStateOf(startOpen) }
+fun rememberSearch(hasSearch: Boolean, onQuery: (String) -> Unit): Search {
+    var searching by rememberSaveable { mutableStateOf(false) }
     val morph by animateFloatAsState(if (searching) 1f else 0f, spring(0.82f, 500f), label = "search")
     val focus = remember { FocusRequester() }
     val fm = LocalFocusManager.current
-    val close = { fm.clearFocus(); onQuery(""); searching = false; onClosed() }
+    val close = { fm.clearFocus(); onQuery(""); searching = false }
     BackHandler(searching, close)
     LaunchedEffect(hasSearch) { if (!hasSearch && searching) close() }
     LaunchedEffect(searching) { if (searching) focus.requestFocus() }
@@ -148,34 +148,27 @@ internal fun DrawScope.softShadow(r: CornerRadius, e: Float) {
 fun FloatingToolbar(
     title: String, context: String?, hasSearch: Boolean,
     query: String, onQuery: (String) -> Unit, progress: () -> Float, modifier: Modifier = Modifier,
-    startOpen: Boolean = false, onClosed: () -> Unit = {}, onBack: (() -> Unit)? = null,
+    onBack: (() -> Unit)? = null,
 ) {
     val c = LocalColors.current
     val fx = LocalGlassEffects.current
     val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
-    val flat = LocalFeed.current // TV Mode's feed: a full-width bar that never shrinks into a pill
-    val s = rememberSearch(hasSearch, startOpen, onQuery, onClosed)
+    val s = rememberSearch(hasSearch, onQuery)
     val morph = s.morph
     val tint = c.glassTint
 
     Box(
         modifier
             .layout { m, cs ->
-                val p = if (flat) 0f else progress() // the flat bar keeps its size while scrolling
+                val p = progress()
                 val full = cs.maxWidth
-                val compact = if (flat) full else minOf(full, 232.dp.roundToPx())
+                val compact = minOf(full, 232.dp.roundToPx())
                 val w = lerp(lerp(full, compact, p), full, morph)
                 val h = lerp(lerp(56.dp.roundToPx(), 48.dp.roundToPx(), p), 52.dp.roundToPx(), morph)
                 val pl = m.measure(Constraints.fixed(w, h))
                 layout(full, h) { pl.place((full - w) / 2, 0) }
             }
             .drawBehind {
-                if (flat) {
-                    val e = max(progress(), morph)
-                    drawRect(c.bg)
-                    drawRect(c.border.copy(alpha = c.border.alpha * e), Offset(0f, size.height - 1.dp.toPx()), Size(size.width, 1.dp.toPx()))
-                    return@drawBehind
-                }
                 val e = max(progress(), morph)
                 val r = CornerRadius(24.dp.toPx())
                 // Fully transparent at rest; the glass only exists once the page has scrolled / search is open.
@@ -187,7 +180,7 @@ fun FloatingToolbar(
     ) {
         if (morph < 1f) Row(
             Modifier.fillMaxSize().padding(start = if (onBack != null) 6.dp else 20.dp, end = if (hasSearch) 8.dp else 20.dp).graphicsLayer { alpha = 1f - morph },
-            if (hasSearch || flat) Arrangement.SpaceBetween else Arrangement.Center, Alignment.CenterVertically,
+            if (hasSearch) Arrangement.SpaceBetween else Arrangement.Center, Alignment.CenterVertically,
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (onBack != null) Box(Modifier.size(44.dp).press(onBack), Alignment.Center) { OneIconView(OneIcon.Back) { c.text } }

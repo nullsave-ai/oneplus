@@ -113,7 +113,7 @@ class Playback(
     }
 
     private val kind = kindOf(res.url)
-    private var triedHls = false
+    private var guess = 0 // a link with no telling extension (.php, ?id=...): when it is not a plain file, try HLS, then DASH, then Smooth Streaming
 
     // ---- live self-healing: no play/pause button on live, so the player must recover on its own ----
     private val handler = Handler(Looper.getMainLooper())
@@ -271,6 +271,14 @@ class Playback(
                 g.mapIndexed { n, t -> Opt(t.getTrackFormat(0).title(n), null, on && t.isSelected) { choose(t, listOf(0)) } }
         }
 
+    private companion object {
+        val Guesses = listOf(C.CONTENT_TYPE_HLS, C.CONTENT_TYPE_DASH, C.CONTENT_TYPE_SS)
+        val Parsing = setOf(
+            PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED, PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED,
+            PlaybackException.ERROR_CODE_PARSING_MANIFEST_UNSUPPORTED, PlaybackException.ERROR_CODE_PARSING_MANIFEST_MALFORMED,
+        )
+    }
+
     // ---- Player.Listener ----
     override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
         wantsPlay = playWhenReady
@@ -297,13 +305,9 @@ class Playback(
     override fun onPlayerError(error: PlaybackException) {
         when {
             error.errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW -> { player.seekToDefaultPosition(); player.prepare() }
-            // A link without an extension that is really an HLS playlist: sniff once, then retry as HLS.
-            !triedHls && kind == C.CONTENT_TYPE_OTHER && res.variants.isEmpty() && (
-                error.errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED ||
-                    error.errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED
-                ) -> {
-                triedHls = true
-                player.setMediaSource(build(C.CONTENT_TYPE_HLS))
+            // A link without an extension that is really a playlist / manifest: try the manifest formats one after the other.
+            guess < Guesses.size && kind == C.CONTENT_TYPE_OTHER && res.variants.isEmpty() && error.errorCode in Parsing -> {
+                player.setMediaSource(build(Guesses[guess++]))
                 player.prepare()
             }
             else -> {

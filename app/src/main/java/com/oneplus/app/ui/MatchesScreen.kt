@@ -52,7 +52,6 @@ fun MatchesHost(open: Boolean, p: Animatable<Float, AnimationVector1D>, matches:
 @Composable
 private fun MatchesScreen(matches: List<Match>, wide: Boolean, focusId: Int, onClose: () -> Unit) {
     val c = LocalColors.current
-    val lux = LocalLux.current // Feed: the title is plain serif text, not a pill
     var comp by rememberSaveable { mutableStateOf<String?>(null) }
     val competitions = remember(matches) { matches.map { it.competition }.distinct() }
     val days = remember(matches, comp) { matches.filter { comp == null || it.competition == comp }.groupBy { it.day }.toSortedMap() }
@@ -62,9 +61,9 @@ private fun MatchesScreen(matches: List<Match>, wide: Boolean, focusId: Int, onC
         // header: back · title + count
         Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 12.dp), Arrangement.spacedBy(8.dp), Alignment.CenterVertically) {
             Box(Modifier.size(44.dp).press(onClose).glass(3, 22.dp), Alignment.Center) { OneIconView(OneIcon.Back) { c.text } }
-            Box(Modifier.weight(1f).height(44.dp).then(if (lux) Modifier else Modifier.glass(3, 22.dp)), if (lux) Alignment.CenterStart else Alignment.Center) {
-                Row(Modifier.padding(horizontal = if (lux) 6.dp else 16.dp), Arrangement.spacedBy(8.dp), Alignment.CenterVertically) {
-                    OneText(stringResource(R.string.sec_matches), if (lux) OneType.Lux else OneType.Section, c.text, maxLines = 1)
+            Box(Modifier.weight(1f).height(44.dp).glass(3, 22.dp), Alignment.Center) {
+                Row(Modifier.padding(horizontal = 16.dp), Arrangement.spacedBy(8.dp), Alignment.CenterVertically) {
+                    OneText(stringResource(R.string.sec_matches), OneType.Section, c.text, maxLines = 1)
                     OneDot(c.dim)
                     OneText("${days.values.sumOf { it.size }}", OneType.Section, c.dim)
                 }

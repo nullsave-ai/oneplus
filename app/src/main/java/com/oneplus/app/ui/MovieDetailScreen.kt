@@ -141,9 +141,8 @@ private fun MovieDetail(m: Movie, all: List<Movie>, lib: Library, onBack: () -> 
     val scroll = rememberScrollState()
     val pitch = LocalLook.current.pitch
     val anime = LocalLook.current.anime
-    val lux = LocalLux.current
     val seen = remember(m.id) { mutableSetOf<Int>() }
-    val heroH = topInset() + if (lux || pitch || anime) 420.dp else 330.dp
+    val heroH = topInset() + if (pitch || anime) 420.dp else 330.dp
     val heroPx = with(LocalDensity.current) { heroH.toPx() }
     val added = m.id in lib.list
     val similar = remember(m.id, all) {
@@ -156,7 +155,7 @@ private fun MovieDetail(m: Movie, all: List<Movie>, lib: Library, onBack: () -> 
             Modifier.fillMaxSize().verticalScroll(scroll)
                 .padding(bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 32.dp)
         ) {
-            if (anime) AnimeHero(m, duration, heroH, scroll) else if (pitch) PitchHero(m, duration, heroH, scroll) else if (lux) LuxHero(m, duration, heroH, scroll) else Hero(m, duration, heroH, scroll)
+            if (anime) AnimeHero(m, duration, heroH, scroll) else if (pitch) PitchHero(m, duration, heroH, scroll) else Hero(m, duration, heroH, scroll)
             Box(Modifier.fillMaxWidth(), Alignment.TopCenter) {
                 Column(Modifier.widthIn(max = 720.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(24.dp)) {
                     Row(Modifier.padding(horizontal = 20.dp), Arrangement.spacedBy(12.dp)) {
@@ -241,44 +240,11 @@ private fun Hero(m: Movie, duration: String, height: Dp, scroll: ScrollState) {
     }
 }
 
-/**
- * Feed's hero: the artwork fills the top edge to edge and drifts at half the speed of the page; the title block lifts and fades
- * as the page scrolls, so the hero seems to dissolve into the content instead of being pushed off.
- */
-@Composable
-private fun LuxHero(m: Movie, duration: String, height: Dp, scroll: ScrollState) {
-    val c = LocalColors.current
-    val fill = remember(c) { Brush.linearGradient(listOf(c.accent.copy(alpha = 0.55f), c.glass)) }
-    val fade = remember(c) { Brush.verticalGradient(0.35f to c.bg.copy(alpha = 0f), 1f to c.bg) }
-    Box(Modifier.fillMaxWidth().height(height).clipToBounds().background(fill)) {
-        val art = Modifier.matchParentSize().graphicsLayer { translationY = scroll.value * 0.5f; scaleX = 1.12f; scaleY = 1.12f }
-        if (m.backdrop.isNotBlank()) RemoteImage(m.backdrop, art)
-        else OneText(m.title.take(1), OneType.LuxHero.copy(fontSize = 240.sp, lineHeight = 260.sp), c.text.copy(alpha = 0.10f), Modifier.align(Alignment.Center).graphicsLayer { translationY = scroll.value * 0.5f })
-        Box(Modifier.matchParentSize().background(fade))
-        Column(
-            Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(start = 20.dp, end = 20.dp, bottom = 24.dp)
-                .graphicsLayer { translationY = -scroll.value * 0.25f; alpha = (1f - scroll.value / (size.height * 2.5f)).coerceIn(0f, 1f) },
-            Arrangement.spacedBy(10.dp),
-        ) {
-            OneText(m.genres.joinToString(" · "), OneType.Caption, c.accent, maxLines = 1)
-            OneText(m.title, OneType.LuxHero.copy(fontSize = 36.sp, lineHeight = 44.sp), c.text, maxLines = 2)
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                OneText("${m.year}", OneType.Caption, c.dim)
-                OneDot(c.dim)
-                OneText(duration, OneType.Caption, c.dim)
-                OneDot(c.dim)
-                OneIconView(OneIcon.Star, Modifier.size(16.dp)) { c.accent }
-                OneText(String.format(Locale.US, "%.1f", m.rating), OneType.Section, c.text)
-            }
-        }
-    }
-}
-
-/** Floating glass back button; the title pill fades in once the hero has scrolled away. Feed adds a solid strip behind the status bar. */
+/** Floating glass back button; the title pill fades in once the hero has scrolled away. Pitch and Anime add a solid strip behind the status bar. */
 @Composable
 private fun TopBar(title: String, scroll: ScrollState, heroPx: Float, onBack: () -> Unit, modifier: Modifier) {
     val c = LocalColors.current
-    if (LocalLux.current || LocalLook.current.pitch || LocalLook.current.anime) Box(
+    if (LocalLook.current.pitch || LocalLook.current.anime) Box(
         modifier.fillMaxWidth().height(topInset())
             .graphicsLayer { alpha = ((scroll.value - heroPx * 0.55f) / (heroPx * 0.1f)).coerceIn(0f, 1f) }.background(c.bg)
     )
@@ -301,12 +267,12 @@ private fun TopBar(title: String, scroll: ScrollState, heroPx: Float, onBack: ()
 private fun Genres(genres: List<String>) {
     val c = LocalColors.current
     val thick = LocalLook.current.anime
-    val lux = LocalLux.current || LocalLook.current.pitch || thick // Feed / Pitch / Anime: outlined pills instead of tinted tags
+    val outlined = LocalLook.current.pitch || thick // Pitch / Anime: outlined pills instead of tinted tags
     FlowRow(Modifier.padding(horizontal = 20.dp), Arrangement.spacedBy(8.dp), Arrangement.spacedBy(8.dp)) {
         genres.forEach { g ->
             OneText(
-                g, OneType.Caption, if (lux) c.text else c.accent,
-                (if (lux) Modifier.border(if (thick) 2.dp else 0.5.dp, c.border, CircleShape) else Modifier.background(c.accentSoft, RoundedCornerShape(12.dp))).padding(horizontal = 12.dp, vertical = 6.dp),
+                g, OneType.Caption, if (outlined) c.text else c.accent,
+                (if (outlined) Modifier.border(if (thick) 2.dp else 0.5.dp, c.border, CircleShape) else Modifier.background(c.accentSoft, RoundedCornerShape(12.dp))).padding(horizontal = 12.dp, vertical = 6.dp),
             )
         }
     }
@@ -353,14 +319,13 @@ private fun InfoRow(@StringRes label: Int, value: String) {
     }
 }
 
-/** Feed: numbered serif heading that fades up once, staggered (see [reveal]); otherwise the plain heading. */
+/** Pitch / Anime: their own numbered heading that fades up once, staggered (see [reveal]); otherwise the plain heading. */
 @Composable
 private fun Section(@StringRes title: Int, n: Int, seen: MutableSet<Int>, content: @Composable () -> Unit) {
     val pitch = LocalLook.current.pitch
     val anime = LocalLook.current.anime
-    val lux = LocalLux.current || pitch || anime
-    Column(Modifier.then(if (lux) Modifier.reveal(n, seen) else Modifier), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        if (anime) AnimeHead(n, title) else if (pitch) PitchHead(n, title) else if (lux) SectionHead(title, n)
+    Column(Modifier.then(if (pitch || anime) Modifier.reveal(n, seen) else Modifier), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        if (anime) AnimeHead(n, title) else if (pitch) PitchHead(n, title)
         else OneText(stringResource(title), OneType.Section, LocalColors.current.text, Modifier.padding(horizontal = 20.dp))
         content()
     }

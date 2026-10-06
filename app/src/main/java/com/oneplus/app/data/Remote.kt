@@ -1,0 +1,75 @@
+package com.oneplus.app.data
+
+import com.oneplus.app.player.isAllowed
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOn
+import org.json.JSONArray
+import org.json.JSONObject
+import java.net.HttpURLConnection
+import java.net.URL
+
+/** Address of the panel's api.php (e.g. "https://example.com/panel/api.php"). Blank = the built-in sample data. */
+const val ApiUrl = ""
+
+private const val MaxBytes = 5_000_000
+
+/** The catalogue comes from the panel's api.php; when it cannot be reached the sample data is shown instead. */
+class RemoteRepository(private val url: String) : HomeRepository {
+    override val data: Flow<HomeData> = flow {
+        emit(runCatching { parse(JSONObject(download() ?: error("empty"))) }.getOrNull() ?: SampleRepository().data.first())
+    }.flowOn(Dispatchers.IO)
+
+    private fun download(): String? {
+        if (!isAllowed(url)) return null
+        val c = URL(url).openConnection() as HttpURLConnection
+        try {
+            c.connectTimeout = 8_000; c.readTimeout = 10_000
+            if (c.responseCode != 200) return null
+            val bytes = c.inputStream.use { it.readNBytesCapped(MaxBytes) } ?: return null
+            return String(bytes, Charsets.UTF_8)
+        } finally { c.disconnect() }
+    }
+
+    private fun java.io.InputStream.readNBytesCapped(max: Int): ByteArray? {
+        val out = java.io.ByteArrayOutputStream()
+        val buf = ByteArray(8192)
+        while (true) {
+            val n = read(buf)
+            if (n < 0) break
+            if (out.size() + n > max) return null
+            out.write(buf, 0, n)
+        }
+        return out.toByteArray()
+    }
+
+    private fun parse(j: JSONObject): HomeData {
+        val perGroup = HashMap<String, Int>()
+        return HomeData(
+            matches = j.optJSONArray("matches").objs().mapIndexed { i, o ->
+                Match(o.optInt("id", i), o.optString("time"), o.optBoolean("live"), o.optString("status"), o.optString("home"),
+                    o.optString("away"), o.optString("competition"), o.optString("channel"), o.optInt("day"))
+            },
+            movies = j.optJSONArray("movies").objs().mapIndexedNotNull { i, o ->
+                val u = o.optString("url")
+                if (!isAllowed(u.substringBefore('|').trim()) && !u.trimStart().startsWith("url", true)) return@mapIndexedNotNull null
+                Movie(o.optInt("id", i), o.optString("title"), o.optInt("year"), o.optDouble("rating", 0.0).toFloat(), o.optInt("duration"),
+                    o.optJSONArray("genres").strings(), o.optString("synopsis"), o.optString("director"), o.optJSONArray("cast").strings(),
+                    u, o.optString("backdrop"))
+            },
+            channels = j.optJSONArray("channels").objs().mapIndexedNotNull { i, o ->
+                val u = o.optString("url")
+                if (!isAllowed(u.substringBefore('|').trim()) && !u.trimStart().startsWith("url", true)) return@mapIndexedNotNull null
+                val g = o.optString("group")
+                val n = (perGroup[g] ?: 0) + 1
+                perGroup[g] = n
+                Channel(o.optInt("id", i), o.optString("name"), u, g, n, o.optString("logo"))
+            },
+        )
+    }
+
+    private fun JSONArray?.objs(): List<JSONObject> = if (this == null) emptyList() else (0 until length()).mapNotNull { optJSONObject(it) }
+    private fun JSONArray?.strings(): List<String> = if (this == null) emptyList() else (0 until length()).map { optString(it) }.filter { it.isNotBlank() }
+}

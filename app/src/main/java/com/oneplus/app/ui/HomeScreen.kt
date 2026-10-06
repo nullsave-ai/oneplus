@@ -1,32 +1,26 @@
 package com.oneplus.app.ui
 
 import androidx.annotation.StringRes
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.oneplus.app.R
 import com.oneplus.app.data.Channel
 import com.oneplus.app.data.Library
@@ -172,7 +166,6 @@ internal fun Team(name: String) {
 
 @Composable
 internal fun Poster(movie: Movie, modifier: Modifier, onClick: () -> Unit) {
-    if (LocalLux.current) { LuxPoster(movie, modifier, onClick); return } // Feed: the title sits under the artwork
     val c = LocalColors.current
     val fill = remember(c) { Brush.linearGradient(listOf(c.accent.copy(alpha = 0.40f), c.dim.copy(alpha = 0.22f))) }
     Box(modifier.aspectRatio(2f / 3f).press(onClick).clip(RoundedCornerShape(16.dp)).background(fill)) {
@@ -202,5 +195,47 @@ internal fun ChannelTile(ch: Channel, onClick: () -> Unit) {
             if (ch.logo.isNotBlank()) RemoteImage(ch.logo, Modifier.matchParentSize()) else OneText(ch.name.take(1), OneType.Section, c.accent)
         }
         OneText(ch.name, OneType.Caption, c.dim, maxLines = 1)
+    }
+}
+
+/** A poster with its title and year UNDER it (the artwork stays clean); rating as a small badge. */
+@Composable
+internal fun TitledPoster(m: Movie, modifier: Modifier, onClick: () -> Unit) {
+    val c = LocalColors.current
+    val shape = RoundedCornerShape(20.dp)
+    val fill = remember(c) { Brush.linearGradient(listOf(c.accent.copy(alpha = 0.42f), c.dim.copy(alpha = 0.16f))) }
+    Column(modifier.press(onClick), Arrangement.spacedBy(9.dp)) {
+        Box(Modifier.fillMaxWidth().aspectRatio(2f / 3f).clip(shape).background(fill).border(0.5.dp, c.border, shape), Alignment.Center) {
+            OneText(m.title.take(1), OneType.SerifHero.copy(fontSize = 56.sp), c.text.copy(alpha = 0.22f))
+            OneText(
+                "${(m.rating * 10).roundToInt() / 10f}", OneType.Caption, Color.White,
+                Modifier.align(Alignment.TopStart).padding(10.dp).background(Color.Black.copy(alpha = 0.45f), CircleShape).padding(horizontal = 9.dp, vertical = 3.dp),
+            )
+        }
+        Column(Modifier.padding(horizontal = 2.dp)) {
+            OneText(m.title, OneType.Body, c.text, maxLines = 1)
+            OneText("${m.year}", OneType.Caption, c.dim, maxLines = 1)
+        }
+    }
+}
+
+/** One match as a card: time, the two teams, the competition. A live match is outlined in the accent. */
+@Composable
+internal fun MatchCard(m: Match, modifier: Modifier, onClick: () -> Unit) {
+    val c = LocalColors.current
+    val shape = RoundedCornerShape(24.dp)
+    Column(
+        modifier.press(onClick).glass(2, 24.dp).then(if (m.live) Modifier.border(1.dp, c.accent.copy(alpha = 0.7f), shape) else Modifier).padding(16.dp),
+        Arrangement.spacedBy(12.dp),
+    ) {
+        Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
+            OneText(m.time, OneType.Serif, c.text)
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (m.live) OneDot(c.accent)
+                OneText(m.status, OneType.Caption, if (m.live) c.accent else c.dim)
+            }
+        }
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) { Team(m.home); Team(m.away) }
+        OneText(m.competition, OneType.Caption, c.dim, maxLines = 1)
     }
 }

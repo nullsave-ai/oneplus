@@ -1,0 +1,6 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+    <!-- a play triangle (the screen) and a plus (the "+"), inside the 66dp safe zone of an adaptive icon -->
+    <path android:fillColor="#FF5B9BFF" android:pathData="M40,34 L70,54 L40,74 Z" />
+    <path android:fillColor="#FFF1F5F9" android:pathData="M69,28 L73,28 L73,34 L79,34 L79,38 L73,38 L73,44 L69,44 L69,38 L63,38 L63,34 L69,34 Z" />
+</vector>

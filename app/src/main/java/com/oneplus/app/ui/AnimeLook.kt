@@ -4,7 +4,6 @@ import androidx.annotation.StringRes
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
@@ -31,17 +30,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.drawOutline
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
@@ -103,15 +100,8 @@ private val Spark = burst(4, 0.28f)
 
 /** The sticker: hard shadow, flat fill, thick ink outline. */
 private fun Modifier.sticker(shape: Shape, fill: Color, ink: Color, shadow: Color, off: Dp = 3.dp): Modifier =
-    drawBehind {
-        translate(off.toPx(), off.toPx()) {
-            when (val o = shape.createOutline(size, layoutDirection, this)) {
-                is Outline.Rectangle -> drawRect(shadow, topLeft = Offset(o.rect.left, o.rect.top), size = o.rect.size)
-                is Outline.Rounded -> drawRoundRect(shadow, topLeft = Offset(o.roundRect.left, o.roundRect.top), size = Size(o.roundRect.width, o.roundRect.height), cornerRadius = CornerRadius(o.roundRect.bottomLeftCornerRadius.x, o.roundRect.bottomLeftCornerRadius.y))
-                is Outline.Generic -> drawPath(o.path, shadow)
-            }
-        }
-    }.clip(shape).background(fill).border(2.dp, ink, shape)
+    drawBehind { translate(off.toPx(), off.toPx()) { drawOutline(shape.createOutline(size, layoutDirection, this), shadow) } }
+        .clip(shape).background(fill).border(2.dp, ink, shape)
 
 /** Text with a fat ink outline (a stroked copy underneath, the fill on top). */
 @Composable
@@ -145,7 +135,7 @@ private fun DrawScope.rays(color: Color, origin: Offset, count: Int, turn: Float
 fun AnimeHeader(a: HeaderArgs, modifier: Modifier = Modifier) {
     val c = LocalColors.current
     val dir = if (LocalLayoutDirection.current == LayoutDirection.Rtl) -1f else 1f
-    val s = rememberSearch(a.hasSearch, false, a.onQuery) {}
+    val s = rememberSearch(a.hasSearch, a.onQuery)
     val morph = s.morph
     val inset = topInset()
     val spin = rememberInfiniteTransition(label = "spark").animateFloat(0f, 360f, infiniteRepeatable(tween(7000, easing = LinearEasing)), label = "s")
@@ -323,7 +313,7 @@ private fun Cover(m: Movie, row: LazyListState, onClick: () -> Unit) {
     ) {
         Box(Modifier.fillMaxWidth().height(190.dp).sticker(shape, c.glass, c.border, c.accent.copy(alpha = 0.75f))) {
             Box(Modifier.matchParentSize().background(fill))
-            OneText(m.title.take(1), OneType.LuxHero.copy(fontSize = 80.sp, lineHeight = 90.sp), Color.White.copy(alpha = 0.25f), Modifier.align(Alignment.Center))
+            OneText(m.title.take(1), OneType.SerifHero.copy(fontSize = 80.sp, lineHeight = 90.sp), Color.White.copy(alpha = 0.25f), Modifier.align(Alignment.Center))
             if (m.backdrop.isNotBlank()) RemoteImage(m.backdrop, Modifier.matchParentSize().graphicsLayer { scaleX = 1.5f; scaleY = 1.5f })
             Box(Modifier.align(Alignment.TopStart).padding(5.dp).size(42.dp).clip(Starburst).background(AnimeYellow), Alignment.Center) {
                 OneText(String.format(Locale.US, "%.1f", m.rating), OneType.Caption.copy(fontWeight = FontWeight.Black), Ink)
@@ -361,7 +351,7 @@ private fun Splash(movies: List<Movie>, a: HomeArgs, modifier: Modifier) {
                     .press { a.onMovie(m.id) }.sticker(shape, c.glass, c.border, c.accent.copy(alpha = 0.75f)),
             ) {
                 Box(Modifier.matchParentSize().background(fill))
-                OneText(m.title.take(1), OneType.LuxHero.copy(fontSize = 150.sp, lineHeight = 160.sp), Color.White.copy(alpha = 0.14f), Modifier.align(Alignment.Center))
+                OneText(m.title.take(1), OneType.SerifHero.copy(fontSize = 150.sp, lineHeight = 160.sp), Color.White.copy(alpha = 0.14f), Modifier.align(Alignment.Center))
                 if (m.backdrop.isNotBlank()) RemoteImage(m.backdrop, Modifier.matchParentSize().graphicsLayer { translationX = -at() * size.width * 0.2f; scaleX = 1.35f; scaleY = 1.35f })
                 Box(Modifier.matchParentSize().drawBehind { rays(Color.White.copy(alpha = 0.13f), Offset(size.width * 0.8f, size.height * 0.3f), 24, turn.value) })
                 Box(Modifier.matchParentSize().background(shade))
@@ -407,7 +397,7 @@ internal fun AnimeHero(m: Movie, duration: String, height: Dp, scroll: ScrollSta
     Box(Modifier.fillMaxWidth().height(height).clipToBounds().background(fill)) {
         val art = Modifier.matchParentSize().graphicsLayer { translationY = scroll.value * 0.5f; scaleX = 1.12f; scaleY = 1.12f }
         if (m.backdrop.isNotBlank()) RemoteImage(m.backdrop, art)
-        else OneText(m.title.take(1), OneType.LuxHero.copy(fontSize = 240.sp, lineHeight = 260.sp), Color.White.copy(alpha = 0.14f), Modifier.align(Alignment.Center).graphicsLayer { translationY = scroll.value * 0.5f })
+        else OneText(m.title.take(1), OneType.SerifHero.copy(fontSize = 240.sp, lineHeight = 260.sp), Color.White.copy(alpha = 0.14f), Modifier.align(Alignment.Center).graphicsLayer { translationY = scroll.value * 0.5f })
         Box(Modifier.matchParentSize().drawBehind { rays(Color.White.copy(alpha = 0.12f), Offset(size.width * 0.5f, size.height * 0.4f), 32, turn.value) })
         Box(Modifier.matchParentSize().background(shade))
         Row(

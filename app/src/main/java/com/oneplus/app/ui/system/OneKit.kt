@@ -49,17 +49,15 @@ import kotlin.math.sin
 // ---- Tokens -------------------------------------------------------------
 val LocalGlassEffects = staticCompositionLocalOf { true }
 
-object Sp { val S4 = 4.dp; val S8 = 8.dp; val S12 = 12.dp; val S16 = 16.dp; val S20 = 20.dp; val S24 = 24.dp; val S32 = 32.dp }
-
 object OneType {
     val Display = TextStyle(fontSize = 30.sp, fontWeight = FontWeight.Bold)
     val Title = TextStyle(fontSize = 24.sp, fontWeight = FontWeight.Bold)
     val Section = TextStyle(fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
     val Body = TextStyle(fontSize = 15.sp)
     val Caption = TextStyle(fontSize = 12.sp)
-    /** Editorial headline of the phone Feed (serif; no letter-spacing, which would break Arabic joins). */
-    val Lux = TextStyle(fontSize = 22.sp, fontWeight = FontWeight.SemiBold, fontFamily = FontFamily.Serif)
-    val LuxHero = TextStyle(fontSize = 30.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Serif, lineHeight = 38.sp)
+    /** Editorial headlines (serif; no letter-spacing, which would break Arabic joins). */
+    val Serif = TextStyle(fontSize = 22.sp, fontWeight = FontWeight.SemiBold, fontFamily = FontFamily.Serif)
+    val SerifHero = TextStyle(fontSize = 30.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Serif, lineHeight = 38.sp)
 }
 
 @Composable
@@ -71,7 +69,6 @@ fun OneText(text: String, style: TextStyle, color: Color, modifier: Modifier = M
 @Composable
 fun Modifier.ambient(): Modifier {
     val c = LocalColors.current
-    if (LocalFeed.current) return background(c.bg) // Feed: one flat colour, no glow, no dither
     if (LocalLook.current.anime) { // Anime: dusk sky, a halftone screentone in the corner, petals that drift down and sway
         val fall = rememberInfiniteTransition(label = "petals").animateFloat(0f, 1f, infiniteRepeatable(tween(26000, easing = LinearEasing)), label = "t")
         val petals = remember { val r = kotlin.random.Random(5); List(16) { floatArrayOf(r.nextFloat(), r.nextFloat(), (1 + r.nextInt(2)).toFloat(), r.nextFloat() * 6.28f, 0.7f + r.nextFloat() * 0.7f) } }
@@ -95,17 +92,6 @@ fun Modifier.ambient(): Modifier {
             val band = 76.dp.toPx(); var y = 0f
             while (y < size.height) { drawRect(c.text.copy(alpha = 0.035f), Offset(0f, y), Size(size.width, band)); y += band * 2f }
             if (c.bg != Color.Black) floodlights(breath.value * (if (c.bg.luminance() < 0.2f) 1f else 0.35f))
-        }
-    }
-    if (LocalLook.current.aurora) { // Aurora: three slow curtains of light (mint, app colour, magenta) drifting across the top of the page
-        val turn = rememberInfiniteTransition(label = "sky").animateFloat(0f, 6.2832f, infiniteRepeatable(tween(24000, easing = LinearEasing)), label = "t")
-        val night = c.bg.luminance() < 0.2f
-        return background(c.bg).drawBehind {
-            val t = turn.value; val a = if (night) 0.30f else 0.15f; val w = size.width
-            listOf(AuroraMint to 0f, c.accent to 2.1f, AuroraPink to 4.2f).forEach { (col, ph) ->
-                val o = Offset(w * (0.5f + 0.45f * sin(t + ph)), size.height * (0.16f + 0.08f * cos(t * 0.7f + ph)))
-                scale(0.55f, 1.7f, o) { drawCircle(Brush.radialGradient(listOf(col.copy(alpha = a), col.copy(alpha = 0f)), o, w * 0.6f), w * 0.6f, o) } // tall, so it reads as a curtain
-            }
         }
     }
     if (LocalLook.current.cosmic) return background(c.bg).drawWithCache { // Orbit: a nebula and a fixed star field
@@ -136,16 +122,11 @@ internal val Sheen = Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.10
 /**
  * Translucent tint + sheen + hairline border. Real backdrop blur is not applied (see README note).
  * The user's [GlassStyle] scales it: density = how solid the tint is; depth = how strong the sheen and the edge are, and above 1
- * the surface also lifts off the page with a soft shadow. At the default (1, 1) nothing is added or changed.
+ * the surface also lifts off the page with a soft shadow.
  */
 @Composable
 fun Modifier.glass(level: Int, radius: Dp): Modifier {
     val c = LocalColors.current
-    if (LocalFeed.current) { // Feed: a flat solid card (phone: hairline border)
-        if (!LocalLux.current) return clip(RoundedCornerShape(minOf(radius, 14.dp))).background(c.glass)
-        val s = RoundedCornerShape(radius)
-        return clip(s).background(c.glass).border(0.5.dp, c.border, s)
-    }
     val fx = LocalGlassEffects.current
     val g = LocalGlassStyle.current
     val k = LocalLook.current
@@ -155,22 +136,20 @@ fun Modifier.glass(level: Int, radius: Dp): Modifier {
             .clip(s).background(c.glass).border(2.dp, c.border, s)
     }
     val shape = RoundedCornerShape(if (k.pitch) minOf(radius, 12.dp) else radius) // Pitch: squarer, like a kit badge
-    val sheen = remember(g.depth) { if (g.depth == 1f) Sheen else Brush.verticalGradient(listOf(Color.White.copy(alpha = (0.10f * g.depth).coerceIn(0f, 1f)), Color.White.copy(alpha = 0f))) }
-    val edge = if (g.depth == 1f) c.border else c.border.copy(alpha = (c.border.alpha * g.depth).coerceIn(0f, 1f))
+    val sheen = remember(g.depth) { Brush.verticalGradient(listOf(Color.White.copy(alpha = (0.10f * g.depth).coerceIn(0f, 1f)), Color.White.copy(alpha = 0f))) }
+    val edge = c.border.copy(alpha = (c.border.alpha * g.depth).coerceIn(0f, 1f))
     val tint = ((if (fx) GlassAlpha[level - 1] else 0.94f) * g.density).coerceIn(0f, 1f)
     val lift = if (fx && g.depth > 1f) drawBehind { softShadow(CornerRadius(radius.toPx()), (g.depth - 1f) * 3f) } else this
     val base = lift.clip(shape).background(c.glass.copy(alpha = tint))
     val face = if (fx) base.background(sheen) else base
-    if (k.cosmic || k.aurora) { // Orbit / Aurora: the edge is a lit rim, brighter where the light hits
-        val rim = remember(c.accent, k.aurora) { Brush.linearGradient(listOf(c.accent.copy(alpha = 0.75f), c.accent.copy(alpha = 0.08f), (if (k.aurora) AuroraPink else NebulaViolet).copy(alpha = 0.45f))) }
+    if (k.cosmic) { // Orbit: the edge is a lit rim, brighter where the light hits
+        val rim = remember(c.accent) { Brush.linearGradient(listOf(c.accent.copy(alpha = 0.75f), c.accent.copy(alpha = 0.08f), NebulaViolet.copy(alpha = 0.45f))) }
         return face.border(1.dp, rim, shape)
     }
     return face.border(if (k.pitch) 1.dp else 0.5.dp, edge, shape) // Pitch: chalk-line border
 }
 
 private val NebulaViolet = Color(0xFFB36BFF)
-internal val AuroraMint = Color(0xFF3DFFC0)
-internal val AuroraPink = Color(0xFFFF4FD8)
 internal val PitchGold = Color(0xFFFFC83D)
 internal val PitchRed = Color(0xFFFF3B30)
 internal val Sakura = Color(0xFFFFB7D5)
@@ -192,19 +171,17 @@ internal fun DrawScope.floodlights(a: Float) {
 fun Modifier.press(onClick: () -> Unit): Modifier {
     val src = remember { MutableInteractionSource() }
     val pressed by src.collectIsPressedAsState()
-    val feed = LocalFeed.current // Feed: a press dims the item instead of squeezing it
-    val s by animateFloatAsState(if (pressed && !feed) 0.96f else 1f, spring(0.6f, 500f), label = "press")
-    val dim by animateFloatAsState(if (pressed && feed) 0.6f else 1f, tween(90), label = "pressDim")
+    val s by animateFloatAsState(if (pressed) 0.96f else 1f, spring(0.6f, 500f), label = "press")
     val tv = LocalTvMode.current
     val click by rememberUpdatedState(onClick)
-    return graphicsLayer { scaleX = s; scaleY = s; alpha = dim }.tvFocusRing(src).tvLockable()
+    return graphicsLayer { scaleX = s; scaleY = s }.tvFocusRing(src).tvLockable()
         // a gamepad's A button is "OK" too (the remote's centre / Enter is already handled by clickable)
         .then(if (tv) Modifier.onKeyEvent { e -> (e.key == Key.ButtonA).also { if (it && e.type == KeyEventType.KeyUp) click() } } else Modifier)
         .clickable(src, null, onClick = onClick)
 }
 
 /**
- * Entrance for a feed section: it fades up once, staggered by [index]. [seen] remembers which ones already played, so a section
+ * Entrance for a home section: it fades up once, staggered by [index]. [seen] remembers which ones already played, so a section
  * that scrolls out and back in does not play again (the set dies with the page, so coming back to the tab plays it anew).
  */
 @Composable
@@ -370,7 +347,8 @@ fun OneSwitch(checked: Boolean, onChange: (Boolean) -> Unit) {
     val p by animateFloatAsState(if (checked) 1f else 0f, spring(0.7f, 600f), label = "switch")
     val off = c.dim.copy(alpha = 0.28f)
     Box(
-        Modifier.size(52.dp, 32.dp).clip(CircleShape).drawBehind { drawRect(lerp(off, c.active, p)) }
+        Modifier.size(52.dp, 32.dp).press { onChange(!checked) } // before the clip: the focus glow lives outside the shape
+            .clip(CircleShape).drawBehind { drawRect(lerp(off, c.active, p)) }
             .pointerInput(checked, rtl) {
                 detectHorizontalDragGestures { change, dx ->
                     change.consume()
@@ -378,7 +356,6 @@ fun OneSwitch(checked: Boolean, onChange: (Boolean) -> Unit) {
                     if (abs(dx) > 1f && wantOn != checked) onChange(wantOn)
                 }
             }
-            .press { onChange(!checked) }
     ) {
         Box(Modifier.padding(3.dp).size(26.dp).graphicsLayer {
             translationX = p * 20.dp.toPx() * (if (rtl) -1f else 1f)
@@ -477,7 +454,7 @@ fun OneButton(text: String, icon: OneIcon?, onClick: () -> Unit, modifier: Modif
     val c = LocalColors.current
     val fg = if (primary) c.onAccent else c.text
     val base = modifier.height(52.dp).press(onClick)
-    val r = if (LocalLux.current) 26.dp else 18.dp // Feed: full pills
+    val r = 18.dp
     Row(
         (if (primary) base.clip(RoundedCornerShape(r)).background(c.accent) else base.glass(2, r)).padding(horizontal = 16.dp),
         Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally), Alignment.CenterVertically,
@@ -492,16 +469,14 @@ fun OneButton(text: String, icon: OneIcon?, onClick: () -> Unit, modifier: Modif
 fun OneChip(text: String, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val c = LocalColors.current
     val p by animateFloatAsState(if (selected) 1f else 0f, tween(180), label = "chip")
-    val lux = LocalLux.current // Feed: a pill that inverts when chosen (ink on ivory, ivory on ink)
-    val shape = if (lux) CircleShape else RoundedCornerShape(14.dp)
-    val on = if (lux) c.text else c.selection
+    val shape = RoundedCornerShape(14.dp)
     Box(
         modifier.height(36.dp).press(onClick).clip(shape)
-            .drawBehind { drawRect(lerp(if (lux) c.text.copy(alpha = 0f) else c.dim.copy(alpha = 0.10f), on, p)) }
-            .border(0.5.dp, lerp(c.border, if (lux) c.text else c.accent.copy(alpha = 0.5f), p), shape)
+            .drawBehind { drawRect(lerp(c.dim.copy(alpha = 0.10f), c.selection, p)) }
+            .border(0.5.dp, lerp(c.border, c.accent.copy(alpha = 0.5f), p), shape)
             .padding(horizontal = 14.dp),
         Alignment.Center,
-    ) { OneText(text, OneType.Body, lerp(c.dim, if (lux) c.bg else c.accent, p), maxLines = 1) }
+    ) { OneText(text, OneType.Body, lerp(c.dim, c.accent, p), maxLines = 1) }
 }
 
 /** Separator dot, drawn (no text glyph). */

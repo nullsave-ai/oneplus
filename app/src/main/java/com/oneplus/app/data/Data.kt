@@ -120,45 +120,42 @@ class RemoteFeedRepository : HomeRepository {
         emit(current)
 
         // 2. Fetch fresh catalog & config from Firebase Bridge
-        withContext(Dispatchers.IO) {
-            // Fetch App Config
-            try {
-                val cfgJson = httpGet("https://apklive-default-rtdb.firebaseio.com/app_config.json")
-                if (!cfgJson.isNullOrBlank() && cfgJson != "null") {
-                    val obj = JSONObject(cfgJson)
-                    val parsedCfg = AppConfig(
-                        minVersionCode = obj.optInt("min_version_code", 1),
-                        latestVersionCode = obj.optInt("latest_version_code", 2),
-                        updateUrl = obj.optString("update_url", "https://github.com/nullsave-ai/oneplus/releases/latest"),
-                        updateTitle = obj.optString("update_title", "تحديث جديد متوفر"),
-                        updateMessage = obj.optString("update_message", "يرجى تنزيل الإصدار الأحدث للاستمرار في المشاهدة."),
-                        forceUpdate = obj.optBoolean("force_update", false)
+        try {
+            val cfgJson = httpGet("https://apklive-default-rtdb.firebaseio.com/app_config.json")
+            if (!cfgJson.isNullOrBlank() && cfgJson != "null") {
+                val obj = JSONObject(cfgJson)
+                val parsedCfg = AppConfig(
+                    minVersionCode = obj.optInt("min_version_code", 1),
+                    latestVersionCode = obj.optInt("latest_version_code", 2),
+                    updateUrl = obj.optString("update_url", "https://github.com/nullsave-ai/oneplus/releases/latest"),
+                    updateTitle = obj.optString("update_title", "تحديث جديد متوفر"),
+                    updateMessage = obj.optString("update_message", "يرجى تنزيل الإصدار الأحدث للاستمرار في المشاهدة."),
+                    forceUpdate = obj.optBoolean("force_update", false)
+                )
+                _config.value = parsedCfg
+            }
+        } catch (_: Exception) {}
+
+        // Fetch Catalog
+        try {
+            val catJson = httpGet("https://apklive-default-rtdb.firebaseio.com/catalog.json")
+            if (!catJson.isNullOrBlank() && catJson != "null") {
+                val obj = JSONObject(catJson)
+
+                val movies = parseMovies(obj.optJSONArray("movies"))
+                val channels = parseChannels(obj.optJSONArray("channels"))
+                val matches = parseMatches(obj.optJSONArray("matches"))
+
+                if (movies.isNotEmpty() || channels.isNotEmpty()) {
+                    current = HomeData(
+                        matches = if (matches.isNotEmpty()) matches else current.matches,
+                        movies = if (movies.isNotEmpty()) movies else current.movies,
+                        channels = if (channels.isNotEmpty()) channels else current.channels
                     )
-                    _config.value = parsedCfg
+                    emit(current)
                 }
-            } catch (_: Exception) {}
-
-            // Fetch Catalog
-            try {
-                val catJson = httpGet("https://apklive-default-rtdb.firebaseio.com/catalog.json")
-                if (!catJson.isNullOrBlank() && catJson != "null") {
-                    val obj = JSONObject(catJson)
-
-                    val movies = parseMovies(obj.optJSONArray("movies"))
-                    val channels = parseChannels(obj.optJSONArray("channels"))
-                    val matches = parseMatches(obj.optJSONArray("matches"))
-
-                    if (movies.isNotEmpty() || channels.isNotEmpty()) {
-                        current = HomeData(
-                            matches = if (matches.isNotEmpty()) matches else current.matches,
-                            movies = if (movies.isNotEmpty()) movies else current.movies,
-                            channels = if (channels.isNotEmpty()) channels else current.channels
-                        )
-                        emit(current)
-                    }
-                }
-            } catch (_: Exception) {}
-        }
+            }
+        } catch (_: Exception) {}
     }.flowOn(Dispatchers.IO)
 
     private fun parseMovies(arr: JSONArray?): List<Movie> {

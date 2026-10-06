@@ -5,7 +5,6 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
@@ -49,7 +48,6 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.LayoutDirection
@@ -82,7 +80,7 @@ private val Violet = Color(0xFFB36BFF)
 fun OrbitHeader(a: HeaderArgs, modifier: Modifier = Modifier) {
     val c = LocalColors.current
     val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
-    val s = rememberSearch(a.hasSearch, false, a.onQuery) {}
+    val s = rememberSearch(a.hasSearch, a.onQuery)
     val morph = s.morph
     val inset = topInset()
     val pulse = rememberInfiniteTransition(label = "beacon").animateFloat(0f, 1f, infiniteRepeatable(tween(2600, easing = LinearEasing)), label = "p")
@@ -146,7 +144,7 @@ fun OrbitNav(selected: Int, onSelect: (Int) -> Unit, modifier: Modifier = Modifi
         Row(Modifier.fillMaxSize()) {
             OrbTabs.forEachIndexed { i, (icon, label) ->
                 val on by animateFloatAsState(if (i == selected) 1f else 0f, spring(0.55f, 380f), label = "orbTab")
-                Column(Modifier.weight(1f).fillMaxHeight().press { onSelect(i) }, Arrangement.Bottom, Alignment.CenterHorizontally) {
+                Column(Modifier.weight(1f).fillMaxHeight().tvTab(i).press { onSelect(i) }, Arrangement.Bottom, Alignment.CenterHorizontally) {
                     Box(
                         Modifier.size(40.dp)
                             .graphicsLayer { translationY = -18.dp.toPx() * on; val k = 1f + 0.2f * on; scaleX = k; scaleY = k }
@@ -237,7 +235,7 @@ fun OrbitHome(a: HomeArgs) {
         }
         if (d.movies.isNotEmpty()) item(key = "movies") {
             Constellation(R.string.sec_movies, a.onAllMovies, 150.dp, Modifier.reveal(3, seen).drum(a.list, "movies")) { row ->
-                items(d.movies.take(10), key = { it.id }) { m -> LuxPoster(m, Modifier.width(150.dp).coverflow(row, m.id)) { a.onMovie(m.id) } }
+                items(d.movies.take(10), key = { it.id }) { m -> TitledPoster(m, Modifier.width(150.dp).coverflow(row, m.id)) { a.onMovie(m.id) } }
             }
         }
         if (d.channels.isNotEmpty()) item(key = "channels") {
@@ -261,7 +259,7 @@ private fun Constellation(
     val c = LocalColors.current
     val state = rememberLazyListState()
     val snap: FlingBehavior = if (itemWidth != null) rememberSnapFlingBehavior(state, SnapPosition.Center) else ScrollableDefaults.flingBehavior()
-    val pad = if (itemWidth != null) ((LocalConfiguration.current.screenWidthDp.dp - itemWidth) / 2).coerceAtLeast(20.dp) else 20.dp
+    val pad = if (itemWidth != null) ((screenWidth() - itemWidth) / 2).coerceAtLeast(20.dp) else 20.dp
     Column(modifier, Arrangement.spacedBy(16.dp)) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), Arrangement.spacedBy(10.dp), Alignment.CenterVertically) {
             Box(Modifier.size(8.dp).drawBehind {
@@ -288,7 +286,7 @@ private fun PlanetPager(movies: List<Movie>, a: HomeArgs, modifier: Modifier) {
     val n = movies.size
     val pager = rememberPagerState { n }
     val spin = rememberInfiniteTransition(label = "moon").animateFloat(0f, 360f, infiniteRepeatable(tween(26000, easing = LinearEasing)), label = "a")
-    val side = ((LocalConfiguration.current.screenWidthDp.dp - 250.dp) / 2).coerceAtLeast(0.dp)
+    val side = ((screenWidth() - 250.dp) / 2).coerceAtLeast(0.dp)
     val cur = movies[pager.currentPage.coerceIn(0, n - 1)]
     Column(modifier, Arrangement.spacedBy(4.dp), Alignment.CenterHorizontally) {
         HorizontalPager(
@@ -302,12 +300,12 @@ private fun PlanetPager(movies: List<Movie>, a: HomeArgs, modifier: Modifier) {
         ) { m ->
             val progress = a.lib.fraction(m.id).takeIf { m.id in a.lib.progress }
             Column(Modifier.fillMaxWidth().padding(horizontal = 28.dp), Arrangement.spacedBy(8.dp), Alignment.CenterHorizontally) {
-                OneText(stringResource(R.string.lux_featured), OneType.Caption, c.accent)
+                OneText(stringResource(R.string.featured), OneType.Caption, c.accent)
                 OneText(m.title, OneType.Display.copy(shadow = Shadow(c.accent.copy(alpha = 0.55f), blurRadius = 26f)), c.text, maxLines = 1)
                 OneText("${m.year}  ·  ${m.genres.joinToString(" · ")}", OneType.Caption, c.dim, maxLines = 1)
                 Row(
-                    Modifier.padding(top = 6.dp).clip(CircleShape).background(Brush.horizontalGradient(listOf(c.accent, lerp(c.accent, Violet, 0.6f))))
-                        .press { a.onMovie(m.id) }.padding(horizontal = 22.dp, vertical = 11.dp),
+                    Modifier.padding(top = 6.dp).press { a.onMovie(m.id) }.clip(CircleShape)
+                        .background(Brush.horizontalGradient(listOf(c.accent, lerp(c.accent, Violet, 0.6f)))).padding(horizontal = 22.dp, vertical = 11.dp),
                     Arrangement.spacedBy(8.dp), Alignment.CenterVertically,
                 ) {
                     OneIconView(OneIcon.Play, Modifier.size(18.dp)) { c.onAccent }
@@ -349,7 +347,7 @@ private fun Planet(m: Movie, off: () -> Float, spin: State<Float>, onClick: () -
                 if (m.backdrop.isNotBlank()) RemoteImage(m.backdrop, Modifier.matchParentSize().graphicsLayer {
                     translationX = -off() * size.width * 0.22f * dir; scaleX = 1.5f; scaleY = 1.5f // the artwork turns across the sphere
                 }) else OneText(
-                    m.title.take(1), OneType.LuxHero.copy(fontSize = 120.sp, lineHeight = 130.sp), Color.White.copy(alpha = 0.16f),
+                    m.title.take(1), OneType.SerifHero.copy(fontSize = 120.sp, lineHeight = 130.sp), Color.White.copy(alpha = 0.16f),
                     Modifier.align(Alignment.Center).graphicsLayer { translationX = -off() * 90.dp.toPx() * dir },
                 )
                 Box(Modifier.matchParentSize().background(limb))

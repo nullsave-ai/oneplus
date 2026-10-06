@@ -13,7 +13,9 @@ const BLOCKED_KEYWORDS = [
   'pornography', 'xxx', 'adult only', 'adult', 'nudity', 'nsfw', 'sensual',
   'softcore', 'hardcore', 'sex', 'sexual', 'taboo', 'incest', 'midnight', 'ميدنايت',
   'gay', 'lesbian', 'homosexual', 'queer', 'transgender', 'bisexual',
-  'boys love', 'bl drama', 'شذوذ', 'مثلي', 'شاذ', 'قوس قزح'
+  'boys love', 'bl drama', 'شذوذ', 'مثلي', 'شاذ', 'قوس قزح',
+  'lust', 'lover', 'lovers', 'affair', 'nude', 'naked', 'strip', 'prostitute', 'hooker',
+  'شهوة', 'عاهرة', 'دعارة', 'زنا', 'خيانة زوجية'
 ];
 
 const GENRE_MAP = {

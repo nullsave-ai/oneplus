@@ -7,7 +7,6 @@ import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
@@ -53,7 +52,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -131,7 +129,7 @@ private fun Clock() {
 @Composable
 fun PitchHeader(a: HeaderArgs, modifier: Modifier = Modifier) {
     val c = LocalColors.current
-    val s = rememberSearch(a.hasSearch, false, a.onQuery) {}
+    val s = rememberSearch(a.hasSearch, a.onQuery)
     val morph = s.morph
     val inset = topInset()
     Box(modifier.fillMaxWidth()) {
@@ -184,7 +182,7 @@ fun PitchNav(selected: Int, onSelect: (Int) -> Unit, modifier: Modifier = Modifi
             PitchTabs.forEachIndexed { i, (icon, label) ->
                 val on by animateFloatAsState(if (i == selected) 1f else 0f, spring(0.8f, 400f), label = "tab")
                 val ink = lerp(Color.White.copy(alpha = 0.62f), PitchGold, on)
-                Column(Modifier.weight(1f).fillMaxHeight().press { onSelect(i) }, Arrangement.Center, Alignment.CenterHorizontally) {
+                Column(Modifier.weight(1f).fillMaxHeight().tvTab(i).press { onSelect(i) }, Arrangement.Center, Alignment.CenterHorizontally) {
                     OneIconView(icon, Modifier.graphicsLayer { val k = 1f + 0.12f * on; scaleX = k; scaleY = k }) { ink }
                     OneText(stringResource(label), OneType.Caption, ink, Modifier.padding(top = 4.dp), 1)
                 }
@@ -341,7 +339,7 @@ private fun PlayerCard(m: Movie, row: LazyListState, onClick: () -> Unit) {
     ) {
         Box(Modifier.weight(1f).fillMaxWidth()) {
             if (m.backdrop.isNotBlank()) RemoteImage(m.backdrop, Modifier.matchParentSize().graphicsLayer { alpha = 0.85f; scaleX = 1.5f; scaleY = 1.5f })
-            else OneText(m.title.take(1), OneType.LuxHero.copy(fontSize = 96.sp, lineHeight = 100.sp), ink.copy(alpha = 0.18f), Modifier.align(Alignment.Center))
+            else OneText(m.title.take(1), OneType.SerifHero.copy(fontSize = 96.sp, lineHeight = 100.sp), ink.copy(alpha = 0.18f), Modifier.align(Alignment.Center))
             Column(Modifier.padding(start = 14.dp, top = 12.dp)) {
                 OneText("${(m.rating * 10).roundToInt()}", Led.copy(fontSize = 30.sp), ink)
                 OneText(m.genres.firstOrNull().orEmpty(), OneType.Caption, ink, maxLines = 1)
@@ -377,13 +375,13 @@ private fun BigScreen(movies: List<Movie>, a: HomeArgs, modifier: Modifier) {
                 Modifier.fillMaxWidth().height(240.dp).graphicsLayer { val k = 1f - 0.07f * abs(at()).coerceAtMost(1f); scaleX = k; scaleY = k; alpha = 1f - 0.5f * abs(at()).coerceAtMost(1f) }
                     .press { a.onMovie(m.id) }.clip(shape).background(fill).border(1.dp, Chalk, shape),
             ) {
-                OneText(m.title.take(1), OneType.LuxHero.copy(fontSize = 150.sp, lineHeight = 160.sp), Color.White.copy(alpha = 0.12f), Modifier.align(Alignment.Center))
+                OneText(m.title.take(1), OneType.SerifHero.copy(fontSize = 150.sp, lineHeight = 160.sp), Color.White.copy(alpha = 0.12f), Modifier.align(Alignment.Center))
                 if (m.backdrop.isNotBlank()) RemoteImage(m.backdrop, Modifier.matchParentSize().graphicsLayer { translationX = -at() * size.width * 0.25f; scaleX = 1.35f; scaleY = 1.35f })
                 Box(Modifier.matchParentSize().background(shade).drawBehind {
                     val x = size.width * sweep.value // the band of light
                     drawRect(Brush.linearGradient(listOf(Color.White.copy(alpha = 0f), Color.White.copy(alpha = 0.16f), Color.White.copy(alpha = 0f)), Offset(x - 90.dp.toPx(), 0f), Offset(x + 40.dp.toPx(), size.height)))
                 })
-                OneText(stringResource(R.string.lux_featured), OneType.Caption, Color.White, Modifier.align(Alignment.TopStart).padding(start = 40.dp, top = 14.dp).background(PitchRed, CutCornerShape(topStart = 8.dp, bottomEnd = 8.dp)).padding(horizontal = 10.dp, vertical = 3.dp))
+                OneText(stringResource(R.string.featured), OneType.Caption, Color.White, Modifier.align(Alignment.TopStart).padding(start = 40.dp, top = 14.dp).background(PitchRed, CutCornerShape(topStart = 8.dp, bottomEnd = 8.dp)).padding(horizontal = 10.dp, vertical = 3.dp))
                 OneText(String.format(Locale.US, "%.1f", m.rating), Led.copy(fontSize = 26.sp), PitchGold, Modifier.align(Alignment.TopEnd).padding(14.dp).background(Color.Black.copy(alpha = 0.45f), RoundedCornerShape(8.dp)).padding(horizontal = 10.dp, vertical = 4.dp))
                 Column(
                     Modifier.align(Alignment.BottomStart).padding(start = 22.dp, end = 22.dp, bottom = 20.dp).graphicsLayer { translationX = at() * size.width * 0.35f }, // text moves against the art
@@ -425,7 +423,7 @@ internal fun PitchHero(m: Movie, duration: String, height: androidx.compose.ui.u
     Box(Modifier.fillMaxWidth().height(height).clipToBounds().background(fill).drawBehind { floodlights(0.9f) }) {
         val art = Modifier.matchParentSize().graphicsLayer { translationY = scroll.value * 0.5f; scaleX = 1.12f; scaleY = 1.12f }
         if (m.backdrop.isNotBlank()) RemoteImage(m.backdrop, art)
-        else OneText(m.title.take(1), OneType.LuxHero.copy(fontSize = 240.sp, lineHeight = 260.sp), c.text.copy(alpha = 0.10f), Modifier.align(Alignment.Center).graphicsLayer { translationY = scroll.value * 0.5f })
+        else OneText(m.title.take(1), OneType.SerifHero.copy(fontSize = 240.sp, lineHeight = 260.sp), c.text.copy(alpha = 0.10f), Modifier.align(Alignment.Center).graphicsLayer { translationY = scroll.value * 0.5f })
         Box(Modifier.matchParentSize().background(fade))
         Row(
             Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(start = 20.dp, end = 20.dp, bottom = 22.dp)

@@ -27,7 +27,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -40,7 +39,6 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.oneplus.app.R
 import com.oneplus.app.data.Movie
 import com.oneplus.app.ui.system.*
@@ -51,8 +49,7 @@ import kotlin.math.roundToInt
  * The phone's settings, in the manner of an iOS "Settings" app: a grouped list whose rows OPEN a page for their topic. Nothing
  * on the list changes a setting except the one switch, so a touch while scrolling cannot damage the look. Choices (style, day /
  * night, display) are big tiles with a miniature of the result, on a page of their own. Everything is drawn from the current
- * look's surfaces, so Glass shows frosted groups and Feed shows hairline ones. The header (owned by the look) carries the page
- * title and the back button.
+ * look's surfaces. The header (owned by the look) carries the page title and the back button.
  */
 
 private const val PageStyle = 0
@@ -63,11 +60,11 @@ private const val PageDisplay = 4
 
 /** Title of the open sub-page, shown by the header. */
 @StringRes
-internal fun settingsTitle(page: Int, look: Look): Int = when (page) {
+internal fun settingsTitle(page: Int): Int = when (page) {
     PageStyle -> R.string.style_mode
     PageMode -> R.string.theme_mode
     PageColor -> R.string.color_row
-    PageTune -> if (look.solid) R.string.look_feed else R.string.glass_title
+    PageTune -> R.string.glass_title
     else -> R.string.display_mode
 }
 
@@ -142,15 +139,15 @@ private fun SettingsList(
             NavRow(OneIcon.Fill, Violet, R.string.style_mode, stringResource(p.look.label)) { onPage(PageStyle) }
             NavRow(OneIcon.Sun, Indigo, R.string.theme_mode, stringResource(p.mode.label)) { onPage(PageMode) }
             NavRow(OneIcon.Star, Pink, R.string.color_row, stringResource(p.accent.label), dot = c.accent) { onPage(PageColor) }
-            NavRow(
-                OneIcon.Settings, Teal, if (p.look.solid) R.string.look_feed else R.string.glass_title,
-                "${((if (p.look.solid) p.feedSize else p.glassDensity) * 100f).roundToInt()}%", last = true,
-            ) { onPage(PageTune) }
+            NavRow(OneIcon.Settings, Teal, R.string.glass_title, "${(p.glassDensity * 100f).roundToInt()}%", last = true) { onPage(PageTune) }
         }
         Group(R.string.settings_screen) {
             NavRow(OneIcon.Channels, Green, R.string.display_mode, stringResource(p.display.label)) { onPage(PageDisplay) }
-            SwitchRow(OneIcon.Expand, Gray, R.string.settings_hide_status, p.hideStatusBar, last = true) {
+            SwitchRow(OneIcon.Expand, Gray, R.string.settings_hide_status, p.hideStatusBar) {
                 theme.update { copy(hideStatusBar = it) }; theme.save()
+            }
+            SwitchRow(OneIcon.Shrink, Gray, R.string.settings_hide_nav, p.hideNavBar, last = true) {
+                theme.update { copy(hideNavBar = it) }; theme.save()
             }
         }
         Group(R.string.settings_general) {
@@ -177,13 +174,12 @@ private val Teal = Color(0xFF2FA4B8)
 private val Green = Color(0xFF3DB26B)
 private val Gray = Color(0xFF8A8D96)
 
-/** A titled group of rows on one surface (frosted in Glass, hairline in Feed). The title is quiet in Glass and serif in Feed. */
+/** A titled group of rows on one glass surface. */
 @Composable
 private fun Group(@StringRes title: Int, rows: @Composable ColumnScope.() -> Unit) {
     val c = LocalColors.current
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        if (LocalLux.current) OneText(stringResource(title), OneType.Lux.copy(fontSize = 19.sp), c.text, Modifier.padding(horizontal = 6.dp))
-        else OneText(stringResource(title), OneType.Caption, c.dim, Modifier.padding(horizontal = 14.dp))
+        OneText(stringResource(title), OneType.Caption, c.dim, Modifier.padding(horizontal = 14.dp))
         Column(Modifier.fillMaxWidth().glass(2, 22.dp), content = rows)
     }
 }
@@ -246,8 +242,8 @@ private fun StylePage(theme: ThemeController) {
         Row(Modifier.fillMaxWidth(), Arrangement.spacedBy(14.dp)) {
             pair.forEach { l ->
                 Tile(l == p.look, stringResource(l.label), stringResource(l.blurb), { theme.update { copy(look = l) }; theme.save() }, Modifier.weight(1f)) {
-                    val pal = l.palette(dark, false, false)
-                    Canvas(Modifier.fillMaxSize()) { mini(pal, dark, l.solid, accent, l.cosmic, l.aurora, l.pitch, l.anime) }
+                    val pal = l.palette(dark, false)
+                    Canvas(Modifier.fillMaxSize()) { mini(pal, dark, accent, l.cosmic, l.pitch, l.anime) }
                 }
             }
             if (pair.size == 1) Spacer(Modifier.weight(1f))
@@ -266,13 +262,13 @@ private fun ModePage(theme: ThemeController) {
             pair.forEach { m ->
                 Tile(m == p.mode, stringResource(m.label), null, { theme.update { copy(mode = m) }; theme.save() }, Modifier.weight(1f)) {
                     Canvas(Modifier.fillMaxSize()) {
-                        val day = look.palette(false, false, false)
-                        val night = look.palette(true, false, false)
+                        val day = look.palette(false, false)
+                        val night = look.palette(true, false)
                         when (m) {
-                            ThemeMode.Light -> mini(day, false, look.solid, accent, look.cosmic, look.aurora, look.pitch, look.anime)
-                            ThemeMode.Dark -> mini(night, true, look.solid, accent, look.cosmic, look.aurora, look.pitch, look.anime)
-                            ThemeMode.Amoled -> mini(look.palette(true, true, false).let { Palette(Color.Black, it.surface, it.border, it.text, it.dim) }, true, look.solid, accent, look.cosmic, look.aurora, look.pitch, look.anime)
-                            ThemeMode.System -> { mini(day, false, look.solid, accent, look.cosmic, look.aurora, look.pitch, look.anime); clipRect(left = size.width / 2f) { mini(night, true, look.solid, accent, look.cosmic, look.aurora, look.pitch, look.anime) } }
+                            ThemeMode.Light -> mini(day, false, accent, look.cosmic, look.pitch, look.anime)
+                            ThemeMode.Dark -> mini(night, true, accent, look.cosmic, look.pitch, look.anime)
+                            ThemeMode.Amoled -> mini(look.palette(true, true).let { Palette(Color.Black, it.surface, it.border, it.text, it.dim) }, true, accent, look.cosmic, look.pitch, look.anime)
+                            ThemeMode.System -> { mini(day, false, accent, look.cosmic, look.pitch, look.anime); clipRect(left = size.width / 2f) { mini(night, true, accent, look.cosmic, look.pitch, look.anime) } }
                         }
                     }
                 }
@@ -282,31 +278,12 @@ private fun ModePage(theme: ThemeController) {
     }
 }
 
-/** Glass: density and depth on one pad. Feed: card size. (Feed's corner radius is not adjustable: the designed one stays.) */
+/** Glass: density and depth on one pad (sliders in TV Mode: a remote cannot drag a pad). */
 @Composable
 private fun TunePage(theme: ThemeController, effects: Boolean, onEffects: (Boolean) -> Unit) {
-    val c = LocalColors.current
-    val p = theme.prefs
-    if (!p.look.solid) {
-        Panel {
-            SettingRow(stringResource(R.string.settings_effects)) { OneSwitch(effects, onEffects) }
-            if (LocalTvMode.current) Column(Modifier.padding(vertical = 8.dp)) { GlassSliders(theme) } else LookPad(theme) // a remote cannot drag a pad
-        }
-        return
-    }
-    val track = remember(c) { Brush.horizontalGradient(listOf(c.dim.copy(alpha = 0.10f), c.accent.copy(alpha = 0.60f))) }
     Panel {
-        Box(Modifier.fillMaxWidth().height(150.dp), Alignment.Center) { // a live sample: it grows and shrinks under the finger
-            Box(Modifier.size(84.dp * p.feedSize, 100.dp * p.feedSize).glass(2, 20.dp), Alignment.Center) { OneText("Aa", OneType.Lux, c.text) }
-        }
-        Column(Modifier.padding(horizontal = 8.dp)) {
-            PickerRow(
-                R.string.style_size, unlerp(CardRange.MIN, CardRange.MAX, p.feedSize),
-                { f -> theme.update { copy(feedSize = lerpF(CardRange.MIN, CardRange.MAX, f)) } }, theme::save, track,
-                "${(p.feedSize * 100f).roundToInt()}%",
-            )
-        }
-        if (p.feedSize != 1f) SettingRow(stringResource(R.string.glass_reset), Modifier.press { theme.update { copy(feedSize = 1f) }; theme.save() }) {}
+        SettingRow(stringResource(R.string.settings_effects)) { OneSwitch(effects, onEffects) }
+        if (LocalTvMode.current) Column(Modifier.padding(vertical = 8.dp)) { GlassSliders(theme) } else LookPad(theme)
     }
 }
 
@@ -356,13 +333,13 @@ private fun Tile(selected: Boolean, title: String, sub: String?, onClick: () -> 
 }
 
 /**
- * A miniature of the Home screen painted from a look's palette: header, a hero card, two cards, the nav bar. A solid look gets
- * opaque cards with hairlines and a full-width bar; a translucent one gets frosted cards over a colour blob and a floating pill.
+ * A miniature of the Home screen painted from a look's palette: header, a hero card, two cards, the nav bar. Glass: frosted cards
+ * over a colour blob and a floating pill; the other looks paint their own.
  */
-private fun DrawScope.mini(pal: Palette, dark: Boolean, solid: Boolean, accent: Color, cosmic: Boolean = false, aurora: Boolean = false, pitch: Boolean = false, anime: Boolean = false) {
+private fun DrawScope.mini(pal: Palette, dark: Boolean, accent: Color, cosmic: Boolean = false, pitch: Boolean = false, anime: Boolean = false) {
     val u = size.width / 100f
     val text = pal.text(dark); val dim = pal.dim(dark); val edge = pal.border(dark)
-    val face = pal.surface.copy(alpha = if (solid) 1f else 0.62f)
+    val face = pal.surface.copy(alpha = 0.62f)
     fun box(x: Float, y: Float, w: Float, h: Float, r: Float, color: Color) = drawRoundRect(color, Offset(x * u, y * u), Size(w * u, h * u), CornerRadius(r * u))
     fun edged(x: Float, y: Float, w: Float, h: Float, r: Float) =
         drawRoundRect(edge, Offset(x * u, y * u), Size(w * u, h * u), CornerRadius(r * u), Stroke(0.7f * u))
@@ -399,19 +376,6 @@ private fun DrawScope.mini(pal: Palette, dark: Boolean, solid: Boolean, accent: 
         drawCircle(Color.White, 3.6f * u, Offset(50f * u, 95f * u)); drawCircle(Color(0xFF14181A), 1.3f * u, Offset(50f * u, 95f * u))
         return
     }
-    if (aurora) { // Aurora: light curtains, a crystal capsule, an arched gate, small gates, a dock with a beam
-        drawCircle(AuroraMint.copy(alpha = 0.30f), 24f * u, Offset(24f * u, 30f * u)); drawCircle(AuroraPink.copy(alpha = 0.24f), 24f * u, Offset(80f * u, 60f * u))
-        box(22f, 6f, 56f, 8f, 4f, face); edged(22f, 6f, 56f, 8f, 4f); box(40f, 8.8f, 20f, 2.6f, 1.3f, text)
-        fun arch(x: Float, y: Float, w: Float, h: Float, a: Float) {
-            val p = Path().apply { addRoundRect(RoundRect(x * u, y * u, (x + w) * u, (y + h) * u, CornerRadius(w / 2f * u), CornerRadius(w / 2f * u), CornerRadius(3f * u), CornerRadius(3f * u))) }
-            drawPath(p, Brush.verticalGradient(listOf(accent.copy(alpha = 0.6f * a), face), y * u, (y + h) * u)); drawPath(p, AuroraMint.copy(alpha = 0.7f * a), style = Stroke(0.7f * u))
-        }
-        arch(22f, 20f, 56f, 44f, 1f); box(34f, 55f, 32f, 3.4f, 1.7f, Color.White.copy(alpha = 0.85f))
-        for (x in floatArrayOf(10f, 38f, 66f)) arch(x, 70f, 24f, 24f, 0.9f)
-        drawPath(Path().apply { moveTo(40f * u, 100f * u); lineTo(60f * u, 100f * u); lineTo(70f * u, 94f * u); lineTo(30f * u, 94f * u); close() }, AuroraMint.copy(alpha = 0.25f))
-        box(10f, 100f, 80f, 12f, 6f, face); edged(10f, 100f, 80f, 12f, 6f); drawCircle(AuroraMint, 4f * u, Offset(50f * u, 106f * u), style = Stroke(0.8f * u))
-        return
-    }
     if (cosmic) { // Orbit: nebula, a few stars, a planet with its ring between two small ones, a dock with a lifted planet
         drawCircle(accent.copy(alpha = 0.35f), 30f * u, Offset(86f * u, 6f * u))
         drawCircle(Color(0xFFB36BFF).copy(alpha = 0.22f), 26f * u, Offset(8f * u, 100f * u))
@@ -430,11 +394,11 @@ private fun DrawScope.mini(pal: Palette, dark: Boolean, solid: Boolean, accent: 
         planet(50f, 98f, 4.5f, 1f)
         return
     }
-    if (!solid) { drawCircle(accent.copy(alpha = 0.55f), 26f * u, Offset(78f * u, 40f * u)); drawCircle(accent.copy(alpha = 0.30f), 18f * u, Offset(22f * u, 78f * u)) }
+    drawCircle(accent.copy(alpha = 0.55f), 26f * u, Offset(78f * u, 40f * u)); drawCircle(accent.copy(alpha = 0.30f), 18f * u, Offset(22f * u, 78f * u))
     box(8f, 8f, 34f, 5.5f, 2.7f, text)
     drawCircle(dim, 4f * u, Offset(88f * u, 10.7f * u), style = Stroke(0.9f * u))
     drawRoundRect(
-        Brush.linearGradient(listOf(accent.copy(alpha = if (solid) 0.75f else 0.45f), face), Offset(8f * u, 22f * u), Offset(92f * u, 66f * u)),
+        Brush.linearGradient(listOf(accent.copy(alpha = 0.45f), face), Offset(8f * u, 22f * u), Offset(92f * u, 66f * u)),
         Offset(8f * u, 22f * u), Size(84f * u, 44f * u), CornerRadius(7f * u),
     )
     edged(8f, 22f, 84f, 44f, 7f)
@@ -443,12 +407,7 @@ private fun DrawScope.mini(pal: Palette, dark: Boolean, solid: Boolean, accent: 
         box(x, 72f, 40f, 22f, 6f, face); edged(x, 72f, 40f, 22f, 6f)
         box(x + 5f, 78f, 18f, 3f, 1.5f, text); box(x + 5f, 84f, 12f, 2.5f, 1.2f, dim)
     }
-    if (solid) {
-        drawRect(pal.bg, Offset(0f, 102f * u), Size(100f * u, 13f * u)); drawRect(edge, Offset(0f, 102f * u), Size(100f * u, 0.7f * u))
-        box(43f, 102f, 14f, 1.6f, 0.8f, accent)
-    } else {
-        box(14f, 101f, 72f, 11f, 5.5f, face); edged(14f, 101f, 72f, 11f, 5.5f); box(40f, 104.5f, 20f, 4f, 2f, accent.copy(alpha = 0.6f))
-    }
+    box(14f, 101f, 72f, 11f, 5.5f, face); edged(14f, 101f, 72f, 11f, 5.5f); box(40f, 104.5f, 20f, 4f, 2f, accent.copy(alpha = 0.6f))
 }
 
 /** A device outline for the display tiles: a phone, a TV on its stand, or both for Auto. */

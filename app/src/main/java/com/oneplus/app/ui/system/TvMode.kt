@@ -10,12 +10,26 @@ import android.content.res.Configuration
 import androidx.annotation.StringRes
 import com.oneplus.app.R
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.RoundRect
+import androidx.compose.ui.graphics.ClipOp
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.foundation.interaction.InteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
@@ -23,7 +37,6 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -31,6 +44,7 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import kotlinx.coroutines.delay
 import androidx.compose.ui.unit.dp
+import kotlin.math.roundToInt
 
 /**
  * TV Mode is a property of the SCREEN UI, not of the device: whatever the hardware is (phone, tablet, Android TV, box),
@@ -112,29 +126,45 @@ fun TvScreen(tv: Boolean, content: @Composable () -> Unit) {
 }
 
 /**
- * Focus indicator for D-pad / remote: a clear ring (the theme's text colour, so it reads on the accent buttons too) and a faint
- * tint. Drawn inside the element's own bounds, so no scrolling list ever clips it. Touch never focuses these elements, so it is
- * only ever seen with a remote, gamepad or keyboard. It also tells the layer which element was focused last ([TvLayer]).
- * Phone Mode: returns the modifier untouched.
+ * Focus indicator for D-pad / remote: the element lifts a little and a soft glow in the app colour spreads around it. There is no
+ * outline, so it never draws a rectangle over a rounded or irregular shape; the glow is painted only outside the element, so it
+ * never tints what is inside. Moving the remote onto an element also scrolls whatever holds it so that the element AND a margin of
+ * its neighbours are in view (every step reveals a little more of the row or page). It also tells the layer which element was
+ * focused last ([TvLayer]). Touch never focuses these elements. Phone Mode: returns the modifier untouched.
+ * Put it OUTSIDE any clip of the element, or the glow is cut off.
  */
 @Composable
 fun Modifier.tvFocusRing(src: InteractionSource): Modifier {
     if (!LocalTvMode.current) return this
     val focused by src.collectIsFocusedAsState()
-    val a by animateFloatAsState(if (focused) 1f else 0f, tween(140), label = "tvFocus")
-    val ring = LocalColors.current.text
+    val a by animateFloatAsState(if (focused) 1f else 0f, spring(0.75f, 500f), label = "tvFocus")
+    val glow = LocalColors.current.accent
     val me = remember { FocusRequester() }
     val memory = LocalTvMemory.current
     LaunchedEffect(focused) { if (focused) memory?.last = me }
-    return focusRequester(me).drawWithContent {
-        drawContent()
-        if (a > 0.01f) {
-            val sw = 3.dp.toPx()
-            val topLeft = Offset(sw / 2f, sw / 2f)
-            val box = Size(size.width - sw, size.height - sw)
-            val r = CornerRadius((minOf(size.width, size.height) / 2f).coerceAtMost(20.dp.toPx()) - sw / 2f)
-            drawRoundRect(ring.copy(alpha = 0.10f * a), topLeft, box, r)
-            drawRoundRect(ring.copy(alpha = 0.95f * a), topLeft, box, r, Stroke(sw))
+    val bring = remember { BringIntoViewRequester() }
+    var box by remember { mutableStateOf(IntSize.Zero) }
+    val margin = with(LocalDensity.current) { 72.dp.toPx() }
+    LaunchedEffect(focused) {
+        if (focused && box != IntSize.Zero) bring.bringIntoView(Rect(-margin, -margin, box.width + margin, box.height + margin))
+    }
+    return focusRequester(me).bringIntoViewRequester(bring).onSizeChanged { box = it }
+        .graphicsLayer { val k = 1f + 0.06f * a; scaleX = k; scaleY = k }
+        .drawBehind { if (a > 0.01f) focusGlow(glow, a) }
+}
+
+/** Soft halo outside an element's own outline: stacked, ever larger and fainter rounded rectangles with the element cut out. */
+private fun DrawScope.focusGlow(color: Color, a: Float) {
+    val r = (minOf(size.width, size.height) / 2f).coerceAtMost(22.dp.toPx())
+    val hole = Path().apply { addRoundRect(RoundRect(0f, 0f, size.width, size.height, CornerRadius(r))) }
+    clipPath(hole, ClipOp.Difference) {
+        val layers = 7
+        for (i in 1..layers) {
+            val grow = i * 2.dp.toPx()
+            drawRoundRect(
+                color.copy(alpha = 0.17f * a * (1f - (i - 1f) / layers)),
+                Offset(-grow, -grow), Size(size.width + grow * 2f, size.height + grow * 2f), CornerRadius(r + grow),
+            )
         }
     }
 }
@@ -183,9 +213,22 @@ fun Modifier.tvAutoFocus(key: Any? = Unit): Modifier {
     return focusRequester(me)
 }
 
-/** Space a page keeps clear below its content for the bottom navigation: the look's own bar, in TV Mode too. */
+/** Space a page keeps clear below its content for the bottom navigation: the look's own bar, almost none in TV Mode (its navigation is at the top). */
 @Composable
-fun bottomNavSpace(): Dp = LocalLook.current.bottom
+fun bottomNavSpace(): Dp = if (LocalTvMode.current) 24.dp else LocalLook.current.bottom
+
+/** Height the look's navigation takes at the top of the screen in TV Mode (measured; 0 in Phone Mode). Pages start below it. */
+val LocalTvNavHeight = compositionLocalOf { 0.dp }
+
+private const val TvNavScale = 0.8f
+
+/** TV Mode: the look's own navigation, a little smaller, as one block (its layout size shrinks with it, so nothing is left empty). */
+fun Modifier.tvNavShrink(): Modifier = layout { m, c ->
+    val p = m.measure(c)
+    layout((p.width * TvNavScale).roundToInt(), (p.height * TvNavScale).roundToInt()) {
+        p.placeWithLayer(0, 0) { scaleX = TvNavScale; scaleY = TvNavScale; transformOrigin = TransformOrigin(0f, 0f) }
+    }
+}
 
 /**
  * Width of the window in the units the layout is drawn in. In TV Mode the density is rescaled ([TvScreen]) but
