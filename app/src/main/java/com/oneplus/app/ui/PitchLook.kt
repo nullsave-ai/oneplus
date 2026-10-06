@@ -7,6 +7,7 @@ import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
@@ -379,7 +380,7 @@ private fun BigScreen(movies: List<Movie>, a: HomeArgs, modifier: Modifier) {
                 if (m.backdrop.isNotBlank()) RemoteImage(m.backdrop, Modifier.matchParentSize().graphicsLayer { translationX = -at() * size.width * 0.25f; scaleX = 1.35f; scaleY = 1.35f })
                 Box(Modifier.matchParentSize().background(shade).drawBehind {
                     val x = size.width * sweep.value // the band of light
-                    drawRect(Brush.linearGradient(listOf(Color.White.copy(alpha = 0f), Color.White.copy(alpha = 0.16f), Color.White.copy(alpha = 0f)), Offset(x - 90.dp.toPx(), 0f), Offset(x + 40.dp.toPx(), size.height)))
+                    drawRect(Brush.linearGradient(colors = listOf(Color.White.copy(alpha = 0f), Color.White.copy(alpha = 0.16f), Color.White.copy(alpha = 0f)), start = Offset(x - 90.dp.toPx(), 0f), end = Offset(x + 40.dp.toPx(), size.height)))
                 })
                 OneText(stringResource(R.string.featured), OneType.Caption, Color.White, Modifier.align(Alignment.TopStart).padding(start = 40.dp, top = 14.dp).background(PitchRed, CutCornerShape(topStart = 8.dp, bottomEnd = 8.dp)).padding(horizontal = 10.dp, vertical = 3.dp))
                 OneText(String.format(Locale.US, "%.1f", m.rating), Led.copy(fontSize = 26.sp), PitchGold, Modifier.align(Alignment.TopEnd).padding(14.dp).background(Color.Black.copy(alpha = 0.45f), RoundedCornerShape(8.dp)).padding(horizontal = 10.dp, vertical = 4.dp))

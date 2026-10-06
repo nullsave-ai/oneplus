@@ -235,15 +235,9 @@ fun OnePlusApp(theme: ThemeController, vm: MainViewModel = viewModel()) {
                     } else if (look.pitch) { // pan: the camera swings across to the next page
                         (slideInHorizontally(tween(340, easing = FastOutSlowInEasing)) { dir * it } + fadeIn(tween(240))) togetherWith
                             (slideOutHorizontally(tween(340, easing = FastOutSlowInEasing)) { -dir * it / 3 } + fadeOut(tween(200)))
-                    } else if (look.aurora) { // rise: the new page lifts out of the light, the old one sinks away
-                        (fadeIn(tween(420)) + slideInVertically(tween(480, easing = FastOutSlowInEasing)) { it / 10 } + scaleIn(tween(480, easing = FastOutSlowInEasing), 0.94f)) togetherWith
-                            (fadeOut(tween(220)) + slideOutVertically(tween(320)) { -it / 14 } + scaleOut(tween(320), 1.04f))
                     } else if (look.cosmic) { // warp: the new page rushes in from far away while the old one falls back
                         (fadeIn(tween(420)) + scaleIn(tween(520, easing = FastOutSlowInEasing), 1.18f)) togetherWith
                             (fadeOut(tween(260)) + scaleOut(tween(420), 0.86f))
-                    } else if (feed) {
-                        (slideInHorizontally(tween(380, easing = FastOutSlowInEasing)) { dir * it / 6 } + fadeIn(tween(380)) + scaleIn(tween(380, easing = FastOutSlowInEasing), 0.94f)) togetherWith
-                            (slideOutHorizontally(tween(260)) { -dir * it / 6 } + fadeOut(tween(160)) + scaleOut(tween(260), 0.94f))
                     } else fadeIn(tween(180)) togetherWith fadeOut(tween(180))
                 }, label = "page") { t ->
                     // each page keeps its remembered state (expanded rows, inner scrolls) while another tab is shown
@@ -259,8 +253,7 @@ fun OnePlusApp(theme: ThemeController, vm: MainViewModel = viewModel()) {
                         }
                         1 -> {
                             val playing = if (playKind == 2) playId else -1
-                            if (feed) FeedChannels(state.data.channels, state.query.isNotBlank(), playing, group, portrait, channelsList, { slot = it }, pickGroup, playInline)
-                            else ChannelsScreen(state.data.channels, state.query.isNotBlank(), playing, group, portrait, channelsList, { slot = it }, pickGroup, playInline)
+                            ChannelsScreen(state.data.channels, state.query.isNotBlank(), playing, group, portrait, channelsList, { slot = it }, pickGroup, playInline)
                         }
                         else -> SettingsScreen(
                             fx, { fx = it }, theme, settingsScroll, subScroll, sPage, { sPage = it }, wide,
@@ -272,7 +265,7 @@ fun OnePlusApp(theme: ThemeController, vm: MainViewModel = viewModel()) {
                 }
                 // The header belongs to the look (TV Mode too). On an open settings sub-page it carries that page's name and a back button.
                 val inSub = tab == 2 && sPage >= 0
-                val title = stringResource(if (inSub) settingsTitle(sPage, look) else if (tab == 0) R.string.app_name else Tabs[tab].second)
+                val title = stringResource(if (inSub) settingsTitle(sPage) else if (tab == 0) R.string.app_name else Tabs[tab].second)
                 val context = if (tab == 0 && nearChannels) stringResource(R.string.tab_channels) else null
                 look.header(
                     HeaderArgs(title, context, tab != 2, state.query, vm::onQuery, progress, reveal, if (inSub) ({ sPage = -1 }) else null),

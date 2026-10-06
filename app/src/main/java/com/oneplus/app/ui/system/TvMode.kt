@@ -133,6 +133,7 @@ fun TvScreen(tv: Boolean, content: @Composable () -> Unit) {
  * focused last ([TvLayer]). Touch never focuses these elements. Phone Mode: returns the modifier untouched.
  * Put it OUTSIDE any clip of the element, or the glow is cut off.
  */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun Modifier.tvFocusRing(src: InteractionSource): Modifier {
     if (!LocalTvMode.current) return this
