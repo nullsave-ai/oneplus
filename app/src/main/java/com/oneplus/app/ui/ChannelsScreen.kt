@@ -112,7 +112,7 @@ fun FeedChannels(
         val cards = @Composable { m: Modifier ->
             LazyColumn(
                 m, state = list, verticalArrangement = Arrangement.spacedBy(8.dp),
-                contentPadding = PaddingValues(horizontal = 12.dp, top = 8.dp, bottom = bottom),
+                contentPadding = PaddingValues(start = 12.dp, top = 8.dp, end = 12.dp, bottom = bottom),
             ) {
                 items(shown.chunked(cols), key = { it.first().id }) { row ->
                     Row(Modifier.fillMaxWidth(), Arrangement.spacedBy(8.dp)) {
