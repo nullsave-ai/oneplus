@@ -81,8 +81,7 @@ fun OnePlusApp(theme: ThemeController, vm: MainViewModel = viewModel()) {
     val tv = LocalTvMode.current
     val look = LocalLook.current
     val feed = LocalFeed.current
-    val feedLayout = tv || feed // TV Mode always uses the feed layout; the phone uses it when the Feed style is on
-    var tvSearch by rememberSaveable { mutableStateOf(false) } // TV Mode: the search field is a floating bar that exists only while searching
+    val noDepth = tv || feed // the pages do not shrink behind the details page on a TV, nor in the Feed style
     val ctx = LocalContext.current
     val focus = LocalFocusManager.current
     // Low-RAM devices start with the light glass tier.
@@ -130,14 +129,16 @@ fun OnePlusApp(theme: ThemeController, vm: MainViewModel = viewModel()) {
         }
     }
     // The header leaves while the page scrolls down and returns on the first scroll up. (Channels keeps its player under it: no hiding.)
-    val reveal = rememberToolbarReveal(tab * 10 + sPage) {
+    // TV Mode: the remote can only reach a header that is there, so it never hides.
+    val revealScroll = rememberToolbarReveal(tab * 10 + sPage) {
         when (tab) {
             0 -> homeList.firstVisibleItemIndex * 100_000 + homeList.firstVisibleItemScrollOffset
             1 -> 0
             else -> (if (sPage >= 0) subScroll else settingsScroll).value
         }
     }
-    BackHandler(tab == 2 && sPage >= 0 && !tv) { sPage = -1 }
+    val reveal: () -> Float = if (tv) ({ 1f }) else revealScroll
+    BackHandler(tab == 2 && sPage >= 0) { sPage = -1 }
     val nearChannels by remember {
         derivedStateOf {
             val info = homeList.layoutInfo
@@ -189,15 +190,19 @@ fun OnePlusApp(theme: ThemeController, vm: MainViewModel = viewModel()) {
         }
     }
     // TV Mode: which layers a remote can reach. A covered layer must not take D-pad focus (it is still composed underneath).
-    val railFocus = remember { FocusRequester() }
+    // The navigation is the look's own; in TV Mode each of its tabs can take the remote's focus (see [tvTab]).
+    val tabReqs = remember { List(Tabs.size) { FocusRequester() } }
+    val tvTabs = if (tv) TvTabs(tab, { tab = it }, tabReqs) else null
+    // A tap on a tab must move the focus there too, otherwise the highlight stays on the tab the remote started on.
+    val onTab = { i: Int -> tab = i; if (tv) runCatching { tabReqs[i].requestFocus() }; Unit }
     var baseFocused by remember { mutableStateOf(false) } // the remote is somewhere in the pages (not on the rail)
     val dialogOpen = showTg || showClear
     val playerFull = session != null && !wantsInPlace
     val lockBase = movieId >= 0 || showMatches || showMovies || playerFull || dialogOpen
     val lockOver = playerFull || dialogOpen
-    // TV Mode: "back" from the pages first returns to the rail; from the rail it leaves the app as usual. Declared first, so every
-    // other back handler (search, hosts, dialogs, player) has priority over it.
-    BackHandler(enabled = tv && baseFocused && !lockBase) { runCatching { railFocus.requestFocus() } }
+    // TV Mode: "back" from the pages first returns to the navigation (on the current tab); from there it leaves the app as usual.
+    // An open settings sub-page closes first.
+    BackHandler(enabled = tv && baseFocused && !lockBase && !(tab == 2 && sPage >= 0)) { runCatching { tabReqs[tab].requestFocus() } }
     CompositionLocalProvider(LocalGlassEffects provides fx) {
         BoxWithConstraints(Modifier.fillMaxSize().ambient()) {
             val wide = maxWidth >= 600.dp
@@ -205,28 +210,22 @@ fun OnePlusApp(theme: ThemeController, vm: MainViewModel = viewModel()) {
             // Main layer: recedes (scale + dim) while the details page is open or being pulled.
             Box(Modifier.fillMaxSize().graphicsLayer {
                 val d = maxOf(detail.depth, matchesP.value)
-                val s = if (feedLayout) 1f else 1f - 0.06f * d
+                val s = if (noDepth) 1f else 1f - 0.06f * d
                 scaleX = s; scaleY = s
             }.drawWithContent {
                 drawContent()
                 // dim with a plain scrim: alpha on the whole tree would force an offscreen layer every frame of the transition
                 drawRect(Color.Black, alpha = 0.35f * maxOf(detail.depth, matchesP.value))
             }) {
-                // TV Mode: the pages are full width and the rail floats above them; each page pads its own content by LocalRailInset
                 Box(
                     Modifier.fillMaxSize()
                         .then(if (tv) Modifier.onFocusChanged { baseFocused = it.hasFocus }.focusGroup() else Modifier)
                 ) {
-                CompositionLocalProvider(LocalRailInset provides (if (tv) TvRailSpace else 0.dp)) {
-                TvLayer(lockBase, railFocus) {
-                // Glass: a plain cross-fade. TV: the pages slide sideways in the direction of the tab change (RTL: tab 0 is on the right).
-                // Phone Feed: the same direction, but the page also settles from a slight scale, slower in than out.
+                TvLayer(lockBase, tabReqs[tab]) {
+                // Each look moves between its pages its own way (Glass: a plain cross-fade); TV Mode follows the look like the phone.
                 AnimatedContent(tab, Modifier.fillMaxSize(), transitionSpec = {
                     val dir = if (targetState > initialState) -1 else 1
-                    if (tv) {
-                        (slideInHorizontally(tween(280)) { dir * it / 5 } + fadeIn(tween(280))) togetherWith
-                            (slideOutHorizontally(tween(200)) { -dir * it / 5 } + fadeOut(tween(120)))
-                    } else if (look.anime) { // pop: the new page springs in with an overshoot, the old one flashes away
+                    if (look.anime) { // pop: the new page springs in with an overshoot, the old one flashes away
                         (fadeIn(tween(260)) + scaleIn(tween(460, easing = CubicBezierEasing(0.2f, 1.35f, 0.4f, 1f)), 0.82f)) togetherWith
                             (fadeOut(tween(160)) + scaleOut(tween(220), 1.12f))
                     } else if (look.pitch) { // pan: the camera swings across to the next page
@@ -252,12 +251,11 @@ fun OnePlusApp(theme: ThemeController, vm: MainViewModel = viewModel()) {
                             val onAllMovies = { focus.clearFocus(); showMovies = true }
                             val onAllChannels = { tab = 1 }
                             val onMatches = { id: Int -> focus.clearFocus(); matchFocus = id; showMatches = true }
-                            if (tv) FeedHome(state, homeList, wide, library, onMovie, onChannel, onAllMovies, onAllChannels, onMatches)
-                            else look.home(HomeArgs(state, homeList, portrait, wide, library, onMovie, onChannel, onAllMovies, onAllChannels, onMatches))
+                            look.home(HomeArgs(state, homeList, portrait, wide, library, onMovie, onChannel, onAllMovies, onAllChannels, onMatches))
                         }
                         1 -> {
                             val playing = if (playKind == 2) playId else -1
-                            if (feedLayout) FeedChannels(state.data.channels, state.query.isNotBlank(), playing, group, portrait, channelsList, { slot = it }, pickGroup, playInline)
+                            if (feed) FeedChannels(state.data.channels, state.query.isNotBlank(), playing, group, portrait, channelsList, { slot = it }, pickGroup, playInline)
                             else ChannelsScreen(state.data.channels, state.query.isNotBlank(), playing, group, portrait, channelsList, { slot = it }, pickGroup, playInline)
                         }
                         else -> SettingsScreen(
@@ -268,21 +266,14 @@ fun OnePlusApp(theme: ThemeController, vm: MainViewModel = viewModel()) {
                     }
                     }
                 }
-                // TV Mode has no toolbar (its space belongs to the page); a search from the rail opens it as a floating field.
-                // The phone's header belongs to the look. On an open settings sub-page it carries that page's name and a back button.
-                val inSub = tab == 2 && sPage >= 0 && !tv
+                // The header belongs to the look (TV Mode too). On an open settings sub-page it carries that page's name and a back button.
+                val inSub = tab == 2 && sPage >= 0
                 val title = stringResource(if (inSub) settingsTitle(sPage, look) else if (tab == 0) R.string.app_name else Tabs[tab].second)
                 val context = if (tab == 0 && nearChannels) stringResource(R.string.tab_channels) else null
-                if (tv) { if (tvSearch) FloatingToolbar(
-                    title, context, hasSearch = tab != 2, query = state.query, onQuery = vm::onQuery, progress = progress,
-                    modifier = Modifier.align(Alignment.TopCenter).widthIn(max = 880.dp).padding(start = 16.dp, end = 16.dp, top = topInset() + 12.dp)
-                        .absolutePadding(left = TvRailSpace),
-                    startOpen = true, onClosed = { tvSearch = false },
-                ) } else look.header(
+                look.header(
                     HeaderArgs(title, context, tab != 2, state.query, vm::onQuery, progress, reveal, if (inSub) ({ sPage = -1 }) else null),
                     Modifier.align(Alignment.TopCenter),
                 )
-                }
                 }
                 }
                 // Inside the receding layer so it also steps back when a details page opens over it.
@@ -328,20 +319,16 @@ fun OnePlusApp(theme: ThemeController, vm: MainViewModel = viewModel()) {
             val covered = showMovies || (session != null && !wantsInPlace)
             val navShow by animateFloatAsState(if (covered) 0f else 1f, tween(160), label = "nav")
             val navAlpha = { navShow * (1f - maxOf(detail.depth, matchesP.value)) }
-            // Same fade / collapse for both navigations: the phone's island at the bottom, or (TV Mode) the rail at the start.
+            // The look's own navigation, faded / collapsed the same way for every look.
             val navMod = Modifier
                 .layout { m, c ->
                     val pl = m.measure(c)
                     if (navAlpha() < 0.02f) layout(0, 0) {} else layout(pl.width, pl.height) { pl.place(0, 0) }
                 }
                 .graphicsLayer { alpha = navAlpha() }
-            // (not a TvLayer: the rail must not compete with the pages for the focus that is given back when a layer is released)
-            CompositionLocalProvider(LocalTvLock provides lockBase) {
-                if (tv) TvRail(
-                    tab, { tab = it }, { if (tab == 2) tab = 0; tvSearch = true }, railFocus,
-                    navMod.align(AbsoluteAlignment.CenterLeft).absolutePadding(left = 16.dp),
-                )
-                else look.nav(tab, { tab = it }, navMod.align(Alignment.BottomCenter))
+            // (not a TvLayer: the navigation must not compete with the pages for the focus that is given back when a layer is released)
+            CompositionLocalProvider(LocalTvLock provides lockBase, LocalTvTabs provides tvTabs) {
+                look.nav(tab, onTab, navMod.align(Alignment.BottomCenter))
             }
             if (showTg) TelegramDialog(
                 onSkip = { showTg = false; telegramSkipped(ctx) },
@@ -357,42 +344,6 @@ fun OnePlusApp(theme: ThemeController, vm: MainViewModel = viewModel()) {
 
 private val Tabs = listOf(OneIcon.Home to R.string.tab_home, OneIcon.Channels to R.string.tab_channels, OneIcon.Settings to R.string.tab_settings)
 private val NavSpring = spring<Float>(0.62f, 380f)
-
-/** Width the rail takes at the start of the screen in TV Mode (its own 76dp + the margins around it). */
-private val TvRailSpace = 108.dp
-
-/**
- * TV Mode navigation: the glass island stood upright at the start of the screen, floating above the pages. Search is its first
- * item. There is ONE highlight: while the remote is on the rail it marks the item under the remote (and moving over a tab opens
- * that page after a short pause, so a tab is never "selected" and "focused" in two different colours); while the remote is in the
- * page it marks the current tab. The selected tab is where the remote lands on "back" ([focus]).
- */
-@Composable
-private fun TvRail(selected: Int, onSelect: (Int) -> Unit, onSearch: () -> Unit, focus: FocusRequester, modifier: Modifier = Modifier) {
-    val c = LocalColors.current
-    val shape = RoundedCornerShape(22.dp)
-    var inRail by remember { mutableStateOf(false) }
-    Column(modifier.width(76.dp).glass(3, 28.dp).padding(6.dp).onFocusChanged { inRail = it.hasFocus }.focusGroup(), Arrangement.spacedBy(4.dp)) {
-        (listOf(OneIcon.Search to R.string.tv_search) + Tabs).forEachIndexed { k, (icon, label) ->
-            val i = k - 1 // -1 = the search button
-            val src = remember { MutableInteractionSource() }
-            val focused by src.collectIsFocusedAsState()
-            LaunchedEffect(focused) { if (focused && i >= 0 && i != selected) { delay(350); onSelect(i) } }
-            val on by animateFloatAsState(if (if (inRail) focused else i == selected) 1f else 0f, tween(160), label = "railTab")
-            Column(
-                Modifier.fillMaxWidth().height(60.dp).clip(shape)
-                    .drawBehind { drawRect(c.selection.copy(alpha = c.selection.alpha * on)) }
-                    .border(1.dp, c.accent.copy(alpha = 0.45f * on), shape)
-                    .then(if (i == selected) Modifier.focusRequester(focus) else Modifier)
-                    .tvLockable().clickable(src, null) { if (i < 0) onSearch() else onSelect(i) },
-                Arrangement.Center, Alignment.CenterHorizontally,
-            ) {
-                OneIconView(icon) { lerp(c.dim, c.accent, on) }
-                OneText(stringResource(label), OneType.Caption, lerp(c.dim, c.accent, on), Modifier.padding(top = 4.dp), 1)
-            }
-        }
-    }
-}
 
 /**
  * Phone Feed's bottom bar: solid, full width, hairline on top. One accent line with a soft glow slides (spring) to the current tab,
@@ -415,7 +366,7 @@ internal fun FeedBar(selected: Int, onSelect: (Int) -> Unit, modifier: Modifier 
     ) {
         Tabs.forEachIndexed { i, (icon, label) ->
             val on by animateFloatAsState(if (i == selected) 1f else 0f, tween(220), label = "feedTab")
-            Column(Modifier.weight(1f).fillMaxHeight().press { onSelect(i) }, Arrangement.Center, Alignment.CenterHorizontally) {
+            Column(Modifier.weight(1f).fillMaxHeight().tvTab(i).press { onSelect(i) }, Arrangement.Center, Alignment.CenterHorizontally) {
                 OneIconView(icon, Modifier.graphicsLayer { val k = 1f + 0.1f * on; scaleX = k; scaleY = k }) { lerp(c.dim, c.accent, on) }
                 OneText(stringResource(label), OneType.Caption, lerp(c.dim, c.accent, on), Modifier.padding(top = 2.dp), 1)
             }
@@ -469,7 +420,7 @@ fun LiquidNav(selected: Int, onSelect: (Int) -> Unit, modifier: Modifier = Modif
                 val prox = { (1f - abs(pos.value - i)).coerceIn(0f, 1f) }
                 val src = remember { MutableInteractionSource() }
                 Column(
-                    Modifier.weight(1f).fillMaxHeight().tvFocusRing(src).tvLockable().clickable(src, null) { onSelect(i) },
+                    Modifier.weight(1f).fillMaxHeight().tvTab(i).tvFocusRing(src).tvLockable().clickable(src, null) { onSelect(i) },
                     Arrangement.Center, Alignment.CenterHorizontally,
                 ) {
                     OneIconView(icon, Modifier.graphicsLayer {

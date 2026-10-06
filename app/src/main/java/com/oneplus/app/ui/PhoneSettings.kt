@@ -15,6 +15,9 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.focusGroup
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -76,6 +79,11 @@ fun PhoneSettings(
 ) {
     val bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + bottomNavSpace()
     LaunchedEffect(page) { if (page >= 0) subScroll.scrollTo(0) }
+    // TV Mode: when a sub-page opens (or the list comes back) the row the remote was on is gone, so the remote moves into the new page.
+    val tv = LocalTvMode.current
+    val first = remember { page }
+    val moved = remember { booleanArrayOf(false) }
+    if (page != first) moved[0] = true
     AnimatedContent(
         page, Modifier.fillMaxSize(),
         transitionSpec = {
@@ -85,9 +93,11 @@ fun PhoneSettings(
         },
         label = "settings",
     ) { p ->
+        val into = remember { FocusRequester() }
+        if (tv && moved[0]) LaunchedEffect(Unit) { delay(450); runCatching { into.requestFocus() } }
         Box(Modifier.fillMaxSize(), Alignment.TopCenter) {
             Column(
-                Modifier.widthIn(max = 640.dp).fillMaxSize().verticalScroll(if (p < 0) scroll else subScroll)
+                Modifier.widthIn(max = 640.dp).fillMaxSize().focusRequester(into).focusGroup().verticalScroll(if (p < 0) scroll else subScroll)
                     .padding(top = toolbarInset(), bottom = bottom),
                 verticalArrangement = Arrangement.spacedBy(22.dp),
             ) {
@@ -96,7 +106,7 @@ fun PhoneSettings(
                     when (p) {
                         PageStyle -> StylePage(theme)
                         PageMode -> ModePage(theme)
-                        PageColor -> Panel { ColorStudio(theme, LocalDarkTheme.current, false) }
+                        PageColor -> Panel { ColorStudio(theme, LocalDarkTheme.current) }
                         PageTune -> TunePage(theme, effects, onEffects)
                         else -> DisplayPage(theme)
                     }
@@ -280,7 +290,7 @@ private fun TunePage(theme: ThemeController, effects: Boolean, onEffects: (Boole
     if (!p.look.solid) {
         Panel {
             SettingRow(stringResource(R.string.settings_effects)) { OneSwitch(effects, onEffects) }
-            LookPad(theme)
+            if (LocalTvMode.current) Column(Modifier.padding(vertical = 8.dp)) { GlassSliders(theme) } else LookPad(theme) // a remote cannot drag a pad
         }
         return
     }

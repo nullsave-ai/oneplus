@@ -205,7 +205,7 @@ fun OnePlusTheme(prefs: ThemePrefs, dark: Boolean, content: @Composable () -> Un
         LocalHideStatusBar provides prefs.hideStatusBar,
         LocalLook provides prefs.look,
         LocalFeed provides prefs.look.solid,
-        LocalLux provides (prefs.look.solid && !tv),
+        LocalLux provides prefs.look.solid,
         LocalGlassStyle provides remember(prefs.glassDensity, prefs.glassDepth) { GlassStyle(prefs.glassDensity, prefs.glassDepth) },
         LocalCardScale provides prefs.feedSize,
         LocalLayoutDirection provides LayoutDirection.Rtl,

@@ -31,9 +31,7 @@ val FeedLook = Look(
     id = "Feed", label = R.string.style_feed, blurb = R.string.style_feed_blurb,
     solid = true, top = 68.dp, bottom = 64.dp, collapseAt = 56.dp,
     palette = { dark, amoled, tv ->
-        // TV Mode keeps the neutral greys of its own feed; the phone gets the ink / ivory dress
-        if (tv) Palette(if (dark) Color(0xFF0F0F0F) else Color.White, if (dark) Color(0xFF212121) else Color(0xFFF1F1F1))
-        else Palette(
+        Palette(
             if (dark) Color(0xFF0B0B0E) else Color(0xFFF6F3EE), if (amoled) Color(0xFF111114) else if (dark) Color(0xFF16161B) else Color.White,
             border = if (dark) Color(0x1FFFFFFF) else Color(0x24402F14),
             text = if (dark) Color(0xFFF3EFE8) else Color(0xFF16130F), dim = if (dark) Color(0xFF9B968D) else Color(0xFF7A746A),

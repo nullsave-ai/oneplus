@@ -48,7 +48,6 @@ private const val HeroMs = 5500 // how long a featured card stays before the car
  * Home of the Feed look: a carousel of featured cards, then numbered sections that all slide sideways (nothing stacks into a
  * long column of big cards). Motion follows the finger: the carousel's artwork and text drift at different speeds, the whole
  * hero lets go of the page as it scrolls away, and the cards of every row shrink as they slide off its ends.
- * TV Mode keeps [FeedHome].
  */
 @Composable
 fun LuxHome(a: HomeArgs) {

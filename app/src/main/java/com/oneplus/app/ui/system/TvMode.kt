@@ -19,6 +19,7 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -182,15 +183,38 @@ fun Modifier.tvAutoFocus(key: Any? = Unit): Modifier {
     return focusRequester(me)
 }
 
-/** Space a page keeps clear below its content for the bottom navigation (the look's own bar, or almost none in TV Mode). */
+/** Space a page keeps clear below its content for the bottom navigation: the look's own bar, in TV Mode too. */
 @Composable
-fun bottomNavSpace(): Dp = if (LocalTvMode.current) 24.dp else LocalLook.current.bottom
+fun bottomNavSpace(): Dp = LocalLook.current.bottom
 
 /**
- * How much of the physical left edge the TV rail covers. The pages are full width (the rail floats above them); each one pads its
- * own content by this, so rows and grids rest clear of the rail yet can still slide underneath it.
+ * Width of the window in the units the layout is drawn in. In TV Mode the density is rescaled ([TvScreen]) but
+ * LocalConfiguration is not, so `screenWidthDp` would be too big there: this divides the scale back out.
  */
-val LocalRailInset = staticCompositionLocalOf { 0.dp }
+@Composable
+fun screenWidth(): Dp {
+    val cfg = LocalConfiguration.current
+    val w = cfg.screenWidthDp.toFloat()
+    return (if (LocalTvMode.current) w / tvScale(w, cfg.screenHeightDp.toFloat()) else w).dp
+}
+
+/**
+ * The navigation of the current look, seen by the remote. Every look draws its own bar; each tab only adds [tvTab], so TV Mode
+ * needs no navigation of its own. [reqs] lets the page put the focus on a tab (a tap, or "back" from a page); landing on a tab
+ * with the D-pad opens it after a short pause. Null in Phone Mode: [tvTab] is then a no-op.
+ */
+class TvTabs(val selected: Int, val select: (Int) -> Unit, val reqs: List<FocusRequester>)
+val LocalTvTabs = staticCompositionLocalOf<TvTabs?> { null }
+
+/** Put on a navigation tab BEFORE its press / clickable. */
+@Composable
+fun Modifier.tvTab(i: Int): Modifier {
+    val t = LocalTvTabs.current ?: return this
+    var focused by remember { mutableStateOf(false) }
+    val sel by rememberUpdatedState(t.selected)
+    LaunchedEffect(focused) { if (focused) { delay(350); if (sel != i) t.select(i) } }
+    return focusRequester(t.reqs[i]).onFocusChanged { focused = it.isFocused }
+}
 
 private tailrec fun Context.findActivity(): Activity? = when (this) {
     is Activity -> this

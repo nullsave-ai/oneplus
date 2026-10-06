@@ -83,9 +83,9 @@ fun rememberToolbarReveal(key: Any, pos: () -> Int): () -> Float {
     return { a.value }
 }
 
-/** Top inset screens should reserve so content starts below the header (none to speak of in TV Mode: its toolbar only exists while searching). */
+/** Top inset screens should reserve so content starts below the header (the look's own, in TV Mode too). */
 @Composable
-fun toolbarInset(): Dp = topInset() + if (LocalTvMode.current) 12.dp else LocalLook.current.top
+fun toolbarInset(): Dp = topInset() + LocalLook.current.top
 
 /** The search field of a header: open / closed, its morph (0..1), focus and Back. Shared by every look's header. */
 class Search(val open: Boolean, val morph: Float, val focus: FocusRequester, val show: () -> Unit, val close: () -> Unit)

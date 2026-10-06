@@ -87,9 +87,9 @@ fun ChannelsScreen(
 }
 
 /**
- * Channels page for TV Mode and the Feed style. Landscape / TV: the player with the groups under it in one column, and the channel
- * cards in as many columns as fit next to it; there is no toolbar above, so the whole height is used and nothing is left empty.
- * The cards start clear of the rail but slide under it. Portrait: the player on top, the groups as a row of chips, then the cards.
+ * Channels page for the phone Feed style. Landscape: the player with the groups under it in one column, and the channel
+ * cards in as many columns as fit next to it.
+ * Portrait: the player on top, the groups as a row of chips, then the cards.
  * Same contract as [ChannelsScreen]: the one player is drawn over the [onSlot] box; [list] drives the toolbar.
  */
 @Composable
@@ -99,12 +99,11 @@ fun FeedChannels(
 ) {
     val groups = remember(channels) { channels.map { it.group }.distinct() }
     val shown = if (searching) channels else channels.filter { it.group == group }
-    val inset = LocalRailInset.current
     val bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + bottomNavSpace()
     val slot = @Composable { m: Modifier -> Box(m.clip(RoundedCornerShape(20.dp)).background(Color.Black).onGloballyPositioned { onSlot(it.boundsInRoot()) }) }
     BoxWithConstraints(Modifier.fillMaxSize().padding(top = toolbarInset())) {
         val w = minOf(maxWidth * 0.44f, maxHeight * 0.62f * (16f / 9f))
-        val cols = if (portrait) (maxWidth / 170.dp).toInt().coerceIn(1, 3) else ((maxWidth - w - inset) / 150.dp).toInt().coerceAtLeast(1)
+        val cols = if (portrait) (maxWidth / 170.dp).toInt().coerceIn(1, 3) else ((maxWidth - w) / 150.dp).toInt().coerceAtLeast(1)
         var positioned by rememberSaveable { mutableStateOf("") }
         val key = "$group|$searching"
         LaunchedEffect(key, playingId >= 0) { // the playing channel is brought into view once per group / search, never when coming back
@@ -113,7 +112,7 @@ fun FeedChannels(
         val cards = @Composable { m: Modifier ->
             LazyColumn(
                 m, state = list, verticalArrangement = Arrangement.spacedBy(8.dp),
-                contentPadding = PaddingValues.Absolute(left = 12.dp + inset, right = 12.dp, top = 8.dp, bottom = bottom),
+                contentPadding = PaddingValues(horizontal = 12.dp, top = 8.dp, bottom = bottom),
             ) {
                 items(shown.chunked(cols), key = { it.first().id }) { row ->
                     Row(Modifier.fillMaxWidth(), Arrangement.spacedBy(8.dp)) {
@@ -130,7 +129,7 @@ fun FeedChannels(
             }
             cards(Modifier.weight(1f))
         } else Row(Modifier.fillMaxSize()) {
-            // first child = the physical right in RTL: the player over its groups; the cards fill the rest, under the rail
+            // first child = the physical right in RTL: the player over its groups; the cards fill the rest
             Column(Modifier.width(w)) {
                 slot(Modifier.padding(start = 16.dp, end = 8.dp, top = 4.dp).fillMaxWidth().aspectRatio(16f / 9f))
                 LazyColumn(

@@ -213,7 +213,7 @@ fun AnimeNav(selected: Int, onSelect: (Int) -> Unit, modifier: Modifier = Modifi
                 Box(
                     Modifier.weight(1f).fillMaxHeight()
                         .graphicsLayer { translationY = -8.dp.toPx() * on; val k = 1f + 0.06f * on; scaleX = k; scaleY = k }
-                        .press { onSelect(i) }
+                        .tvTab(i).press { onSelect(i) }
                         .sticker(Plate, lerp(c.glass, c.accent, on), c.border, lerp(c.accent.copy(alpha = 0.75f), AnimeYellow, on)),
                     Alignment.Center,
                 ) {
