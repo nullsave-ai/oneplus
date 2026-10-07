@@ -1,0 +1,32 @@
+{
+  "_comment": "توثيق وإعدادات استضافات Firebase المرتبطة بتطبيق ONE+ ولوحة التحكم السحابية",
+  "project_id": "apklive",
+  "database_url": "https://apklive-default-rtdb.firebaseio.com",
+  "service_account_path": "apklive-firebase-adminsdk-rfuda-fe97200747.json",
+  "panel_password": "oneplus2026",
+  "hosting_sites": [
+    {
+      "site_id": "apklive",
+      "domain": "https://apklive.web.app",
+      "alias": "https://apklive.firebaseapp.com",
+      "description": "النطاق السحابي الأساسي للوحة التحكم وتوزيع ملفات التحديث",
+      "is_active": true
+    },
+    {
+      "site_id": "oneplus-0",
+      "domain": "https://oneplus-0.web.app",
+      "alias": "https://oneplus-0.firebaseapp.com",
+      "description": "النطاق السحابي التمويهي الإضافي المعتمد والمربوط بتطبيق ONE+ للوحة التحكم",
+      "is_active": true
+    }
+  ],
+  "deployment": {
+    "public_directory": "web-panel/public",
+    "target_files": [
+      "/index.html",
+      "/catalog.json",
+      "/app_config.json"
+    ],
+    "auto_sync_on_update": true
+  }
+}

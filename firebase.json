@@ -1,0 +1,59 @@
+{
+  "_doc": {
+    "title": "إعدادات وتوثيق استضافة فايربيس لتطبيق ONE+ ولوحة التحكم",
+    "primary_site": "https://apklive.web.app",
+    "secondary_site": "https://oneplus-0.web.app",
+    "database": "https://apklive-default-rtdb.firebaseio.com",
+    "notes": "كلا النطاقين معتمدان رسمياً في نظام ONE+ ومربوطان بقاعدة البيانات، ويتم تحديثهما ونشر أحدث إصدار من اللوحة عليهما بشكل متزامن."
+  },
+  "hosting": [
+    {
+      "target": "apklive",
+      "public": "web-panel/public",
+      "ignore": [
+        "firebase.json",
+        "**/.*",
+        "**/node_modules/**"
+      ],
+      "headers": [
+        {
+          "source": "**",
+          "headers": [
+            {
+              "key": "Access-Control-Allow-Origin",
+              "value": "*"
+            },
+            {
+              "key": "Cache-Control",
+              "value": "no-cache, no-store, must-revalidate"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "target": "oneplus-0",
+      "public": "web-panel/public",
+      "ignore": [
+        "firebase.json",
+        "**/.*",
+        "**/node_modules/**"
+      ],
+      "headers": [
+        {
+          "source": "**",
+          "headers": [
+            {
+              "key": "Access-Control-Allow-Origin",
+              "value": "*"
+            },
+            {
+              "key": "Cache-Control",
+              "value": "no-cache, no-store, must-revalidate"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
