@@ -100,6 +100,7 @@ fun TvScreen(tv: Boolean, content: @Composable () -> Unit) {
     )
 }
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun Modifier.tvFocusRing(src: InteractionSource): Modifier {
     if (!LocalTvMode.current) return this
