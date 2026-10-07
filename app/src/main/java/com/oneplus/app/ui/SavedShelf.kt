@@ -12,10 +12,6 @@ import com.oneplus.app.R
 import com.oneplus.app.data.Movie
 import com.oneplus.app.ui.system.*
 
-/**
- * "قائمتي": a horizontal shelf of the same poster cards the Home page uses, newest saved first.
- * A tap opens the movie; it is taken off the list from the movie page. Shown only when the list is not empty.
- */
 @Composable
 internal fun SavedShelf(movies: List<Movie>, wide: Boolean, onOpen: (Int) -> Unit) {
     val c = LocalColors.current

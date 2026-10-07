@@ -19,33 +19,26 @@ import com.oneplus.app.R
 import com.oneplus.app.ui.GlassLook
 import com.oneplus.app.ui.lookOf
 
-/** Semantic tokens. Composables read these only; raw colors live in this file. */
 @Immutable
 class OneColors(
-    val bg: Color, val ambient: Color, val glass: Color, val glassTint: Color, val border: Color,
+    val bg: Color, val ambient: Color, val glass: Color, val glassTint: Color, val bar: Color, val border: Color,
     val text: Color, val dim: Color, val primary: Color, val secondary: Color, val accent: Color,
     val accentSoft: Color, val selection: Color, val active: Color, val focus: Color,
     val success: Color, val warning: Color, val error: Color,
-    /** Readable foreground on top of a solid [accent] fill (white or near-black, whichever contrasts more). */
     val onAccent: Color,
 )
 
-/**
- * Day / night. The app opens in [Dark]; [System] follows the device; the others are an explicit user choice.
- * [Amoled] is the night theme on pure black (screens that light each pixel themselves keep those pixels off).
- */
 enum class ThemeMode(@StringRes val label: Int) {
-    System(R.string.theme_system), Light(R.string.theme_light), Dark(R.string.theme_dark), Amoled(R.string.theme_amoled)
+    System(R.string.theme_system), Light(R.string.theme_light), Dark(R.string.theme_dark), Amoled(R.string.theme_amoled), Graphite(R.string.theme_graphite)
 }
 
 @Composable
 fun ThemeMode.resolveDark(): Boolean = when (this) {
     ThemeMode.System -> isSystemInDarkTheme()
     ThemeMode.Light -> false
-    ThemeMode.Dark, ThemeMode.Amoled -> true
+    ThemeMode.Dark, ThemeMode.Amoled, ThemeMode.Graphite -> true
 }
 
-/** Color experiences. Presets have their own light and dark accent (muted, not neon); [Custom] is user-defined. */
 enum class Accent(@StringRes val label: Int, val light: Color, val dark: Color) {
     Blue(R.string.color_blue, Color(0xFF2F6FEB), Color(0xFF5B9BFF)),
     Green(R.string.color_green, Color(0xFF1E9E63), Color(0xFF4CC38A)),
@@ -54,12 +47,10 @@ enum class Accent(@StringRes val label: Int, val light: Color, val dark: Color) 
     Red(R.string.color_red, Color(0xFFD0443C), Color(0xFFEF6B63)),
     Purple(R.string.color_purple, Color(0xFF7552D6), Color(0xFFA088F0)),
     Gold(R.string.color_gold, Color(0xFFA9782B), Color(0xFFD6B26A)),
-    /** Black on the day theme; on the night themes the same colour would vanish into the background, so it turns off-white there. */
     Black(R.string.color_black, Color(0xFF111114), Color(0xFFF2F2F5)),
     Custom(R.string.color_custom, Color.Unspecified, Color.Unspecified);
 }
 
-/** Ranges of the glass sliders, and the values the app starts with (and "reset" returns to). */
 object GlassRange {
     const val DENSITY_MIN = 0.4f
     const val DENSITY_MAX = 1.6f
@@ -69,13 +60,11 @@ object GlassRange {
     const val DEPTH_DEFAULT = 1.05f
 }
 
-/** How solid ([density]) and how lifted ([depth]) every glass surface is. Read by [glass]. */
 @Immutable
 class GlassStyle(val density: Float = GlassRange.DENSITY_DEFAULT, val depth: Float = GlassRange.DEPTH_DEFAULT)
 
 val LocalGlassStyle = staticCompositionLocalOf { GlassStyle() }
 
-/** Allowed ranges for the custom color (keeps it away from white/black/gray where an accent stops working). */
 object CustomRange {
     const val SAT_MIN = 0.25f
     const val VAL_MIN = 0.45f
@@ -84,10 +73,8 @@ object CustomRange {
 fun hsv(h: Float, s: Float, v: Float): Color =
     Color(android.graphics.Color.HSVToColor(floatArrayOf(h.coerceIn(0f, 359.99f), s.coerceIn(0f, 1f), v.coerceIn(0f, 1f))))
 
-/** Full hue circle, for the picker track and the "Custom" swatch ring. */
 val Spectrum: List<Color> = List(7) { hsv((it * 60f) % 360f, 1f, 1f) }
 
-/** Everything the user can change about appearance. Persisted by [ThemeStore]. */
 @Immutable
 data class ThemePrefs(
     val mode: ThemeMode = ThemeMode.Dark,
@@ -95,15 +82,13 @@ data class ThemePrefs(
     val hue: Float = 335f,
     val sat: Float = 0.62f,
     val value: Float = 0.90f,
-    /** Hide the phone's status (notification) bar and / or its navigation buttons; a swipe from the edge still reveals them briefly. */
     val hideStatusBar: Boolean = false,
     val hideNavBar: Boolean = false,
-    /** Phone UI or TV UI (see TvMode.kt). [DisplayMode.Auto] lets the device decide; the layout itself never looks at the device. */
+    val glass: Boolean = true,
+    val transition: PageTransition = PageTransition.Look,
     val display: DisplayMode = DisplayMode.Auto,
-    /** Glass look, as a multiplier of the built-in one. See [GlassRange]. */
     val glassDensity: Float = GlassRange.DENSITY_DEFAULT,
     val glassDepth: Float = GlassRange.DEPTH_DEFAULT,
-    /** The phone's look (see Look.kt); stored by id. */
     val look: Look = GlassLook,
 ) {
     fun colorOf(a: Accent, dark: Boolean): Color =
@@ -114,7 +99,6 @@ data class ThemePrefs(
 
 private fun Accent.color(dark: Boolean): Color = if (dark) this.dark else light
 
-/** A user color can be anything; nudge it until it stays readable on the current surface. */
 private fun fit(c: Color, dark: Boolean): Color {
     var x = c
     repeat(10) {
@@ -130,17 +114,26 @@ private fun onColor(bg: Color): Color {
     return if (1.05f / l >= l / 0.055f) Color.White else Color(0xFF0B1220)
 }
 
+val GraphitePalette = Palette(Color(0xFF141414), Color(0xFF212121), Color(0x26FFFFFF), Color(0xFFF5F5F5), Color(0xFF9B9B9B))
+
 private fun build(p: ThemePrefs, dark: Boolean): OneColors {
     val ac = p.accentColor(dark)
     val amoled = dark && p.mode == ThemeMode.Amoled
-    val pal = p.look.palette(dark, amoled)
+    val graphite = p.mode == ThemeMode.Graphite
+    val pal = if (graphite) GraphitePalette else p.look.palette(dark, amoled)
+    val tint = if (graphite) 0f else 1f
+    val surface = lerp(pal.surface, ac, 0.04f * tint)
+    val bar = lerp(surface, pal.text(dark), 0.09f)
+    val solid = !p.glass
     return OneColors(
-        // Amoled: the background is exactly black (no accent tint, no ambient glow) so those pixels stay off
-        bg = if (amoled) Color.Black else lerp(pal.bg, ac, 0.03f), ambient = if (amoled) Color.Black else ac,
-        glass = lerp(pal.surface, ac, 0.04f), glassTint = lerp(pal.surface, ac, 0.12f),
+        bg = if (amoled) Color.Black else lerp(pal.bg, ac, 0.03f * tint),
+        ambient = if (amoled) Color.Black else if (graphite) pal.bg else ac,
+        glass = surface, glassTint = lerp(pal.surface, ac, 0.12f * tint), bar = bar,
         border = pal.border(dark), text = pal.text(dark), dim = pal.dim(dark),
-        primary = ac, secondary = lerp(ac, pal.dim(dark), 0.5f), accent = ac, accentSoft = ac.copy(alpha = 0.16f),
-        selection = ac.copy(alpha = 0.20f), active = ac, focus = ac,
+        primary = ac, secondary = lerp(ac, pal.dim(dark), 0.5f), accent = ac,
+        accentSoft = if (solid) lerp(surface, ac, 0.20f) else ac.copy(alpha = 0.16f),
+        selection = if (solid) lerp(bar, ac, 0.34f) else ac.copy(alpha = 0.20f),
+        active = ac, focus = ac,
         success = if (dark) Color(0xFF4CC38A) else Color(0xFF2EA66B),
         warning = if (dark) Color(0xFFF0B455) else Color(0xFFD99A2B),
         error = if (dark) Color(0xFFEF6B63) else Color(0xFFD0443C),
@@ -149,7 +142,7 @@ private fun build(p: ThemePrefs, dark: Boolean): OneColors {
 }
 
 private fun mix(a: OneColors, b: OneColors, f: Float) = OneColors(
-    lerp(a.bg, b.bg, f), lerp(a.ambient, b.ambient, f), lerp(a.glass, b.glass, f), lerp(a.glassTint, b.glassTint, f),
+    lerp(a.bg, b.bg, f), lerp(a.ambient, b.ambient, f), lerp(a.glass, b.glass, f), lerp(a.glassTint, b.glassTint, f), lerp(a.bar, b.bar, f),
     lerp(a.border, b.border, f), lerp(a.text, b.text, f), lerp(a.dim, b.dim, f), lerp(a.primary, b.primary, f),
     lerp(a.secondary, b.secondary, f), lerp(a.accent, b.accent, f), lerp(a.accentSoft, b.accentSoft, f),
     lerp(a.selection, b.selection, f), lerp(a.active, b.active, f), lerp(a.focus, b.focus, f),
@@ -159,21 +152,14 @@ private fun mix(a: OneColors, b: OneColors, f: Float) = OneColors(
 
 val LocalColors = compositionLocalOf { build(ThemePrefs(), true) }
 
-/** The resolved day/night state (after applying the user's [ThemeMode]). */
 val LocalDarkTheme = staticCompositionLocalOf { true }
 
-/**
- * Accent changes (the colour sliders) glide over 320ms. A change of LOOK (day / night / Amoled / style / TV) is applied in the same
- * frame, never interpolated: a blend between two looks passes through colours that belong to neither (a grey halfway between day
- * and night, a blue glow fading out of Amoled), and for a few frames the colours lagged behind the flags that had already flipped.
- * The window background follows too, so nothing from another theme shows behind the first frame or while rotating.
- */
 @Composable
 fun OnePlusTheme(prefs: ThemePrefs, dark: Boolean, content: @Composable () -> Unit) {
     val tv = LocalTvMode.current
     val target = remember(prefs, dark) { build(prefs, dark) }
-    val look = remember(prefs.mode, prefs.look, dark, tv) { Any() } // a new object = a different look
-    var cur by remember(look) { mutableStateOf(target) }               // re-created in the same composition: no frame of old colours
+    val look = remember(prefs.mode, prefs.look, prefs.glass, dark, tv) { Any() }
+    var cur by remember(look) { mutableStateOf(target) }
     LaunchedEffect(target) {
         val start = cur
         if (start === target) return@LaunchedEffect
@@ -186,13 +172,13 @@ fun OnePlusTheme(prefs: ThemePrefs, dark: Boolean, content: @Composable () -> Un
         LocalColors provides cur,
         LocalDarkTheme provides dark,
         LocalLook provides prefs.look,
+        LocalSolid provides !prefs.glass,
         LocalGlassStyle provides remember(prefs.glassDensity, prefs.glassDepth) { GlassStyle(prefs.glassDensity, prefs.glassDepth) },
         LocalLayoutDirection provides LayoutDirection.Rtl,
         content = content,
     )
 }
 
-/** Holds the live preferences. [update] is instant (live preview while dragging a slider); [save] persists. */
 @Stable
 class ThemeController(private val store: ThemeStore) {
     var prefs by mutableStateOf(store.load())
@@ -202,10 +188,6 @@ class ThemeController(private val store: ThemeStore) {
     fun save() = store.save(prefs)
 }
 
-/**
- * Stored values are treated as untrusted input: unknown names, wrong types, NaN/Infinity or out-of-range
- * numbers all fall back to defaults instead of reaching the UI.
- */
 class ThemeStore(ctx: Context) {
     private val p = ctx.getSharedPreferences("theme", Context.MODE_PRIVATE)
 
@@ -219,16 +201,18 @@ class ThemeStore(ctx: Context) {
             value = p.getFloat("val", d.value).clean(CustomRange.VAL_MIN, 1f, d.value),
             hideStatusBar = p.getBoolean("hide_status", d.hideStatusBar),
             hideNavBar = p.getBoolean("hide_nav", d.hideNavBar),
+            glass = p.getBoolean("glass", d.glass),
+            transition = PageTransition.entries.firstOrNull { it.name == p.getString("transition", null) } ?: d.transition,
             display = DisplayMode.entries.firstOrNull { it.name == p.getString("display", null) } ?: d.display,
             glassDensity = p.getFloat("glass_density", d.glassDensity).clean(GlassRange.DENSITY_MIN, GlassRange.DENSITY_MAX, d.glassDensity),
             glassDepth = p.getFloat("glass_depth", d.glassDepth).clean(GlassRange.DEPTH_MIN, GlassRange.DEPTH_MAX, d.glassDepth),
-            look = lookOf(p.getString("style", null)), // an id that no longer exists (removed looks) falls back to the first
+            look = lookOf(p.getString("style", null)),
         )
     }.getOrDefault(ThemePrefs())
 
     fun save(t: ThemePrefs) {
         p.edit().putString("mode", t.mode.name).putString("accent", t.accent.name)
-            .putFloat("hue", t.hue).putFloat("sat", t.sat).putFloat("val", t.value).putBoolean("hide_status", t.hideStatusBar).putBoolean("hide_nav", t.hideNavBar).putString("display", t.display.name)
+            .putFloat("hue", t.hue).putFloat("sat", t.sat).putFloat("val", t.value).putBoolean("hide_status", t.hideStatusBar).putBoolean("hide_nav", t.hideNavBar).putBoolean("glass", t.glass).putString("transition", t.transition.name).putString("display", t.display.name)
             .putFloat("glass_density", t.glassDensity).putFloat("glass_depth", t.glassDepth).putString("style", t.look.id)
             .apply()
     }

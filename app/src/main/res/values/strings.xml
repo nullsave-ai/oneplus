@@ -5,6 +5,8 @@
     <string name="tab_settings">الإعدادات</string>
     <string name="sec_matches">المباريات</string>
     <string name="sec_movies">الأفلام</string>
+    <string name="sec_series">المسلسلات</string>
+    <string name="sec_anime">الأنمي</string>
     <string name="sec_channels">القنوات</string>
     <string name="search_hint">ابحث</string>
     <string name="settings_effects">تأثيرات الزجاج</string>
@@ -16,6 +18,7 @@
     <string name="theme_light">نهاري</string>
     <string name="theme_dark">ليلي</string>
     <string name="theme_amoled">أموليد</string>
+    <string name="theme_graphite">فحمي</string>
     <string name="color_row">لون التطبيق</string>
     <string name="color_blue">أزرق</string>
     <string name="color_green">أخضر</string>
@@ -37,7 +40,8 @@
     <string name="movie_less">أقل</string>
     <string name="movie_cast">طاقم العمل</string>
     <string name="movie_details">التفاصيل</string>
-    <string name="movie_similar">أفلام مشابهة</string>
+    <string name="movie_similar">أعمال مشابهة</string>
+    <string name="movie_episodes">الحلقات</string>
     <string name="movie_director">المخرج</string>
     <string name="movie_year">سنة الإنتاج</string>
     <string name="movie_duration">المدة</string>
@@ -80,7 +84,6 @@
     <string name="player_bad_link">رابط التشغيل غير صالح</string>
     <string name="player_retry">إعادة المحاولة</string>
 
-    <string name="movies_title">الأفلام</string>
     <string name="filter_all">الكل</string>
     <string name="filter_year">السنة</string>
     <string name="filter_rating">التقييم</string>
@@ -117,5 +120,14 @@
     <string name="pitch_rating">التقييم</string>
     <string name="style_anime">أنمي 桜</string>
     <string name="style_anime_blurb">مانغا وأنمي: ستيكرات بحبر سميك، خطوط سرعة، وبتلات ساكورا</string>
+    <string name="settings_transition">الانتقالات</string>
+    <string name="value_off">مطفأ</string>
+    <string name="trans_look">حسب النمط (الافتراضي)</string>
+    <string name="trans_ios">iOS</string>
+    <string name="trans_google">Google</string>
+    <string name="trans_slide">انزلاق</string>
+    <string name="trans_zoom">تكبير</string>
+    <string name="trans_cover">تغطية</string>
+    <string name="trans_none">بدون انتقال</string>
     <string name="display_confirm">اضغط مرة أخرى للتأكيد</string>
 </resources>

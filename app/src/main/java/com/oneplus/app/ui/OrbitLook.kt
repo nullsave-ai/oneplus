@@ -5,7 +5,6 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
@@ -55,6 +54,7 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.oneplus.app.R
+import com.oneplus.app.data.Kind
 import com.oneplus.app.data.Movie
 import com.oneplus.app.ui.system.*
 import kotlin.math.abs
@@ -62,20 +62,7 @@ import kotlin.math.cos
 import kotlin.math.max
 import kotlin.math.sin
 
-/*
- * ORBIT (مدار): the third look, built as a different EXPERIENCE rather than a different skin.
- *   · Space: a star field behind every page, a nebula glow in the app colour, surfaces lit by a two-tone rim (see glass() / ambient()).
- *   · Header: a glowing title with a pulsing beacon; no bar. Search opens as a lit capsule; a gradient (not a hard strip) covers the
- *     status area as soon as the page moves, and the whole header slides away while you scroll down.
- *   · Nav: a curved dock. The chosen tab lifts out of it and becomes a planet with a ring and a moon; every label stays visible.
- *   · Home: featured titles are PLANETS on an arc (swipe to spin them along it; the artwork turns inside the sphere), and every
- *     section is a snapping 3D cover-flow. The page itself is a drum: sections lean away as they leave the middle of the screen.
- *   · Pages arrive by "warp": the old page recedes while the new one comes forward out of the depth.
- */
-
 private val Violet = Color(0xFFB36BFF)
-
-// ---- Header ----------------------------------------------------------------------------------------------------------------
 
 @Composable
 fun OrbitHeader(a: HeaderArgs, modifier: Modifier = Modifier) {
@@ -87,8 +74,6 @@ fun OrbitHeader(a: HeaderArgs, modifier: Modifier = Modifier) {
     val pulse = rememberInfiniteTransition(label = "beacon").animateFloat(0f, 1f, infiniteRepeatable(tween(2600, easing = LinearEasing)), label = "p")
     val scrim = remember(c) { Brush.verticalGradient(listOf(c.bg, c.bg.copy(alpha = 0.92f), c.bg.copy(alpha = 0f))) }
     Box(modifier.fillMaxWidth()) {
-        // A soft fade of the page colour under the clock: invisible at the top of a page, there from the first scroll on.
-        // When the header leaves, only its upper part stays, so the status area is never bare.
         Box(
             Modifier.fillMaxWidth().height(inset + 84.dp).graphicsLayer {
                 translationY = -(1f - max(a.reveal(), morph)) * 76.dp.toPx(); alpha = max(a.collapse(), morph)
@@ -108,7 +93,7 @@ fun OrbitHeader(a: HeaderArgs, modifier: Modifier = Modifier) {
                     a.onBack?.let { back ->
                         Box(Modifier.size(44.dp).press { if (a.reveal() > 0.6f) back() }.glass(3, 22.dp), Alignment.Center) { OneIconView(OneIcon.Back) { c.text } }
                     }
-                    Box(Modifier.size(12.dp).drawBehind { // the beacon: a dot with a halo that swells and fades
+                    Box(Modifier.size(12.dp).drawBehind {
                         val p = pulse.value
                         drawCircle(c.accent.copy(alpha = 0.35f * (1f - p)), size.minDimension / 2f * (1f + 2.2f * p))
                         drawCircle(c.accent, size.minDimension / 2f)
@@ -131,11 +116,8 @@ fun OrbitHeader(a: HeaderArgs, modifier: Modifier = Modifier) {
     }
 }
 
-// ---- Nav -------------------------------------------------------------------------------------------------------------------
-
 private val OrbTabs = listOf(OneIcon.Home to R.string.tab_home, OneIcon.Channels to R.string.tab_channels, OneIcon.Settings to R.string.tab_settings)
 
-/** A curved dock. The chosen tab rises out of it as a planet (glow, ring, orbiting moon); every label stays in view. */
 @Composable
 fun OrbitNav(selected: Int, onSelect: (Int) -> Unit, modifier: Modifier = Modifier) {
     val c = LocalColors.current
@@ -178,9 +160,6 @@ private fun DrawScope.orb(on: Float, spin: Float, accent: Color) {
     }
 }
 
-// ---- Scroll physics --------------------------------------------------------------------------------------------------------
-
-/** Cover-flow: an item turns toward the middle of its row, and shrinks and dims the further it sits from it. Draw phase only. */
 @Composable
 internal fun Modifier.coverflow(state: LazyListState, key: Any): Modifier {
     val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
@@ -188,7 +167,7 @@ internal fun Modifier.coverflow(state: LazyListState, key: Any): Modifier {
         val info = state.layoutInfo
         val item = info.visibleItemsInfo.firstOrNull { it.key == key } ?: return@graphicsLayer
         val mid = (info.viewportStartOffset + info.viewportEndOffset) / 2f
-        val f = ((item.offset + item.size / 2f - mid) / item.size).coerceIn(-2f, 2f) * (if (rtl) -1f else 1f) // physical: < 0 = left of the middle
+        val f = ((item.offset + item.size / 2f - mid) / item.size).coerceIn(-2f, 2f) * (if (rtl) -1f else 1f)
         val a = abs(f).coerceAtMost(1.5f)
         rotationY = -f * 30f
         val k = 1f - 0.12f * a
@@ -197,7 +176,6 @@ internal fun Modifier.coverflow(state: LazyListState, key: Any): Modifier {
     }
 }
 
-/** The page as a drum: a section leans away (and dims a little) the further it is from the middle of the screen. */
 internal fun Modifier.drum(state: LazyListState, key: Any): Modifier = graphicsLayer {
     val info = state.layoutInfo
     val item = info.visibleItemsInfo.firstOrNull { it.key == key } ?: return@graphicsLayer
@@ -208,8 +186,6 @@ internal fun Modifier.drum(state: LazyListState, key: Any): Modifier = graphicsL
     scaleX = k; scaleY = k; alpha = 1f - 0.3f * f * f
     cameraDistance = 20f * density
 }
-
-// ---- Home ------------------------------------------------------------------------------------------------------------------
 
 @Composable
 fun OrbitHome(a: HomeArgs) {
@@ -234,23 +210,22 @@ fun OrbitHome(a: HomeArgs) {
                 items(resume, key = { it.id }) { m -> ResumeCard(m, a.lib.fraction(m.id), Modifier.width(200.dp).coverflow(row, m.id)) { a.onMovie(m.id) } }
             }
         }
-        if (d.movies.isNotEmpty()) item(key = "movies") {
-            Constellation(R.string.sec_movies, a.onAllMovies, 150.dp, Modifier.reveal(3, seen).drum(a.list, "movies")) { row ->
-                items(d.movies.take(10), key = { it.id }) { m -> TitledPoster(m, Modifier.width(150.dp).coverflow(row, m.id)) { a.onMovie(m.id) } }
+        Kind.entries.forEach { k ->
+            val shelf = d.movies.filter { it.kind == k }
+            if (shelf.isNotEmpty()) item(key = k.name) {
+                Constellation(k.title, { a.onAll(k) }, 150.dp, Modifier.reveal(3 + k.ordinal, seen).drum(a.list, k.name)) { row ->
+                    items(shelf.take(10), key = { it.id }) { m -> TitledPoster(m, Modifier.width(150.dp).coverflow(row, m.id)) { a.onMovie(m.id) } }
+                }
             }
         }
         if (d.channels.isNotEmpty()) item(key = "channels") {
-            Constellation(R.string.sec_channels, a.onAllChannels, null, Modifier.reveal(4, seen).drum(a.list, "channels")) { _ ->
+            Constellation(R.string.sec_channels, a.onAllChannels, null, Modifier.reveal(6, seen).drum(a.list, "channels")) { _ ->
                 items(d.channels.take(12), key = { it.id }) { ch -> ChannelTile(ch) { a.onChannel(ch.id) } }
             }
         }
     }
 }
 
-/**
- * A section: a glowing dot, the title, a fading line, and one sideways row. With an [itemWidth] the row is a cover-flow that
- * snaps each card to the middle (the padding lets the first and last card reach it); without, a plain row.
- */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun Constellation(
@@ -277,10 +252,6 @@ private fun Constellation(
     }
 }
 
-/**
- * The featured titles as planets on an arc. Swiping spins them along it: neighbours sit lower, smaller and turned away, and the
- * artwork slides across the sphere. A ring (with a moon) circles each planet; the focused title's details change underneath.
- */
 @Composable
 private fun PlanetPager(movies: List<Movie>, a: HomeArgs, modifier: Modifier) {
     val c = LocalColors.current
@@ -323,13 +294,12 @@ private fun PlanetPager(movies: List<Movie>, a: HomeArgs, modifier: Modifier) {
     }
 }
 
-/** [off]: pages away from the focused one (0 = in front, ±1 = beside it). */
 @Composable
 private fun Planet(m: Movie, off: () -> Float, spin: State<Float>, onClick: () -> Unit) {
     val c = LocalColors.current
     val dir = if (LocalLayoutDirection.current == LayoutDirection.Rtl) -1f else 1f
     val body = remember(c) { Brush.linearGradient(listOf(c.accent.copy(alpha = 0.75f), c.glass)) }
-    val limb = remember { Brush.radialGradient(0.45f to Color.Black.copy(alpha = 0f), 1f to Color.Black.copy(alpha = 0.72f)) } // darker toward the edge: a sphere
+    val limb = remember { Brush.radialGradient(0.45f to Color.Black.copy(alpha = 0f), 1f to Color.Black.copy(alpha = 0.72f)) }
     val rim = remember(c) { Brush.linearGradient(listOf(c.accent.copy(alpha = 0.9f), c.accent.copy(alpha = 0.05f), Violet.copy(alpha = 0.6f))) }
     Box(
         Modifier.size(250.dp).graphicsLayer {
@@ -346,7 +316,7 @@ private fun Planet(m: Movie, off: () -> Float, spin: State<Float>, onClick: () -
         }) {
             Box(Modifier.matchParentSize().clip(CircleShape).background(body)) {
                 if (m.backdrop.isNotBlank()) RemoteImage(m.backdrop, Modifier.matchParentSize().graphicsLayer {
-                    translationX = -off() * size.width * 0.22f * dir; scaleX = 1.5f; scaleY = 1.5f // the artwork turns across the sphere
+                    translationX = -off() * size.width * 0.22f * dir; scaleX = 1.5f; scaleY = 1.5f
                 }) else OneText(
                     m.title.take(1), OneType.SerifHero.copy(fontSize = 120.sp, lineHeight = 130.sp), Color.White.copy(alpha = 0.16f),
                     Modifier.align(Alignment.Center).graphicsLayer { translationX = -off() * 90.dp.toPx() * dir },
@@ -359,7 +329,6 @@ private fun Planet(m: Movie, off: () -> Float, spin: State<Float>, onClick: () -
     }
 }
 
-/** The planet's ring: [back] draws the whole ellipse under the sphere, otherwise only the near half over it (so the ring wraps it). */
 @Composable
 private fun Canvas2(spin: State<Float>, back: Boolean) {
     val c = LocalColors.current

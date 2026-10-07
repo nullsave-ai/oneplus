@@ -19,14 +19,9 @@ import com.oneplus.app.player.Opt
 import com.oneplus.app.player.Playback
 import com.oneplus.app.ui.system.*
 
-// compact type for the floating panel (the app's Body/Caption are sized for full pages)
 internal val Small = OneType.Body.copy(fontSize = 13.sp)
 internal val Tiny = OneType.Caption.copy(fontSize = 11.sp)
 
-/**
- * One floating glass panel for everything selectable: tabs (quality / audio / subtitles) over a list of rows.
- * The subtitles tab also hosts the style editor. Rows are plain [Opt]s, so the panel knows nothing about the player.
- */
 @Composable
 fun TracksPanel(
     pb: Playback, tab: Int, onTab: (Int) -> Unit, style: SubStyle, onStyle: (SubStyle) -> Unit, onStyleDone: () -> Unit,
@@ -34,16 +29,12 @@ fun TracksPanel(
 ) {
     val c = LocalColors.current
     val rows = when (tab) { 0 -> pb.qualities; 1 -> pb.audios; else -> pb.texts }
-    // Same surface language as the rest of the app: an opaque base (video must not show through) + glass tint, sheen and hairline.
-    // clip ONCE, then paint the opaque base inside it: a separate rounded background next to glass()'s own clip leaves a
-    // doubled, darker rim on the corners.
     val shape = RoundedCornerShape(20.dp)
     Column(modifier.clip(shape).background(c.bg).glass(4, 20.dp).padding(10.dp), Arrangement.spacedBy(8.dp)) {
         OneSegmented(
             listOf(R.string.tab_quality, R.string.tab_audio, R.string.tab_subs).map { stringResource(it) }, tab, onTab,
             height = 30.dp, textStyle = Small,
         )
-        // TV Mode: the remote lands on the first row when the panel opens
         Column(Modifier.weight(1f).tvAutoFocus().verticalScroll(rememberScrollState()), Arrangement.spacedBy(4.dp)) {
             if (rows.isEmpty()) OneText(stringResource(R.string.track_none), Small, c.dim, Modifier.padding(6.dp))
             rows.forEach { OptionRow(it) }

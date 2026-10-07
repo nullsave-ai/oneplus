@@ -11,7 +11,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.runtime.Composable
 import com.oneplus.app.R
 import com.oneplus.app.ui.system.*
 
@@ -21,11 +20,8 @@ fun openTelegram(ctx: Context) {
     runCatching { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(TelegramUrl)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
 }
 
-// ---- when to show it: every launch until skipped; after a skip it rests for 1 launch, then 2 launches on every later skip.
-// "Subscribe" ends it for good (membership cannot be checked from here, so tapping it is taken as joining).
 private fun prefs(ctx: Context) = ctx.getSharedPreferences("telegram", Context.MODE_PRIVATE)
 
-/** Call once per launch: true = show the dialog now. Counts the resting launches down. */
 fun telegramDue(ctx: Context): Boolean {
     val sp = prefs(ctx)
     if (sp.getBoolean("joined", false)) return false
@@ -42,7 +38,6 @@ fun telegramSkipped(ctx: Context) {
 
 fun telegramJoined(ctx: Context) { prefs(ctx).edit().putBoolean("joined", true).apply() }
 
-/** Join-the-channel dialog. Back or a tap outside = skip. */
 @Composable
 fun TelegramDialog(onSkip: () -> Unit, onJoin: () -> Unit) {
     val c = LocalColors.current
@@ -57,7 +52,6 @@ fun TelegramDialog(onSkip: () -> Unit, onJoin: () -> Unit) {
     }
 }
 
-/** Asks before wiping the watch history. Back, a tap outside or "إلغاء" all leave the history untouched. */
 @Composable
 fun ClearHistoryDialog(onCancel: () -> Unit, onConfirm: () -> Unit) {
     val c = LocalColors.current
@@ -65,36 +59,6 @@ fun ClearHistoryDialog(onCancel: () -> Unit, onConfirm: () -> Unit) {
         OneText(stringResource(R.string.clear_title), OneType.Title.copy(textAlign = TextAlign.Center), c.text)
         OneText(stringResource(R.string.clear_body), OneType.Body.copy(textAlign = TextAlign.Center), c.dim)
         OneButton(stringResource(R.string.clear_yes), null, { leave(onConfirm) }, Modifier.padding(top = 8.dp).fillMaxWidth())
-        OneButton(stringResource(R.string.clear_no), null, { leave(onCancel) }, Modifier.fillMaxWidth().tvAutoFocus(), primary = false) // the remote starts on the safe choice
+        OneButton(stringResource(R.string.clear_no), null, { leave(onCancel) }, Modifier.fillMaxWidth().tvAutoFocus(), primary = false)
     }
 }
-
-/**
- * Force update modal dialog. Back press is blocked so older versions remain locked until updated.
- */
-@Composable
-fun ForceUpdateDialog(config: com.oneplus.app.data.AppConfig) {
-    androidx.activity.compose.BackHandler(enabled = true) {}
-    val c = LocalColors.current
-    val ctx = androidx.compose.ui.platform.LocalContext.current
-
-    OneDialog(onDismiss = {}) { _ ->
-        Box(Modifier.size(64.dp).background(c.accentSoft, CircleShape), Alignment.Center) {
-            OneIconView(OneIcon.Send, Modifier.size(32.dp)) { c.accent }
-        }
-        OneText(config.updateTitle, OneType.Title.copy(textAlign = TextAlign.Center), c.text, Modifier.padding(top = 4.dp))
-        OneText(config.updateMessage, OneType.Body.copy(textAlign = TextAlign.Center), c.dim)
-        OneButton(
-            text = "تحديث الآن (تحميل أحدث إصدار)",
-            icon = OneIcon.Send,
-            onClick = {
-                val url = config.updateUrl.ifBlank { "https://github.com/nullsave-ai/oneplus/releases/latest" }
-                runCatching {
-                    ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-                }
-            },
-            modifier = Modifier.padding(top = 10.dp).fillMaxWidth().tvAutoFocus()
-        )
-    }
-}
-

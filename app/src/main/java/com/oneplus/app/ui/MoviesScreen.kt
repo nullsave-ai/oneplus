@@ -32,19 +32,15 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.oneplus.app.R
-import com.oneplus.app.data.AllGenres
+import com.oneplus.app.data.Kind
 import com.oneplus.app.data.Movie
 import com.oneplus.app.ui.system.*
 
 private val RatingSteps = listOf(0, 5, 6, 7, 8)
 private val SortLabels = listOf(R.string.sort_new, R.string.sort_rating, R.string.sort_name)
 
-/**
- * Full-screen "all movies" page. Fades/rises in with a spring, closes with back or the back button.
- * Filters (genre, year, minimum rating, sort) are local to one visit and reset the next time it opens.
- */
 @Composable
-fun MoviesHost(open: Boolean, movies: List<Movie>, portrait: Boolean, onMovie: (Int) -> Unit, onClose: () -> Unit) {
+fun MoviesHost(open: Boolean, kind: Kind, movies: List<Movie>, portrait: Boolean, onMovie: (Int) -> Unit, onClose: () -> Unit) {
     val p = remember { Animatable(if (open) 1f else 0f) }
     var visible by remember { mutableStateOf(open) }
     LaunchedEffect(open) {
@@ -59,28 +55,28 @@ fun MoviesHost(open: Boolean, movies: List<Movie>, portrait: Boolean, onMovie: (
         Modifier.fillMaxSize()
             .graphicsLayer { alpha = p.value; translationY = (1f - p.value) * 36.dp.toPx() }
             .ambient()
-            .pointerInput(Unit) { detectTapGestures { } } // the page underneath must not receive touches
-    ) { MoviesScreen(movies, portrait, onMovie, onClose) }
+            .pointerInput(Unit) { detectTapGestures { } }
+    ) { MoviesScreen(kind, movies, portrait, onMovie, onClose) }
 }
 
 @Composable
-private fun MoviesScreen(movies: List<Movie>, portrait: Boolean, onMovie: (Int) -> Unit, onClose: () -> Unit) {
+private fun MoviesScreen(kind: Kind, movies: List<Movie>, portrait: Boolean, onMovie: (Int) -> Unit, onClose: () -> Unit) {
     val c = LocalColors.current
-    val tv = LocalTvMode.current // TV Mode: the number of columns always follows the width (never a fixed 3)
+    val tv = LocalTvMode.current
     var genre by rememberSaveable { mutableStateOf<String?>(null) }
-    var year by rememberSaveable { mutableIntStateOf(0) }       // 0 = all
-    var minRating by rememberSaveable { mutableIntStateOf(0) }  // 0 = all
-    var sort by rememberSaveable { mutableIntStateOf(0) }       // index in SortLabels
+    var year by rememberSaveable { mutableIntStateOf(0) }
+    var minRating by rememberSaveable { mutableIntStateOf(0) }
+    var sort by rememberSaveable { mutableIntStateOf(0) }
     var panel by rememberSaveable { mutableStateOf(false) }
     var q by rememberSaveable { mutableStateOf("") }
     var searching by rememberSaveable { mutableStateOf(false) }
     val focus = remember { FocusRequester() }
     val fm = LocalFocusManager.current
     val closeSearch = { fm.clearFocus(); q = ""; searching = false }
-    BackHandler(searching, closeSearch) // declared after the host's handler, so it wins: back closes the search first
+    BackHandler(searching, closeSearch)
     LaunchedEffect(searching) { if (searching) focus.requestFocus() }
 
-    val genres = remember(movies) { AllGenres.filter { g -> movies.any { g in it.genres } } }
+    val genres = remember(movies) { movies.flatMap { it.genres }.groupingBy { it }.eachCount().entries.sortedByDescending { it.value }.map { it.key } }
     val years = remember(movies) { movies.map { it.year }.distinct().sortedDescending() }
     val shown = remember(movies, genre, year, minRating, sort, q) {
         movies
@@ -98,7 +94,6 @@ private fun MoviesScreen(movies: List<Movie>, portrait: Boolean, onMovie: (Int) 
     val bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 24.dp
 
     Column(Modifier.fillMaxSize().padding(top = topInset()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        // header: back · title + count · filter
         Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 12.dp), Arrangement.spacedBy(8.dp), Alignment.CenterVertically) {
             Box(Modifier.size(44.dp).tvAutoFocus().press(onClose).glass(3, 22.dp), Alignment.Center) { OneIconView(OneIcon.Back) { c.text } }
             Box(Modifier.weight(1f).height(44.dp).glass(3, 22.dp), Alignment.Center) {
@@ -116,7 +111,7 @@ private fun MoviesScreen(movies: List<Movie>, portrait: Boolean, onMovie: (Int) 
                     )
                     Box(Modifier.size(40.dp).press(closeSearch), Alignment.Center) { OneIconView(OneIcon.Close) { c.dim } }
                 } else Row(Modifier.padding(horizontal = 16.dp), Arrangement.spacedBy(8.dp), Alignment.CenterVertically) {
-                    OneText(stringResource(R.string.movies_title), OneType.Section, c.text, maxLines = 1)
+                    OneText(stringResource(kind.title), OneType.Section, c.text, maxLines = 1)
                     OneDot(c.dim)
                     OneText("${shown.size}", OneType.Section, c.dim)
                 }
@@ -128,13 +123,11 @@ private fun MoviesScreen(movies: List<Movie>, portrait: Boolean, onMovie: (Int) 
             }
         }
 
-        // genre chips (always visible: the primary filter)
         LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             item(key = "all") { OneChip(stringResource(R.string.filter_all), genre == null, { genre = null }) }
             items(genres, key = { it }) { g -> OneChip(g, genre == g, { genre = g }) }
         }
 
-        // year / rating / sort
         AnimatedVisibility(panel, enter = expandVertically(tween(220)) + fadeIn(tween(220)), exit = shrinkVertically(tween(180)) + fadeOut(tween(120))) {
             Column(
                 Modifier.padding(horizontal = 16.dp).fillMaxWidth().glass(2, 22.dp).padding(vertical = 12.dp),

@@ -88,7 +88,6 @@ import kotlinx.coroutines.delay
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
-/** Transient on-screen feedback for gestures. */
 private sealed interface Hud {
     data class Level(val brightness: Boolean, val fraction: Float) : Hud
     data class Seek(val targetMs: Long, val deltaMs: Long) : Hud
@@ -101,14 +100,6 @@ private tailrec fun Context.findActivity(): Activity? = when (this) {
     else -> null
 }
 
-/**
- * The app's only player. [fullscreen] = immersive landscape; otherwise it fills whatever box it is placed in (Channels page).
- * Video is a plain SurfaceView (cheapest path, no media3-ui); every control is drawn here.
- *
- * Gestures: tap = show/hide controls · double-tap left/right third = -10s/+10s (repeat to accumulate), middle = play/pause ·
- * drag horizontally = scrub (VOD) · drag vertically on the left half = brightness, right half = volume.
- * Controls are floating dark glass and hide themselves 3.5s after the last interaction while playing.
- */
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun PlayerScreen(
@@ -123,7 +114,6 @@ fun PlayerScreen(
     val window = activity?.window
     val audio = remember(app) { app.getSystemService(Context.AUDIO_SERVICE) as AudioManager }
 
-    // Screen stays on while the player exists; brightness changed by gesture is given back on exit.
     DisposableEffect(view) {
         view.keepScreenOn = true
         onDispose {
@@ -132,7 +122,6 @@ fun PlayerScreen(
         }
     }
     val bars = LocalSystemBars.current
-    // Immersive landscape only in fullscreen; restored when leaving it (or the player). The bars come back the way the user set them.
     DisposableEffect(activity, fullscreen) {
         if (!fullscreen) return@DisposableEffect onDispose { }
         val oldOrientation = activity?.requestedOrientation ?: ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
@@ -143,24 +132,21 @@ fun PlayerScreen(
             activity?.requestedOrientation = oldOrientation
         }
     }
-    // Insets only matter when the player really covers the screen; in place it sits below the status bar already.
     val safe: Modifier = if (fullscreen) Modifier.windowInsetsPadding(WindowInsets.safeDrawing) else Modifier
 
-    // The engine (link lookup, ExoPlayer) belongs to the session in the app root: this screen only shows it, so it can leave and
-    // come back (another tab, fullscreen switch) without rebuilding anything. See PlayerSession.
     val link = session.link
     val playback = session.playback
     LifecycleEventEffect(Lifecycle.Event.ON_STOP) { playback?.pause() }
-    LifecycleEventEffect(Lifecycle.Event.ON_START) { playback?.resumeLive() } // live comes back at the live edge by itself
+    LifecycleEventEffect(Lifecycle.Event.ON_START) { playback?.resumeLive() }
     var panelOpen by remember { mutableStateOf(false) }
-    var tab by remember { mutableIntStateOf(0) } // 0 quality · 1 audio · 2 subtitles
+    var tab by remember { mutableIntStateOf(0) }
     var style by remember { mutableStateOf(SubStyle.load(app)) }
     BackHandler(fullscreen || panelOpen) { if (panelOpen) panelOpen = false else if (onToggleFullscreen != null) onToggleFullscreen() else onClose() }
 
     val pb = playback
     val failed = session.failed
     var show by remember { mutableStateOf(true) }
-    var tick by remember { mutableIntStateOf(0) } // bumped on every interaction to restart the auto-hide timer
+    var tick by remember { mutableIntStateOf(0) }
     var scrub by remember { mutableStateOf<Float?>(null) }
     var fit by rememberSaveable { mutableStateOf(true) }
     var hud by remember { mutableStateOf<Hud?>(null) }
@@ -168,30 +154,24 @@ fun PlayerScreen(
     var pos by remember { mutableLongStateOf(0L) }
     var buf by remember { mutableLongStateOf(0L) }
 
-    // Position is only polled while the controls are visible.
     LaunchedEffect(pb, show) {
         if (pb == null) return@LaunchedEffect
         while (show) { pos = pb.position; buf = pb.bufferedPosition; delay(400) }
     }
-    val hideMs = if (LocalTvMode.current) 6000L else 3500L // a remote needs longer to get from the player to a button
+    val hideMs = if (LocalTvMode.current) 6000L else 3500L
     LaunchedEffect(show, tick, pb?.wantsPlay, scrub != null, failed, panelOpen) {
         if (show && pb?.wantsPlay == true && scrub == null && !failed && !panelOpen) { delay(hideMs); show = false }
     }
     LaunchedEffect(pb?.ended) { if (pb?.ended == true) show = true }
     LaunchedEffect(hud) { if (hud != null) { lastHud = hud; delay(900); hud = null } }
 
-    // TV Mode, fullscreen: the remote drives the player. Controls hidden: left / right = -10s / +10s, centre = play / pause,
-    // up / down = show the controls. Controls shown: the D-pad moves between the buttons and the seek bar as usual.
-    // TV Mode, in place (Channels page): the player is a stop for the remote like any card; OK on it brings the controls up with the
-    // remote on the fullscreen button (OK again = fullscreen); from there left / right reach subtitles, audio and quality.
-    // The other keys keep moving through the page, and the controls give the remote back to the player when they hide.
     val tv = LocalTvMode.current
     val keysOn = tv
     val keySrc = remember { MutableInteractionSource() }
     val keyFocused by keySrc.collectIsFocusedAsState()
-    var inside by remember { mutableStateOf(false) } // the remote is on the player or on one of its buttons
-    val keys = remember { FocusRequester() }   // the player itself, while the controls are hidden
-    val first = remember { FocusRequester() }  // the play button, where focus lands when a key brings the controls up
+    var inside by remember { mutableStateOf(false) }
+    val keys = remember { FocusRequester() }
+    val first = remember { FocusRequester() }
     var keyShown by remember { mutableStateOf(fullscreen) }
     fun skip(dir: Int) {
         val p = playback ?: return
@@ -210,7 +190,6 @@ fun PlayerScreen(
             Key.MediaPause -> { if (p != null && !p.live && p.wantsPlay) p.toggle(); tick++; true }
             Key.MediaFastForward, Key.MediaNext -> { skip(1); true }
             Key.MediaRewind, Key.MediaPrevious -> { skip(-1); true }
-            // Stop / Escape leave like Back does; Menu / Info open the quality panel
             Key.MediaStop, Key.Escape -> { if (panelOpen) panelOpen = false else if (fullscreen && onToggleFullscreen != null) onToggleFullscreen() else onClose(); true }
             Key.Menu, Key.Info -> if (p != null && !panelOpen) { tab = 0; panelOpen = true; tick++; true } else false
             else -> if (show) { tick++; false } else when (e.key) {
@@ -226,7 +205,7 @@ fun PlayerScreen(
         }
     }
     LaunchedEffect(keysOn, show, panelOpen) { if (keysOn && !show && !panelOpen && (fullscreen || inside)) runCatching { keys.requestFocus() } }
-    var wasOpen by remember { mutableStateOf(false) } // closing the panel puts the remote back on the controls
+    var wasOpen by remember { mutableStateOf(false) }
     LaunchedEffect(panelOpen) { if (panelOpen) wasOpen = true else if (wasOpen && keysOn) { wasOpen = false; show = true; keyShown = true; tick++ } }
 
     fun readBrightness(): Float {
@@ -250,7 +229,7 @@ fun PlayerScreen(
         Modifier.fillMaxSize().background(Color.Black)
             .then(
                 if (keysOn) Modifier.focusRequester(keys).onPreviewKeyEvent(onKey).tvLockable()
-                    .drawWithContent { // in place, the player shows it has the remote with a ring in the page's own language
+                    .drawWithContent {
                         drawContent()
                         if (keyFocused && !fullscreen) {
                             val sw = 3.dp.toPx()
@@ -261,7 +240,6 @@ fun PlayerScreen(
                 else Modifier
             )
     ) {
-        // 1) video
         val corner = with(LocalDensity.current) { 20.dp.toPx() }
         if (pb != null) key(pb) {
             BoxWithConstraints(Modifier.fillMaxSize().clipToBounds(), Alignment.Center) {
@@ -275,7 +253,6 @@ fun PlayerScreen(
                     factory = {
                         SurfaceView(it).also { sv ->
                             pb.player.setVideoSurfaceView(sv)
-                            // in place (not fullscreen) the picture follows the page's rounded corners
                             sv.outlineProvider = object : ViewOutlineProvider() {
                                 override fun getOutline(v: View, o: Outline) { o.setRoundRect(0, 0, v.width, v.height, corner) }
                             }
@@ -287,11 +264,9 @@ fun PlayerScreen(
             }
         }
 
-        // 2) shutter: hides the black/first-frame jump and fades the picture in
         val shutter by animateFloatAsState(if (pb?.firstFrame == true || failed) 0f else 1f, tween(280), label = "shutter")
         if (shutter > 0.01f) Box(Modifier.fillMaxSize().graphicsLayer { alpha = shutter }.background(Color.Black))
 
-        // 3) gestures
         Box(
             Modifier.fillMaxSize()
                 .pointerInput(playback) {
@@ -311,7 +286,7 @@ fun PlayerScreen(
                     )
                 }
                 .pointerInput(playback) {
-                    var axis = 0 // 0 undecided · 1 horizontal seek · 2 vertical level · 3 ignored
+                    var axis = 0
                     var accX = 0f
                     var startX = 0f
                     var startPos = 0L
@@ -346,7 +321,6 @@ fun PlayerScreen(
                 }
         )
 
-        // 4) gesture feedback
         val hudAlign = when (val h = lastHud) {
             is Hud.Level -> Alignment.TopCenter
             is Hud.Skip -> if (h.forward) Alignment.CenterEnd else Alignment.CenterStart
@@ -361,7 +335,6 @@ fun PlayerScreen(
             if (h != null) CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) { HudView(h, c.accent) }
         }
 
-        // 4b) captions: drawn by us (own style), lifted above the seek island while the controls are visible
         val sample = stringResource(R.string.sample_caption)
         val cap = pb?.caption.orEmpty().ifEmpty { if (panelOpen && tab == 2) sample else "" }
         val lifted by animateDpAsState(if (show && pb?.seekable == true) 76.dp else 0.dp, tween(220), label = "capLift")
@@ -369,12 +342,10 @@ fun PlayerScreen(
             CaptionText(cap, style, c.accent, c.onAccent, Modifier.padding(bottom = 12.dp + lifted + (style.lift * (if (fullscreen) 120f else 40f)).dp).widthIn(max = 640.dp))
         }
 
-        // 5) loading / error
         val controlsA by animateFloatAsState(if (show) 1f else 0f, tween(220), label = "controls")
         val controlsUp = controlsA > 0.01f
         LaunchedEffect(keysOn, show, controlsUp, keyShown) {
             if (keysOn && show && controlsUp && keyShown) {
-                // the play button (not there for a live stream): then the player itself, so the remote always has a target
                 try { first.requestFocus() } catch (e: IllegalStateException) { runCatching { keys.requestFocus() } }
                 keyShown = false
             }
@@ -394,12 +365,10 @@ fun PlayerScreen(
             )
         }
 
-        // 6) controls
         if (controlsA > 0.01f) Box(Modifier.fillMaxSize().graphicsLayer { alpha = controlsA }) {
             Box(Modifier.align(Alignment.TopCenter).fillMaxWidth().height(if (fullscreen) 120.dp else 72.dp).scrim(top = true))
             Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(if (fullscreen) 170.dp else 96.dp).scrim(top = false))
             Box(Modifier.fillMaxSize().then(safe).padding(horizontal = if (fullscreen) 16.dp else 8.dp, vertical = if (fullscreen) 12.dp else 8.dp)) {
-                // top: back (fullscreen only) · title as plain text · live chip
                 Row(Modifier.align(Alignment.TopCenter).fillMaxWidth(), Arrangement.spacedBy(12.dp), Alignment.CenterVertically) {
                     if (fullscreen) GlassBtn(onClose) { OneIconView(OneIcon.Back) { Color.White } }
                     BasicText(
@@ -410,7 +379,6 @@ fun PlayerScreen(
                     if (pb?.live ?: source.live) LiveChip(c.accent)
                 }
 
-                // center transport: VOD only. A live stream has nothing to pause; it heals itself (retry, live edge, resume).
                 if (pb != null && !failed && !pb.live) {
                     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
                         Row(Modifier.align(Alignment.Center), Arrangement.spacedBy(28.dp), Alignment.CenterVertically) {
@@ -431,7 +399,6 @@ fun PlayerScreen(
                     }
                 }
 
-                // bottom: seek island (VOD) on the left, action buttons pinned to the physical right
                 if (pb != null && !failed) CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
                     val texts = pb.texts
                     val audios = pb.audios
@@ -462,11 +429,11 @@ fun PlayerScreen(
                                 OneText(fmt(dur), OneType.Caption, Color.White.copy(alpha = 0.7f))
                             }
                         } else Spacer(Modifier.weight(1f))
-                        if (texts.isNotEmpty()) GlassBtn({ open(2) }, bs) { OneIconView(OneIcon.Cc) { if (texts.drop(1).any { it.selected }) c.accent else Color.White } }
-                        if (audios.size > 1) GlassBtn({ open(1) }, bs) { OneIconView(OneIcon.Wave) { Color.White } }
-                        if (qualities.size > 1) Box(
+                        GlassBtn({ open(2) }, bs) { OneIconView(OneIcon.Cc) { if (texts.drop(1).any { it.selected }) c.accent else Color.White } }
+                        GlassBtn({ open(1) }, bs) { OneIconView(OneIcon.Wave) { if (audios.any { it.selected }) c.accent else Color.White } }
+                        Box(
                             Modifier.height(bs).press { open(0) }.vGlass(bs / 2).padding(horizontal = 12.dp), Alignment.Center,
-                        ) { OneText(qualities.firstOrNull { it.selected }?.label ?: "", OneType.Caption, Color.White, maxLines = 1) }
+                        ) { OneText(qualities.firstOrNull { it.selected }?.label ?: stringResource(R.string.track_auto), OneType.Caption, Color.White, maxLines = 1) }
                         if (fullscreen) GlassBtn({ fit = !fit; tick++ }, bs) { OneIconView(if (fit) OneIcon.Fit else OneIcon.Fill) { Color.White } }
                         if (onToggleFullscreen != null) GlassBtn({ onToggleFullscreen() }, bs, if (keysOn && pb.live && !fullscreen) Modifier.focusRequester(first) else Modifier) {
                             OneIconView(if (fullscreen) OneIcon.Shrink else OneIcon.Expand) { Color.White }
@@ -476,7 +443,6 @@ fun PlayerScreen(
             }
         }
 
-        // 7) quality / audio / subtitles panel: pinned to the physical right edge whatever the UI direction
         CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
             AnimatedVisibility(
                 panelOpen && pb != null, Modifier.align(Alignment.CenterEnd),
@@ -486,7 +452,6 @@ fun PlayerScreen(
                 CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
                     if (pb != null) TracksPanel(
                         pb, tab, { tab = it }, style, { style = it }, { style.save(app) },
-                        // TV Mode: the remote stays inside the panel while it is open (Back closes it)
                         safe.padding(8.dp).width(232.dp).fillMaxHeight().then(if (tv) Modifier.focusProperties { exit = { FocusRequester.Cancel } }.focusGroup() else Modifier),
                     )
                 }
@@ -495,14 +460,10 @@ fun PlayerScreen(
     }
 }
 
-// ---- pieces ----------------------------------------------------------------------------------------------------
-
-/** Dark floating glass: reads on any video regardless of the app's day/night theme. */
 @Composable
 internal fun Modifier.vGlass(radius: Dp): Modifier {
-    val fx = LocalGlassEffects.current
     val shape = RoundedCornerShape(radius)
-    return clip(shape).background(Color.Black.copy(alpha = if (fx) 0.42f else 0.72f)).border(0.5.dp, Color.White.copy(alpha = 0.16f), shape)
+    return clip(shape).background(Color.Black.copy(alpha = 0.5f)).border(0.5.dp, Color.White.copy(alpha = 0.16f), shape)
 }
 
 @Composable
@@ -510,7 +471,6 @@ private fun GlassBtn(onClick: () -> Unit, size: Dp = 44.dp, modifier: Modifier =
     Box(modifier.size(size).press(onClick).vGlass(size / 2), Alignment.Center, content = content)
 }
 
-/** Dark fade at the top/bottom edge that keeps controls readable. Same hue at both ends + dither (no gray fringe, no banding). */
 private fun Modifier.scrim(top: Boolean) = drawWithCache {
     val b = Brush.verticalGradient(
         if (top) listOf(Color.Black.copy(alpha = 0.6f), Color.Black.copy(alpha = 0f)) else listOf(Color.Black.copy(alpha = 0f), Color.Black.copy(alpha = 0.65f)),
@@ -547,7 +507,6 @@ private fun Spinner(color: Color, modifier: Modifier = Modifier) {
     }
 }
 
-/** Thin track that thickens while dragging: buffered (dim) + played (accent) + thumb. */
 @Composable
 private fun SeekBar(
     fraction: Float, buffered: Float, active: Boolean, accent: Color,
@@ -563,7 +522,6 @@ private fun SeekBar(
     var last by remember { mutableFloatStateOf(0f) }
     Canvas(
         modifier.height(32.dp)
-            // TV Mode: the bar takes D-pad focus; left / right = -10s / +10s
             .tvFocusRing(src)
             .then(
                 if (tv) Modifier.tvLockable().onKeyEvent { e ->

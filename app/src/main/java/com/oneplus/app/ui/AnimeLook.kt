@@ -4,7 +4,6 @@ import androidx.annotation.StringRes
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
@@ -31,17 +30,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.drawOutline
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
@@ -55,6 +52,7 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.oneplus.app.R
+import com.oneplus.app.data.Kind
 import com.oneplus.app.data.Movie
 import com.oneplus.app.ui.system.*
 import java.util.Locale
@@ -66,28 +64,13 @@ import kotlin.math.sin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-/*
- * ANIME (أنمي · 桜): the sixth look, the visual language of Japanese anime and manga.
- *   · Sky: a dusk gradient, a halftone screentone in the corner, sakura petals that fall and sway (ambient() in OneKit).
- *   · Everything is a STICKER: flat fill, thick ink outline, a hard offset shadow in the app colour (glass() in OneKit).
- *   · Header: a slanted title plate with a spinning sparkle and a sakura mark; it DASHES off the screen sideways on the way down
- *     and dashes back on the way up. Search opens as a speech-bubble bar.
- *   · Nav: three comic panels. The chosen one pops up filled with colour and a sound effect (ピカッ / ザザッ / カチッ) bursts above it.
- *     Every label stays visible.
- *   · Home: an "opening" splash (speed lines, starburst rating, tilted cards thrown aside on swipe), chapters ("第N話") of
- *     manga covers fanned like a hand of cards, sections that dash in from alternating sides with a spring.
- *   · Details: a key-visual hero with speed lines, an inked title and a slanted bottom edge. Pages arrive with a spring "pop".
- */
-
 private val Ink = Color(0xFF1D1033)
 
-/** A parallelogram: the comic-strip panel. */
 private val Plate: Shape = GenericShape { size, _ ->
     val k = size.height * 0.28f
     moveTo(k, 0f); lineTo(size.width, 0f); lineTo(size.width - k, size.height); lineTo(0f, size.height); close()
 }
 
-/** A star with [points] tips; inner = how deep the notches go. 12 points ≈ a starburst, 4 = a sparkle. */
 private fun burst(points: Int, inner: Float): Shape = GenericShape { size, _ ->
     val r = size.minDimension / 2f
     for (i in 0 until points * 2) {
@@ -101,19 +84,10 @@ private fun burst(points: Int, inner: Float): Shape = GenericShape { size, _ ->
 private val Starburst = burst(12, 0.8f)
 private val Spark = burst(4, 0.28f)
 
-/** The sticker: hard shadow, flat fill, thick ink outline. */
 private fun Modifier.sticker(shape: Shape, fill: Color, ink: Color, shadow: Color, off: Dp = 3.dp): Modifier =
-    drawBehind {
-        translate(off.toPx(), off.toPx()) {
-            when (val o = shape.createOutline(size, layoutDirection, this)) {
-                is Outline.Rectangle -> drawRect(shadow, topLeft = Offset(o.rect.left, o.rect.top), size = o.rect.size)
-                is Outline.Rounded -> drawRoundRect(shadow, topLeft = Offset(o.roundRect.left, o.roundRect.top), size = Size(o.roundRect.width, o.roundRect.height), cornerRadius = CornerRadius(o.roundRect.bottomLeftCornerRadius.x, o.roundRect.bottomLeftCornerRadius.y))
-                is Outline.Generic -> drawPath(o.path, shadow)
-            }
-        }
-    }.clip(shape).background(fill).border(2.dp, ink, shape)
+    drawBehind { translate(off.toPx(), off.toPx()) { drawOutline(shape.createOutline(size, layoutDirection, this), shadow) } }
+        .clip(shape).background(fill).border(2.dp, ink, shape)
 
-/** Text with a fat ink outline (a stroked copy underneath, the fill on top). */
 @Composable
 private fun Inked(text: String, style: TextStyle, fill: Color, modifier: Modifier = Modifier, maxLines: Int = 1) {
     Box(modifier) {
@@ -122,7 +96,6 @@ private fun Inked(text: String, style: TextStyle, fill: Color, modifier: Modifie
     }
 }
 
-/** Focus lines radiating from [origin]; [turn] rotates them. */
 private fun DrawScope.rays(color: Color, origin: Offset, count: Int, turn: Float) {
     val r = size.maxDimension * 1.3f
     for (i in 0 until count) {
@@ -139,8 +112,6 @@ private fun DrawScope.rays(color: Color, origin: Offset, count: Int, turn: Float
     }
 }
 
-// ---- Header ----------------------------------------------------------------------------------------------------------------
-
 @Composable
 fun AnimeHeader(a: HeaderArgs, modifier: Modifier = Modifier) {
     val c = LocalColors.current
@@ -151,10 +122,10 @@ fun AnimeHeader(a: HeaderArgs, modifier: Modifier = Modifier) {
     val spin = rememberInfiniteTransition(label = "spark").animateFloat(0f, 360f, infiniteRepeatable(tween(7000, easing = LinearEasing)), label = "s")
     val shadow = c.accent.copy(alpha = 0.75f)
     Box(modifier.fillMaxWidth()) {
-        Box(Modifier.fillMaxWidth().height(inset).graphicsLayer { alpha = max(a.collapse(), morph) }.background(c.bg)) // nothing bare behind the clock
+        Box(Modifier.fillMaxWidth().height(inset).graphicsLayer { alpha = max(a.collapse(), morph) }.background(c.bg))
         Box(
             Modifier.padding(top = inset + 10.dp).padding(horizontal = 14.dp).fillMaxWidth().height(50.dp)
-                .graphicsLayer { // the dash: shoots off sideways, tilting, and comes back the same way
+                .graphicsLayer {
                     val r = max(a.reveal(), morph)
                     translationX = -(1f - r) * size.width * 1.1f * dir; rotationZ = -(1f - r) * 6f * dir
                 }
@@ -175,14 +146,12 @@ fun AnimeHeader(a: HeaderArgs, modifier: Modifier = Modifier) {
                 }
                 if (a.hasSearch) Box(Modifier.size(44.dp).press { if (a.reveal() > 0.6f) s.show() }.sticker(CircleShape, c.accent, c.border, c.border.copy(alpha = 0.5f)), Alignment.Center) { OneIconView(OneIcon.Search) { c.onAccent } }
             }
-            if (s.open || morph > 0f) Box( // the speech bubble
+            if (s.open || morph > 0f) Box(
                 Modifier.fillMaxSize().graphicsLayer { alpha = morph }.sticker(RoundedCornerShape(25.dp), c.glass, c.border, shadow),
             ) { SearchRow(a.query, a.onQuery, s.focus, s.close, Modifier.fillMaxSize().padding(start = 18.dp, end = 6.dp)) }
         }
     }
 }
-
-// ---- Nav -------------------------------------------------------------------------------------------------------------------
 
 private val AnimeTabs = listOf(
     Triple(OneIcon.Home, R.string.tab_home, "ピカッ"), Triple(OneIcon.Channels, R.string.tab_channels, "ザザッ"), Triple(OneIcon.Settings, R.string.tab_settings, "カチッ"),
@@ -194,7 +163,7 @@ fun AnimeNav(selected: Int, onSelect: (Int) -> Unit, modifier: Modifier = Modifi
     val pop = remember { Animatable(1f) }
     LaunchedEffect(selected) { pop.snapTo(0f); pop.animateTo(1f, tween(800)) }
     Box(modifier.navigationBarsPadding().padding(start = 14.dp, end = 14.dp, bottom = 10.dp).widthIn(max = 400.dp).fillMaxWidth().height(100.dp)) {
-        Row(Modifier.align(Alignment.TopStart).fillMaxWidth().height(34.dp), Arrangement.spacedBy(8.dp)) { // the sound effect bursts above the chosen panel
+        Row(Modifier.align(Alignment.TopStart).fillMaxWidth().height(34.dp), Arrangement.spacedBy(8.dp)) {
             AnimeTabs.forEachIndexed { i, t ->
                 Box(Modifier.weight(1f).fillMaxHeight(), Alignment.Center) {
                     if (i == selected) Inked(
@@ -227,16 +196,12 @@ fun AnimeNav(selected: Int, onSelect: (Int) -> Unit, modifier: Modifier = Modifi
     }
 }
 
-// ---- Home ------------------------------------------------------------------------------------------------------------------
-
-/** Where a row item sits against the middle of its row, in item widths (0 = centred). */
 private fun LazyListState.slot(key: Any): Float {
     val i = layoutInfo
     val v = i.visibleItemsInfo.firstOrNull { x -> x.key == key } ?: return 0f
     return ((v.offset + v.size / 2f) - (i.viewportStartOffset + i.viewportEndOffset) / 2f) / v.size
 }
 
-/** A section dashes in from the side ([sign]) and overshoots a little: a spring, not a fade. */
 @Composable
 private fun Modifier.dash(index: Int, seen: MutableSet<Int>, sign: Float): Modifier {
     val done = index in seen
@@ -268,20 +233,22 @@ fun AnimeHome(a: HomeArgs) {
                 items(resume, key = { it.id }) { m -> ResumeCard(m, a.lib.fraction(m.id), Modifier.width(200.dp).edgeFx(row, m.id)) { a.onMovie(m.id) } }
             }
         }
-        if (d.movies.isNotEmpty()) item(key = "movies") {
-            Chapter(3, R.string.sec_movies, a.onAllMovies, Modifier.dash(3, seen, -1f)) { row ->
-                items(d.movies.take(10), key = { it.id }) { m -> Cover(m, row) { a.onMovie(m.id) } }
+        Kind.entries.forEach { k ->
+            val shelf = d.movies.filter { it.kind == k }
+            if (shelf.isNotEmpty()) item(key = k.name) {
+                Chapter(3 + k.ordinal, k.title, { a.onAll(k) }, Modifier.dash(3 + k.ordinal, seen, if (k.ordinal % 2 == 0) -1f else 1f)) { row ->
+                    items(shelf.take(10), key = { it.id }) { m -> Cover(m, row) { a.onMovie(m.id) } }
+                }
             }
         }
         if (d.channels.isNotEmpty()) item(key = "channels") {
-            Chapter(4, R.string.sec_channels, a.onAllChannels, Modifier.dash(4, seen, 1f)) { _ ->
+            Chapter(6, R.string.sec_channels, a.onAllChannels, Modifier.dash(6, seen, 1f)) { _ ->
                 items(d.channels.take(12), key = { it.id }) { ch -> ChannelTile(ch) { a.onChannel(ch.id) } }
             }
         }
     }
 }
 
-/** A chapter heading: a slanted "第N話" plate, the title, and a strip of halftone dots that shrink away. Shared with the details page. */
 @Composable
 internal fun AnimeHead(n: Int, @StringRes title: Int, modifier: Modifier = Modifier, trailing: (@Composable () -> Unit)? = null) {
     val c = LocalColors.current
@@ -310,7 +277,6 @@ private fun Chapter(n: Int, @StringRes title: Int, onAll: (() -> Unit)?, modifie
     }
 }
 
-/** A manga cover: sticker card, starburst rating in the corner. The covers fan out like a hand of cards: tilted and dropped by their place in the row. */
 @Composable
 private fun Cover(m: Movie, row: LazyListState, onClick: () -> Unit) {
     val c = LocalColors.current
@@ -336,7 +302,6 @@ private fun Cover(m: Movie, row: LazyListState, onClick: () -> Unit) {
     }
 }
 
-/** The opening: big tilted cards with turning speed lines; swiping throws the card aside (tilt and drop), the next one rises. */
 @Composable
 private fun Splash(movies: List<Movie>, a: HomeArgs, modifier: Modifier) {
     val c = LocalColors.current
@@ -353,7 +318,7 @@ private fun Splash(movies: List<Movie>, a: HomeArgs, modifier: Modifier) {
             pager, Modifier.fillMaxWidth(), contentPadding = PaddingValues(horizontal = 18.dp, vertical = 8.dp), pageSpacing = 14.dp, key = { movies[it].id },
         ) { i ->
             val m = movies[i]
-            val at = { ((i - pager.currentPage) - pager.currentPageOffsetFraction) * dir } // physical: > 0 = to the right of the middle
+            val at = { ((i - pager.currentPage) - pager.currentPageOffsetFraction) * dir }
             val progress = a.lib.fraction(m.id).takeIf { m.id in a.lib.progress }
             Box(
                 Modifier.fillMaxWidth().height(250.dp)
@@ -382,7 +347,7 @@ private fun Splash(movies: List<Movie>, a: HomeArgs, modifier: Modifier) {
                 }
             }
         }
-        if (n > 1) Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) { // petals
+        if (n > 1) Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             repeat(n) { j ->
                 val on = j == pager.currentPage
                 val k by animateFloatAsState(if (on) 1f else 0.6f, spring(0.5f, 500f), label = "dot")
@@ -395,9 +360,6 @@ private fun Splash(movies: List<Movie>, a: HomeArgs, modifier: Modifier) {
     }
 }
 
-// ---- Details ---------------------------------------------------------------------------------------------------------------
-
-/** The key visual: artwork with turning speed lines, an inked title, a starburst rating, and a slanted bottom edge. */
 @Composable
 internal fun AnimeHero(m: Movie, duration: String, height: Dp, scroll: ScrollState) {
     val c = LocalColors.current
@@ -424,7 +386,7 @@ internal fun AnimeHero(m: Movie, duration: String, height: Dp, scroll: ScrollSta
                 OneText(String.format(Locale.US, "%.1f", m.rating), OneType.Title.copy(fontWeight = FontWeight.Black), Ink)
             }
         }
-        Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(44.dp).drawBehind { // the slanted edge, inked
+        Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(44.dp).drawBehind {
             drawPath(Path().apply { moveTo(0f, size.height); lineTo(size.width, size.height); lineTo(size.width, 0f); close() }, c.bg)
             drawLine(c.border, Offset(0f, size.height), Offset(size.width, 0f), 2.dp.toPx())
         })

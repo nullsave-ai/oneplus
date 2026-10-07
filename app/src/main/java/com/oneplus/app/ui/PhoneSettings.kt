@@ -45,38 +45,31 @@ import com.oneplus.app.ui.system.*
 import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
 
-/*
- * The phone's settings, in the manner of an iOS "Settings" app: a grouped list whose rows OPEN a page for their topic. Nothing
- * on the list changes a setting except the one switch, so a touch while scrolling cannot damage the look. Choices (style, day /
- * night, display) are big tiles with a miniature of the result, on a page of their own. Everything is drawn from the current
- * look's surfaces. The header (owned by the look) carries the page title and the back button.
- */
-
 private const val PageStyle = 0
 private const val PageMode = 1
 private const val PageColor = 2
 private const val PageTune = 3
 private const val PageDisplay = 4
+private const val PageMotion = 5
 
-/** Title of the open sub-page, shown by the header. */
 @StringRes
 internal fun settingsTitle(page: Int): Int = when (page) {
     PageStyle -> R.string.style_mode
     PageMode -> R.string.theme_mode
     PageColor -> R.string.color_row
     PageTune -> R.string.glass_title
+    PageMotion -> R.string.settings_transition
     else -> R.string.display_mode
 }
 
 @Composable
 fun PhoneSettings(
-    effects: Boolean, onEffects: (Boolean) -> Unit, theme: ThemeController, scroll: ScrollState, subScroll: ScrollState,
+    theme: ThemeController, scroll: ScrollState, subScroll: ScrollState,
     page: Int, onPage: (Int) -> Unit, wide: Boolean, saved: List<Movie>, onMovie: (Int) -> Unit,
     onTelegram: () -> Unit, onClearHistory: () -> Unit,
 ) {
     val bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + bottomNavSpace()
     LaunchedEffect(page) { if (page >= 0) subScroll.scrollTo(0) }
-    // TV Mode: when a sub-page opens (or the list comes back) the row the remote was on is gone, so the remote moves into the new page.
     val tv = LocalTvMode.current
     val first = remember { page }
     val moved = remember { booleanArrayOf(false) }
@@ -84,15 +77,17 @@ fun PhoneSettings(
     AnimatedContent(
         page, Modifier.fillMaxSize(),
         transitionSpec = {
-            val dir = if (targetState > initialState) -1 else 1 // deeper = in from the start side (RTL: from the left), like a push
-            (slideInHorizontally(tween(340, easing = FastOutSlowInEasing)) { dir * it / 3 } + fadeIn(tween(240))) togetherWith
-                (slideOutHorizontally(tween(340, easing = FastOutSlowInEasing)) { -dir * it / 3 } + fadeOut(tween(160)))
+            val dir = if (targetState > initialState) -1 else 1
+            pageTransition(theme.prefs.transition, dir) {
+                (slideInHorizontally(tween(340, easing = FastOutSlowInEasing)) { dir * it / 3 } + fadeIn(tween(240))) togetherWith
+                    (slideOutHorizontally(tween(340, easing = FastOutSlowInEasing)) { -dir * it / 3 } + fadeOut(tween(160)))
+            }
         },
         label = "settings",
     ) { p ->
         val into = remember { FocusRequester() }
         if (tv && moved[0]) LaunchedEffect(Unit) { delay(450); runCatching { into.requestFocus() } }
-        Box(Modifier.fillMaxSize(), Alignment.TopCenter) {
+        Box(Modifier.fillMaxSize().then(pageBackdrop(theme.prefs.transition)), Alignment.TopCenter) {
             Column(
                 Modifier.widthIn(max = 640.dp).fillMaxSize().focusRequester(into).focusGroup().verticalScroll(if (p < 0) scroll else subScroll)
                     .padding(top = toolbarInset(), bottom = bottom),
@@ -104,7 +99,8 @@ fun PhoneSettings(
                         PageStyle -> StylePage(theme)
                         PageMode -> ModePage(theme)
                         PageColor -> Panel { ColorStudio(theme, LocalDarkTheme.current) }
-                        PageTune -> TunePage(theme, effects, onEffects)
+                        PageTune -> TunePage(theme)
+                        PageMotion -> MotionPage(theme)
                         else -> DisplayPage(theme)
                     }
                 }
@@ -112,8 +108,6 @@ fun PhoneSettings(
         }
     }
 }
-
-// ---- The list --------------------------------------------------------------------------------------------------------------
 
 @Composable
 private fun SettingsList(
@@ -139,7 +133,8 @@ private fun SettingsList(
             NavRow(OneIcon.Fill, Violet, R.string.style_mode, stringResource(p.look.label)) { onPage(PageStyle) }
             NavRow(OneIcon.Sun, Indigo, R.string.theme_mode, stringResource(p.mode.label)) { onPage(PageMode) }
             NavRow(OneIcon.Star, Pink, R.string.color_row, stringResource(p.accent.label), dot = c.accent) { onPage(PageColor) }
-            NavRow(OneIcon.Settings, Teal, R.string.glass_title, "${(p.glassDensity * 100f).roundToInt()}%", last = true) { onPage(PageTune) }
+            NavRow(OneIcon.Settings, Teal, R.string.glass_title, if (p.glass) "${(p.glassDensity * 100f).roundToInt()}%" else stringResource(R.string.value_off)) { onPage(PageTune) }
+            NavRow(OneIcon.Forward, Orange, R.string.settings_transition, stringResource(p.transition.label), last = true) { onPage(PageMotion) }
         }
         Group(R.string.settings_screen) {
             NavRow(OneIcon.Channels, Green, R.string.display_mode, stringResource(p.display.label)) { onPage(PageDisplay) }
@@ -173,8 +168,8 @@ private val Pink = Color(0xFFE5547A)
 private val Teal = Color(0xFF2FA4B8)
 private val Green = Color(0xFF3DB26B)
 private val Gray = Color(0xFF8A8D96)
+private val Orange = Color(0xFFE8833A)
 
-/** A titled group of rows on one glass surface. */
 @Composable
 private fun Group(@StringRes title: Int, rows: @Composable ColumnScope.() -> Unit) {
     val c = LocalColors.current
@@ -199,7 +194,6 @@ private fun Badge(icon: OneIcon, tone: Color) {
     Box(Modifier.size(30.dp).background(tone, RoundedCornerShape(9.dp)), Alignment.Center) { OneIconView(icon, Modifier.size(18.dp)) { Color.White } }
 }
 
-/** Opens a page: the whole row is the target, and tapping it changes nothing by itself. */
 @Composable
 private fun NavRow(icon: OneIcon, tone: Color, @StringRes title: Int, value: String, dot: Color? = null, last: Boolean = false, onClick: () -> Unit) {
     val c = LocalColors.current
@@ -216,7 +210,6 @@ private fun NavRow(icon: OneIcon, tone: Color, @StringRes title: Int, value: Str
     if (!last) Divider()
 }
 
-/** Only the switch itself reacts; a touch on the label does nothing. */
 @Composable
 private fun SwitchRow(icon: OneIcon, tone: Color, @StringRes title: Int, checked: Boolean, last: Boolean = false, onChange: (Boolean) -> Unit) {
     Row(
@@ -230,9 +223,6 @@ private fun SwitchRow(icon: OneIcon, tone: Color, @StringRes title: Int, checked
     if (!last) Divider()
 }
 
-// ---- The pages -------------------------------------------------------------------------------------------------------------
-
-/** Every look, as a miniature of its own screen. Picking one repaints the whole app at once. */
 @Composable
 private fun StylePage(theme: ThemeController) {
     val p = theme.prefs
@@ -251,7 +241,6 @@ private fun StylePage(theme: ThemeController) {
     }
 }
 
-/** Auto / day / night / Amoled, each drawn in the current look's own colours. Auto is split down the middle. */
 @Composable
 private fun ModePage(theme: ThemeController) {
     val p = theme.prefs
@@ -268,6 +257,7 @@ private fun ModePage(theme: ThemeController) {
                             ThemeMode.Light -> mini(day, false, accent, look.cosmic, look.pitch, look.anime)
                             ThemeMode.Dark -> mini(night, true, accent, look.cosmic, look.pitch, look.anime)
                             ThemeMode.Amoled -> mini(look.palette(true, true).let { Palette(Color.Black, it.surface, it.border, it.text, it.dim) }, true, accent, look.cosmic, look.pitch, look.anime)
+                            ThemeMode.Graphite -> mini(GraphitePalette, true, accent, look.cosmic, look.pitch, look.anime)
                             ThemeMode.System -> { mini(day, false, accent, look.cosmic, look.pitch, look.anime); clipRect(left = size.width / 2f) { mini(night, true, accent, look.cosmic, look.pitch, look.anime) } }
                         }
                     }
@@ -278,19 +268,33 @@ private fun ModePage(theme: ThemeController) {
     }
 }
 
-/** Glass: density and depth on one pad (sliders in TV Mode: a remote cannot drag a pad). */
 @Composable
-private fun TunePage(theme: ThemeController, effects: Boolean, onEffects: (Boolean) -> Unit) {
+private fun TunePage(theme: ThemeController) {
+    val p = theme.prefs
     Panel {
-        SettingRow(stringResource(R.string.settings_effects)) { OneSwitch(effects, onEffects) }
-        if (LocalTvMode.current) Column(Modifier.padding(vertical = 8.dp)) { GlassSliders(theme) } else LookPad(theme)
+        SettingRow(stringResource(R.string.settings_effects)) { OneSwitch(p.glass) { theme.update { copy(glass = it) }; theme.save() } }
+        if (p.glass) { if (LocalTvMode.current) Column(Modifier.padding(vertical = 8.dp)) { GlassSliders(theme) } else LookPad(theme) }
     }
 }
 
-/**
- * Auto / phone / TV. TV Mode turns the screen sideways and rescales everything, so choosing it from a phone needs a second tap
- * (the tile asks, and forgets the question after a few seconds).
- */
+@Composable
+private fun MotionPage(theme: ThemeController) {
+    val c = LocalColors.current
+    val p = theme.prefs
+    Panel {
+        PageTransition.entries.forEachIndexed { i, t ->
+            Row(
+                Modifier.fillMaxWidth().press { theme.update { copy(transition = t) }; theme.save() }.padding(horizontal = 16.dp, vertical = 14.dp),
+                Arrangement.spacedBy(12.dp), Alignment.CenterVertically,
+            ) {
+                OneText(stringResource(t.label), OneType.Body, if (t == p.transition) c.accent else c.text, Modifier.weight(1f), 1)
+                if (t == p.transition) OneIconView(OneIcon.Check, Modifier.size(18.dp)) { c.accent }
+            }
+            if (i < PageTransition.entries.lastIndex) Divider()
+        }
+    }
+}
+
 @Composable
 private fun DisplayPage(theme: ThemeController) {
     val p = theme.prefs
@@ -309,9 +313,6 @@ private fun DisplayPage(theme: ThemeController) {
     }
 }
 
-// ---- Pieces ----------------------------------------------------------------------------------------------------------------
-
-/** A choice: a preview over a label. The chosen one gets a ring and a check that spring in. */
 @Composable
 private fun Tile(selected: Boolean, title: String, sub: String?, onClick: () -> Unit, modifier: Modifier, preview: @Composable BoxScope.() -> Unit) {
     val c = LocalColors.current
@@ -332,10 +333,6 @@ private fun Tile(selected: Boolean, title: String, sub: String?, onClick: () -> 
     }
 }
 
-/**
- * A miniature of the Home screen painted from a look's palette: header, a hero card, two cards, the nav bar. Glass: frosted cards
- * over a colour blob and a floating pill; the other looks paint their own.
- */
 private fun DrawScope.mini(pal: Palette, dark: Boolean, accent: Color, cosmic: Boolean = false, pitch: Boolean = false, anime: Boolean = false) {
     val u = size.width / 100f
     val text = pal.text(dark); val dim = pal.dim(dark); val edge = pal.border(dark)
@@ -344,7 +341,7 @@ private fun DrawScope.mini(pal: Palette, dark: Boolean, accent: Color, cosmic: B
     fun edged(x: Float, y: Float, w: Float, h: Float, r: Float) =
         drawRoundRect(edge, Offset(x * u, y * u), Size(w * u, h * u), CornerRadius(r * u), Stroke(0.7f * u))
     drawRect(pal.bg)
-    if (anime) { // Anime: dusk sky, halftone, petals, a slanted title plate, a tilted splash card, covers, a dock of three comic panels
+    if (anime) {
         drawRect(Brush.verticalGradient(listOf(pal.bg, lerp(pal.bg, accent, 0.18f))))
         for (gx in 0..7) for (gy in 0..4) { val r = (1.6f - (gy + (7 - gx)) * 0.16f).coerceAtLeast(0f); if (r > 0.2f) drawCircle(accent.copy(alpha = 0.4f), r * u, Offset((50f + gx * 7f) * u, (4f + gy * 7f) * u)) }
         fun plate(x: Float, y: Float, w: Float, h: Float, fill: Color, shadow: Color) {
@@ -363,7 +360,7 @@ private fun DrawScope.mini(pal: Palette, dark: Boolean, accent: Color, cosmic: B
         for ((px, py) in listOf(22f to 70f, 70f to 66f, 92f to 80f)) drawOval(Color(0xFFFFB7D5), Offset(px * u, py * u), Size(4.5f * u, 2.6f * u))
         return
     }
-    if (pitch) { // Pitch: mown stripes, a scoreboard, a cut-corner big screen, player cards, a pitch dock with the ball
+    if (pitch) {
         for (i in 0 until 8 step 2) drawRect(text.copy(alpha = 0.05f), Offset(0f, i * 14f * u), Size(100f * u, 14f * u))
         drawRect(face, Offset(0f, 0f), Size(100f * u, 17f * u)); drawRect(PitchGold, Offset(38f * u, 16f * u), Size(24f * u, 1f * u))
         box(8f, 6f, 30f, 5f, 1.5f, text); box(72f, 5.5f, 20f, 6f, 1.5f, Color.Black.copy(alpha = 0.45f)); box(75f, 7.4f, 14f, 2.4f, 1f, PitchGold)
@@ -376,7 +373,7 @@ private fun DrawScope.mini(pal: Palette, dark: Boolean, accent: Color, cosmic: B
         drawCircle(Color.White, 3.6f * u, Offset(50f * u, 95f * u)); drawCircle(Color(0xFF14181A), 1.3f * u, Offset(50f * u, 95f * u))
         return
     }
-    if (cosmic) { // Orbit: nebula, a few stars, a planet with its ring between two small ones, a dock with a lifted planet
+    if (cosmic) {
         drawCircle(accent.copy(alpha = 0.35f), 30f * u, Offset(86f * u, 6f * u))
         drawCircle(Color(0xFFB36BFF).copy(alpha = 0.22f), 26f * u, Offset(8f * u, 100f * u))
         for ((x, y) in listOf(14f to 24f, 30f to 12f, 72f to 20f, 90f to 46f, 8f to 56f, 60f to 8f, 84f to 70f, 20f to 80f)) drawCircle(text.copy(alpha = 0.55f), 0.6f * u, Offset(x * u, y * u))
@@ -410,7 +407,6 @@ private fun DrawScope.mini(pal: Palette, dark: Boolean, accent: Color, cosmic: B
     box(14f, 101f, 72f, 11f, 5.5f, face); edged(14f, 101f, 72f, 11f, 5.5f); box(40f, 104.5f, 20f, 4f, 2f, accent.copy(alpha = 0.6f))
 }
 
-/** A device outline for the display tiles: a phone, a TV on its stand, or both for Auto. */
 private fun DrawScope.device(m: DisplayMode, ink: Color) {
     val u = size.width / 100f
     val st = Stroke(2.6f * u, cap = StrokeCap.Round)

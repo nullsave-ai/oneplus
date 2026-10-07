@@ -7,7 +7,6 @@ import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
@@ -58,6 +57,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.oneplus.app.R
 import com.oneplus.app.data.Match
+import com.oneplus.app.data.Kind
 import com.oneplus.app.data.Movie
 import com.oneplus.app.ui.system.*
 import java.util.Calendar
@@ -71,28 +71,15 @@ import kotlin.math.sin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-/*
- * PITCH (ملعب): the fifth look, made for football nights. Everything is stadium:
- *   · Sky/ground: mown stripes under floodlights that breathe (ambient() in OneKit); surfaces are squarer with chalk-line borders.
- *   · Header: a hanging SCOREBOARD with a live LED clock. It folds up out of sight while you scroll down and flips back on the way up.
- *   · Nav: the dock is a top-down PITCH (stripes, touchline, penalty boxes). A real ball sits on it, rolls to the tab you choose,
- *     hops on the way and juggles when idle. Every label stays visible.
- *   · Home: a big-screen hero with sweeping light, matches as scoreboard tickets, films as collectible PLAYER CARDS (tier by rating:
- *     gold / silver / bronze) whose foil shines and tilts as the row scrolls. Sections light up as they reach the middle of the screen.
- *   · Details: a floodlit hero, a stats strip, numbered sections. Pages arrive with a camera pan.
- */
-
 private val Led = TextStyle(fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, fontSize = 18.sp)
 private val Chalk = Color.White.copy(alpha = 0.55f)
-
-// ---- Ball and pitch --------------------------------------------------------------------------------------------------------
 
 private fun DrawScope.ball() {
     val r = size.minDimension / 2f; val ink = Color(0xFF14181A)
     fun at(a: Double, d: Float) = Offset(center.x + r * d * cos(a).toFloat(), center.y + r * d * sin(a).toFloat())
     drawCircle(Color.White, r)
     clipPath(Path().apply { addOval(Rect(center, r)) }) {
-        for (i in 0 until 5) drawCircle(ink, r * 0.2f, at(Math.toRadians(-54.0 + i * 72.0), 0.98f)) // patches on the rim, between the spokes
+        for (i in 0 until 5) drawCircle(ink, r * 0.2f, at(Math.toRadians(-54.0 + i * 72.0), 0.98f))
     }
     val pent = Path().apply {
         for (i in 0 until 5) at(Math.toRadians(-90.0 + i * 72.0), 0.4f).let { if (i == 0) moveTo(it.x, it.y) else lineTo(it.x, it.y) }
@@ -107,15 +94,12 @@ private fun DrawScope.pitchDock() {
     val w = size.width; val h = size.height; val m = 5.dp.toPx(); val st = Stroke(1.2.dp.toPx())
     drawRect(Brush.verticalGradient(listOf(Color(0xFF14573A), Color(0xFF0B3524))))
     val bw = w / 8f
-    for (i in 0 until 8 step 2) drawRect(Color.White.copy(alpha = 0.06f), Offset(i * bw, 0f), Size(bw, h)) // mown stripes
-    drawRoundRect(Chalk, Offset(m, m), Size(w - 2 * m, h - 2 * m), CornerRadius(8.dp.toPx()), st)           // touchline
-    drawRect(Chalk, Offset(m, h * 0.3f), Size(w * 0.1f, h * 0.4f), style = st)                              // penalty boxes
+    for (i in 0 until 8 step 2) drawRect(Color.White.copy(alpha = 0.06f), Offset(i * bw, 0f), Size(bw, h))
+    drawRoundRect(Chalk, Offset(m, m), Size(w - 2 * m, h - 2 * m), CornerRadius(8.dp.toPx()), st)
+    drawRect(Chalk, Offset(m, h * 0.3f), Size(w * 0.1f, h * 0.4f), style = st)
     drawRect(Chalk, Offset(w - m - w * 0.1f, h * 0.3f), Size(w * 0.1f, h * 0.4f), style = st)
 }
 
-// ---- Header ----------------------------------------------------------------------------------------------------------------
-
-/** The LED clock: HH:mm with a colon that blinks. Only this composable recomposes, twice a second. */
 @Composable
 private fun Clock() {
     val t by produceState(System.currentTimeMillis()) { while (true) { value = System.currentTimeMillis(); delay(500) } }
@@ -134,14 +118,14 @@ fun PitchHeader(a: HeaderArgs, modifier: Modifier = Modifier) {
     val morph = s.morph
     val inset = topInset()
     Box(modifier.fillMaxWidth()) {
-        Box( // the board: it hangs from the top edge and folds up when the page scrolls down
+        Box(
             Modifier.padding(top = inset).fillMaxWidth().height(56.dp)
                 .graphicsLayer {
                     val r = max(a.reveal(), morph)
                     transformOrigin = TransformOrigin(0.5f, 0f); rotationX = (1f - r) * 90f; cameraDistance = 16f * density
                 }
                 .background(c.glass)
-                .drawBehind { // touchline with a bright centre mark
+                .drawBehind {
                     drawRect(c.border, Offset(0f, size.height - 1.dp.toPx()), Size(size.width, 1.dp.toPx()))
                     drawRect(PitchGold, Offset(size.width / 2f - 24.dp.toPx(), size.height - 2.dp.toPx()), Size(48.dp.toPx(), 2.dp.toPx()))
                 }
@@ -162,18 +146,16 @@ fun PitchHeader(a: HeaderArgs, modifier: Modifier = Modifier) {
                 a.query, a.onQuery, s.focus, s.close, Modifier.fillMaxSize().padding(start = 16.dp, end = 8.dp).graphicsLayer { alpha = morph },
             )
         }
-        Box(Modifier.fillMaxWidth().height(inset).background(c.glass)) // the status area wears the board's colour, always
+        Box(Modifier.fillMaxWidth().height(inset).background(c.glass))
     }
 }
-
-// ---- Nav -------------------------------------------------------------------------------------------------------------------
 
 private val PitchTabs = listOf(OneIcon.Home to R.string.tab_home, OneIcon.Channels to R.string.tab_channels, OneIcon.Settings to R.string.tab_settings)
 
 @Composable
 fun PitchNav(selected: Int, onSelect: (Int) -> Unit, modifier: Modifier = Modifier) {
     val dir = if (LocalLayoutDirection.current == LayoutDirection.Rtl) -1f else 1f
-    val pos by animateFloatAsState(selected.toFloat(), spring(0.5f, 170f), label = "roll") // under-damped: the ball overshoots and settles
+    val pos by animateFloatAsState(selected.toFloat(), spring(0.5f, 170f), label = "roll")
     val hop = remember { Animatable(1f) }
     LaunchedEffect(selected) { hop.snapTo(0f); hop.animateTo(1f, tween(560)) }
     val juggle = rememberInfiniteTransition(label = "juggle").animateFloat(0f, 1f, infiniteRepeatable(tween(900, easing = LinearEasing)), label = "j")
@@ -189,7 +171,7 @@ fun PitchNav(selected: Int, onSelect: (Int) -> Unit, modifier: Modifier = Modifi
                 }
             }
         }
-        Box( // the ball's lane: one third of the dock wide, slid by the (springy) tab position
+        Box(
             Modifier.align(Alignment.BottomStart).padding(bottom = 66.dp).fillMaxWidth(1f / 3f).height(34.dp)
                 .graphicsLayer { translationX = pos * size.width * dir },
             Alignment.Center,
@@ -205,16 +187,12 @@ fun PitchNav(selected: Int, onSelect: (Int) -> Unit, modifier: Modifier = Modifi
     }
 }
 
-// ---- Home ------------------------------------------------------------------------------------------------------------------
-
-/** Where a row item sits against the middle of its row, in item widths (0 = centred). */
 private fun LazyListState.at(key: Any): Float {
     val i = layoutInfo
     val v = i.visibleItemsInfo.firstOrNull { x -> x.key == key } ?: return 0f
     return ((v.offset + v.size / 2f) - (i.viewportStartOffset + i.viewportEndOffset) / 2f) / v.size
 }
 
-/** Floodlights: a section is bright in the middle of the screen and dims toward the edges. */
 internal fun Modifier.spot(state: LazyListState, key: Any): Modifier = graphicsLayer {
     val i = state.layoutInfo
     val v = i.visibleItemsInfo.firstOrNull { x -> x.key == key } ?: return@graphicsLayer
@@ -246,20 +224,22 @@ fun PitchHome(a: HomeArgs) {
                 items(resume, key = { it.id }) { m -> ResumeCard(m, a.lib.fraction(m.id), Modifier.width(200.dp).edgeFx(row, m.id)) { a.onMovie(m.id) } }
             }
         }
-        if (d.movies.isNotEmpty()) item(key = "movies") {
-            Lineup(3, R.string.sec_movies, a.onAllMovies, Modifier.reveal(3, seen).spot(a.list, "movies")) { row ->
-                items(d.movies.take(10), key = { it.id }) { m -> PlayerCard(m, row) { a.onMovie(m.id) } }
+        Kind.entries.forEach { k ->
+            val shelf = d.movies.filter { it.kind == k }
+            if (shelf.isNotEmpty()) item(key = k.name) {
+                Lineup(3 + k.ordinal, k.title, { a.onAll(k) }, Modifier.reveal(3 + k.ordinal, seen).spot(a.list, k.name)) { row ->
+                    items(shelf.take(10), key = { it.id }) { m -> PlayerCard(m, row) { a.onMovie(m.id) } }
+                }
             }
         }
         if (d.channels.isNotEmpty()) item(key = "channels") {
-            Lineup(4, R.string.sec_channels, a.onAllChannels, Modifier.reveal(4, seen).spot(a.list, "channels")) { _ ->
+            Lineup(6, R.string.sec_channels, a.onAllChannels, Modifier.reveal(6, seen).spot(a.list, "channels")) { _ ->
                 items(d.channels.take(12), key = { it.id }) { ch -> ChannelTile(ch) { a.onChannel(ch.id) } }
             }
         }
     }
 }
 
-/** A numbered heading: a gold shirt-number square, the title, a dashed touchline. Shared with the details page. */
 @Composable
 internal fun PitchHead(n: Int, @StringRes title: Int, modifier: Modifier = Modifier, trailing: (@Composable () -> Unit)? = null) {
     val c = LocalColors.current
@@ -283,7 +263,6 @@ private fun Lineup(n: Int, @StringRes title: Int, onAll: (() -> Unit)?, modifier
     }
 }
 
-/** A match as a scoreboard ticket: competition, the two crests around a gold LED kick-off time, the channel. Live ones glow red. */
 @Composable
 private fun ScoreCard(m: Match, modifier: Modifier, onClick: () -> Unit) {
     val c = LocalColors.current
@@ -311,10 +290,6 @@ private fun ScoreCard(m: Match, modifier: Modifier, onClick: () -> Unit) {
     }
 }
 
-/**
- * A film as a collectible player card. Its tier follows the rating (gold from 8, silver from 6.5, bronze below), the big number
- * is the rating, and a band of foil crosses the card as the row scrolls while the card tilts toward the middle.
- */
 @Composable
 private fun PlayerCard(m: Movie, row: LazyListState, onClick: () -> Unit) {
     val c = LocalColors.current
@@ -334,7 +309,7 @@ private fun PlayerCard(m: Movie, row: LazyListState, onClick: () -> Unit) {
             .press(onClick).clip(shape).background(Brush.verticalGradient(tier)).border(1.dp, Color.White.copy(alpha = 0.5f), shape)
             .drawWithContent {
                 drawContent()
-                val x = size.width * (0.5f + row.at(m.id) * 1.1f * dir) // the foil band follows the card's place in the row
+                val x = size.width * (0.5f + row.at(m.id) * 1.1f * dir)
                 drawRect(Brush.linearGradient(listOf(Color.White.copy(alpha = 0f), Color.White.copy(alpha = 0.38f), Color.White.copy(alpha = 0f)), Offset(x - 70.dp.toPx(), 0f), Offset(x + 20.dp.toPx(), size.height * 0.7f)))
             },
     ) {
@@ -353,7 +328,6 @@ private fun PlayerCard(m: Movie, row: LazyListState, onClick: () -> Unit) {
     }
 }
 
-/** The big screen: wide cut-corner cards with a band of light sweeping across, the artwork and the text sliding against each other. */
 @Composable
 private fun BigScreen(movies: List<Movie>, a: HomeArgs, modifier: Modifier) {
     val c = LocalColors.current
@@ -370,7 +344,7 @@ private fun BigScreen(movies: List<Movie>, a: HomeArgs, modifier: Modifier) {
             pager, Modifier.fillMaxWidth(), contentPadding = PaddingValues(horizontal = 16.dp), pageSpacing = 12.dp, key = { movies[it].id },
         ) { i ->
             val m = movies[i]
-            val at = { ((i - pager.currentPage) - pager.currentPageOffsetFraction) * dir } // physical: > 0 = to the right of the middle
+            val at = { ((i - pager.currentPage) - pager.currentPageOffsetFraction) * dir }
             val progress = a.lib.fraction(m.id).takeIf { m.id in a.lib.progress }
             Box(
                 Modifier.fillMaxWidth().height(240.dp).graphicsLayer { val k = 1f - 0.07f * abs(at()).coerceAtMost(1f); scaleX = k; scaleY = k; alpha = 1f - 0.5f * abs(at()).coerceAtMost(1f) }
@@ -379,13 +353,13 @@ private fun BigScreen(movies: List<Movie>, a: HomeArgs, modifier: Modifier) {
                 OneText(m.title.take(1), OneType.SerifHero.copy(fontSize = 150.sp, lineHeight = 160.sp), Color.White.copy(alpha = 0.12f), Modifier.align(Alignment.Center))
                 if (m.backdrop.isNotBlank()) RemoteImage(m.backdrop, Modifier.matchParentSize().graphicsLayer { translationX = -at() * size.width * 0.25f; scaleX = 1.35f; scaleY = 1.35f })
                 Box(Modifier.matchParentSize().background(shade).drawBehind {
-                    val x = size.width * sweep.value // the band of light
-                    drawRect(Brush.linearGradient(colors = listOf(Color.White.copy(alpha = 0f), Color.White.copy(alpha = 0.16f), Color.White.copy(alpha = 0f)), start = Offset(x - 90.dp.toPx(), 0f), end = Offset(x + 40.dp.toPx(), size.height)))
+                    val x = size.width * sweep.value
+                    drawRect(Brush.linearGradient(listOf(Color.White.copy(alpha = 0f), Color.White.copy(alpha = 0.16f), Color.White.copy(alpha = 0f)), Offset(x - 90.dp.toPx(), 0f), Offset(x + 40.dp.toPx(), size.height)))
                 })
                 OneText(stringResource(R.string.featured), OneType.Caption, Color.White, Modifier.align(Alignment.TopStart).padding(start = 40.dp, top = 14.dp).background(PitchRed, CutCornerShape(topStart = 8.dp, bottomEnd = 8.dp)).padding(horizontal = 10.dp, vertical = 3.dp))
                 OneText(String.format(Locale.US, "%.1f", m.rating), Led.copy(fontSize = 26.sp), PitchGold, Modifier.align(Alignment.TopEnd).padding(14.dp).background(Color.Black.copy(alpha = 0.45f), RoundedCornerShape(8.dp)).padding(horizontal = 10.dp, vertical = 4.dp))
                 Column(
-                    Modifier.align(Alignment.BottomStart).padding(start = 22.dp, end = 22.dp, bottom = 20.dp).graphicsLayer { translationX = at() * size.width * 0.35f }, // text moves against the art
+                    Modifier.align(Alignment.BottomStart).padding(start = 22.dp, end = 22.dp, bottom = 20.dp).graphicsLayer { translationX = at() * size.width * 0.35f },
                     Arrangement.spacedBy(6.dp),
                 ) {
                     OneText(m.title, OneType.Display.copy(shadow = Shadow(Color.Black, blurRadius = 12f)), Color.White, maxLines = 1)
@@ -400,7 +374,7 @@ private fun BigScreen(movies: List<Movie>, a: HomeArgs, modifier: Modifier) {
                 }
             }
         }
-        if (n > 1) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { // shirt numbers
+        if (n > 1) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             repeat(n) { j ->
                 val on = j == pager.currentPage
                 Box(
@@ -413,9 +387,6 @@ private fun BigScreen(movies: List<Movie>, a: HomeArgs, modifier: Modifier) {
     }
 }
 
-// ---- Details ---------------------------------------------------------------------------------------------------------------
-
-/** The details hero: the artwork under floodlights, parallax, a gold rating and the title on the pitch. */
 @Composable
 internal fun PitchHero(m: Movie, duration: String, height: androidx.compose.ui.unit.Dp, scroll: ScrollState) {
     val c = LocalColors.current
@@ -444,7 +415,6 @@ internal fun PitchHero(m: Movie, duration: String, height: androidx.compose.ui.u
     }
 }
 
-/** Match-stats strip: rating with a gold bar, year, minutes. */
 @Composable
 internal fun PitchStats(m: Movie, modifier: Modifier = Modifier) {
     val c = LocalColors.current

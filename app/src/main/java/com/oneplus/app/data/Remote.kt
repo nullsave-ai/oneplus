@@ -11,16 +11,13 @@ import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 
-/** Address of the panel's api.php (e.g. "https://example.com/panel/api.php"). Blank = the built-in sample data. */
-const val ApiUrl = ""
+const val ApiUrl = "https://apklive-default-rtdb.firebaseio.com/catalog.json"
 
 private const val MaxBytes = 5_000_000
 
-/** The catalogue comes from the panel's api.php; when it cannot be reached the sample data is shown instead. */
 class RemoteRepository(private val url: String) : HomeRepository {
-    override val config: Flow<AppConfig> = kotlinx.coroutines.flow.flowOf(AppConfig())
     override val data: Flow<HomeData> = flow {
-        emit(runCatching { parse(JSONObject(download() ?: error("empty"))) }.getOrNull() ?: RemoteFeedRepository().data.first())
+        emit(runCatching { parse(JSONObject(download() ?: error("empty"))) }.getOrNull() ?: SampleRepository().data.first())
     }.flowOn(Dispatchers.IO)
 
     private fun download(): String? {
@@ -55,21 +52,34 @@ class RemoteRepository(private val url: String) : HomeRepository {
             },
             movies = j.optJSONArray("movies").objs().mapIndexedNotNull { i, o ->
                 val u = o.optString("url")
-                if (!isAllowed(u.substringBefore('|').trim()) && !u.trimStart().startsWith("url", true)) return@mapIndexedNotNull null
+                val eps = o.optJSONArray("episodes").objs().mapNotNull { e -> e.optString("url").takeIf { playable(it) }?.let { Episode(e.optString("title"), it) } }
+                if (eps.isEmpty() && !playable(u)) return@mapIndexedNotNull null
                 Movie(o.optInt("id", i), o.optString("title"), o.optInt("year"), o.optDouble("rating", 0.0).toFloat(), o.optInt("duration"),
                     o.optJSONArray("genres").strings(), o.optString("synopsis"), o.optString("director"), o.optJSONArray("cast").strings(),
-                    u, o.optString("backdrop"))
+                    u, o.optString("backdrop"), Kind.entries.firstOrNull { it.name.equals(o.optString("kind"), true) } ?: Kind.Film, eps)
             },
             channels = j.optJSONArray("channels").objs().mapIndexedNotNull { i, o ->
                 val u = o.optString("url")
-                if (!isAllowed(u.substringBefore('|').trim()) && !u.trimStart().startsWith("url", true)) return@mapIndexedNotNull null
+                if (!playable(u)) return@mapIndexedNotNull null
                 val g = o.optString("group")
                 val n = (perGroup[g] ?: 0) + 1
                 perGroup[g] = n
                 Channel(o.optInt("id", i), o.optString("name"), u, g, n, o.optString("logo"))
             },
+            update = j.optJSONObject("app_config")?.let { c ->
+                AppUpdate(
+                    minVersionCode = c.optInt("min_version_code", 1),
+                    latestVersionCode = c.optInt("latest_version_code", 1),
+                    updateUrl = c.optString("update_url"),
+                    updateTitle = c.optString("update_title"),
+                    updateMessage = c.optString("update_message"),
+                    forceUpdate = c.optBoolean("force_update", false),
+                )
+            },
         )
     }
+
+    private fun playable(u: String) = isAllowed(u.substringBefore('|').trim()) || u.trimStart().startsWith("url", true)
 
     private fun JSONArray?.objs(): List<JSONObject> = if (this == null) emptyList() else (0 until length()).mapNotNull { optJSONObject(it) }
     private fun JSONArray?.strings(): List<String> = if (this == null) emptyList() else (0 until length()).map { optString(it) }.filter { it.isNotBlank() }

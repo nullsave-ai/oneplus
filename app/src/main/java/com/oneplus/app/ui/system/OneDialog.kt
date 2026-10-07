@@ -19,13 +19,6 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 
-/**
- * App-style dialog: dimmed scrim, one card that springs in. Back or a tap outside = [onDismiss].
- * The card is a SOLID surface (not glass): a dialog is read on top of whatever page happens to be behind it, and any
- * translucency lets that page show through the text.
- *
- * [content] gets `leave`: run any action through it (`leave(onConfirm)`) so the card animates out before the action fires.
- */
 @Composable
 fun OneDialog(onDismiss: () -> Unit, content: @Composable ColumnScope.(leave: (() -> Unit) -> Unit) -> Unit) {
     val c = LocalColors.current
@@ -44,9 +37,31 @@ fun OneDialog(onDismiss: () -> Unit, content: @Composable ColumnScope.(leave: ((
         Column(
             Modifier.padding(24.dp).widthIn(max = 360.dp).fillMaxWidth()
                 .graphicsLayer { val s = 0.9f + 0.1f * p.value; scaleX = s; scaleY = s }
-                .pointerInput(Unit) { detectTapGestures { } } // taps on the card itself must not dismiss it
+                .pointerInput(Unit) { detectTapGestures { } }
                 .clip(card).background(c.glass).border(0.5.dp, c.border, card).padding(24.dp),
             Arrangement.spacedBy(12.dp), Alignment.CenterHorizontally,
         ) { content(leave) }
+    }
+}
+
+@Composable
+fun ForceUpdateDialog(title: String, message: String, onUpdate: () -> Unit) {
+    val c = LocalColors.current
+    val card = RoundedCornerShape(28.dp)
+    BackHandler { }
+    Box(
+        Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.88f))
+            .pointerInput(Unit) { detectTapGestures { } },
+        Alignment.Center,
+    ) {
+        Column(
+            Modifier.padding(24.dp).widthIn(max = 380.dp).fillMaxWidth()
+                .clip(card).background(c.bg).border(1.dp, c.accent, card).padding(24.dp),
+            Arrangement.spacedBy(16.dp), Alignment.CenterHorizontally,
+        ) {
+            OneText(title, OneType.Title, c.text)
+            OneText(message, OneType.Body, c.dim)
+            OneButton("تحديث الآن", OneIcon.Next, onUpdate, Modifier.fillMaxWidth())
+        }
     }
 }

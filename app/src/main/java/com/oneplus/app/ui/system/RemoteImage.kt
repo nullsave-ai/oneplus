@@ -17,10 +17,6 @@ import java.io.ByteArrayOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
 
-/**
- * Tiny image loader (no library): http(s) only, 4 MB cap, decoded down to the size it is drawn at, kept in a memory LRU
- * (1/16 of the heap). Shows nothing until the picture is there, so whatever is drawn behind it acts as the placeholder.
- */
 @Composable
 fun RemoteImage(url: String, modifier: Modifier = Modifier, contentScale: ContentScale = ContentScale.Crop) {
     val bitmap by produceState<Bitmap?>(Images.cached(url), url) {
@@ -41,9 +37,11 @@ private object Images {
     suspend fun load(url: String): Bitmap? = withContext(Dispatchers.IO) {
         lru.get(url) ?: runCatching {
             val c = URL(url).openConnection() as HttpURLConnection
+            c.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 15; K) AppleWebKit/537.36")
+            c.instanceFollowRedirects = true
             val bytes = try {
                 c.connectTimeout = 8_000; c.readTimeout = 10_000
-                if (c.responseCode != 200) return@runCatching null
+                if (c.responseCode !in 200..299) return@runCatching null
                 c.inputStream.use { s ->
                     val out = ByteArrayOutputStream()
                     val buf = ByteArray(8192)

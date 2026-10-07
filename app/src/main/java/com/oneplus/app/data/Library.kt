@@ -6,18 +6,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 
-private const val MaxResume = 20          // how many unfinished movies are remembered
-private const val MinResumeMs = 15_000L   // a few seconds in is not "watching"
-private const val DoneFraction = 0.95f    // past this the movie counts as finished
+private const val MaxResume = 20
+private const val MinResumeMs = 15_000L
+private const val DoneFraction = 0.95f
 
-/**
- * The viewer's own data, kept on the device: "قائمتي" and where each unfinished movie stopped (the watch history).
- * Only movie ids and positions are stored (never URLs); both are small, so a plain string per key is enough.
- */
 @Stable
 class Library(private val sp: SharedPreferences) {
     var list by mutableStateOf(ids("list")); private set
-    /** Movie id -> (position, duration) in ms, for movies stopped part-way. Newest first. */
     var progress by mutableStateOf(readProgress()); private set
 
     fun toggle(id: Int) {

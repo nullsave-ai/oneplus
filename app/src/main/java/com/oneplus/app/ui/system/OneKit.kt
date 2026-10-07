@@ -46,8 +46,7 @@ import kotlin.math.cos
 import kotlin.math.roundToInt
 import kotlin.math.sin
 
-// ---- Tokens -------------------------------------------------------------
-val LocalGlassEffects = staticCompositionLocalOf { true }
+val LocalSolid = staticCompositionLocalOf { false }
 
 object OneType {
     val Display = TextStyle(fontSize = 30.sp, fontWeight = FontWeight.Bold)
@@ -55,7 +54,6 @@ object OneType {
     val Section = TextStyle(fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
     val Body = TextStyle(fontSize = 15.sp)
     val Caption = TextStyle(fontSize = 12.sp)
-    /** Editorial headlines (serif; no letter-spacing, which would break Arabic joins). */
     val Serif = TextStyle(fontSize = 22.sp, fontWeight = FontWeight.SemiBold, fontFamily = FontFamily.Serif)
     val SerifHero = TextStyle(fontSize = 30.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Serif, lineHeight = 38.sp)
 }
@@ -65,11 +63,11 @@ fun OneText(text: String, style: TextStyle, color: Color, modifier: Modifier = M
     BasicText(text, modifier, style.copy(color = color), overflow = TextOverflow.Ellipsis, maxLines = maxLines)
 }
 
-// ---- Background / Glass / Press ----------------------------------------
 @Composable
 fun Modifier.ambient(): Modifier {
     val c = LocalColors.current
-    if (LocalLook.current.anime) { // Anime: dusk sky, a halftone screentone in the corner, petals that drift down and sway
+    if (LocalSolid.current) return background(c.bg)
+    if (LocalLook.current.anime) {
         val fall = rememberInfiniteTransition(label = "petals").animateFloat(0f, 1f, infiniteRepeatable(tween(26000, easing = LinearEasing)), label = "t")
         val petals = remember { val r = kotlin.random.Random(5); List(16) { floatArrayOf(r.nextFloat(), r.nextFloat(), (1 + r.nextInt(2)).toFloat(), r.nextFloat() * 6.28f, 0.7f + r.nextFloat() * 0.7f) } }
         val dusk = remember(c) { Brush.verticalGradient(listOf(c.bg, lerp(c.bg, c.accent, 0.14f))) }
@@ -86,7 +84,7 @@ fun Modifier.ambient(): Modifier {
             }
         }
     }
-    if (LocalLook.current.pitch) { // Pitch: mown stripes under stadium floodlights that breathe
+    if (LocalLook.current.pitch) {
         val breath = rememberInfiniteTransition(label = "lights").animateFloat(0.55f, 1f, infiniteRepeatable(tween(3600, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "b")
         return background(c.bg).drawBehind {
             val band = 76.dp.toPx(); var y = 0f
@@ -94,7 +92,7 @@ fun Modifier.ambient(): Modifier {
             if (c.bg != Color.Black) floodlights(breath.value * (if (c.bg.luminance() < 0.2f) 1f else 0.35f))
         }
     }
-    if (LocalLook.current.cosmic) return background(c.bg).drawWithCache { // Orbit: a nebula and a fixed star field
+    if (LocalLook.current.cosmic) return background(c.bg).drawWithCache {
         val night = c.bg.luminance() < 0.2f
         val glowA = Brush.radialGradient(listOf(c.accent.copy(alpha = if (night) 0.20f else 0.10f), c.accent.copy(alpha = 0f)),
             Offset(size.width * 0.9f, 0f), size.maxDimension * 0.75f)
@@ -108,45 +106,40 @@ fun Modifier.ambient(): Modifier {
         }
     }
     return background(c.bg).drawWithCache {
-        // Fade to the same colour at alpha 0: fading to Color.Transparent (= transparent BLACK) is interpolated through gray
-        // and leaves a dirty halo, most visible in day mode.
         val b = Brush.radialGradient(listOf(c.ambient.copy(alpha = 0.16f), c.ambient.copy(alpha = 0f)),
             Offset(size.width * 0.85f, 0f), size.maxDimension * 0.7f)
-        onDrawBehind { drawRect(b); if (c.bg != Color.Black) drawDither() } // pure black (Amoled) must stay pure: dither would light the pixels
+        onDrawBehind { drawRect(b); if (c.bg != Color.Black) drawDither() }
     }
 }
 
-private val GlassAlpha = floatArrayOf(0.40f, 0.55f, 0.70f, 0.88f) // Glass 1..4
-internal val Sheen = Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.10f), Color.White.copy(alpha = 0f))) // same hue at both ends
+private val GlassAlpha = floatArrayOf(0.40f, 0.55f, 0.70f, 0.88f)
+internal val Sheen = Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.10f), Color.White.copy(alpha = 0f)))
 
-/**
- * Translucent tint + sheen + hairline border. Real backdrop blur is not applied (see README note).
- * The user's [GlassStyle] scales it: density = how solid the tint is; depth = how strong the sheen and the edge are, and above 1
- * the surface also lifts off the page with a soft shadow.
- */
 @Composable
 fun Modifier.glass(level: Int, radius: Dp): Modifier {
     val c = LocalColors.current
-    val fx = LocalGlassEffects.current
-    val g = LocalGlassStyle.current
     val k = LocalLook.current
-    if (k.anime) { // Anime: a sticker: flat fill, thick ink outline, hard offset shadow in the accent colour
+    if (LocalSolid.current) {
+        val s = RoundedCornerShape(if (k.pitch) minOf(radius, 12.dp) else radius)
+        return clip(s).background(if (level >= 3) c.bar else c.glass).border(0.5.dp, c.border, s)
+    }
+    val g = LocalGlassStyle.current
+    if (k.anime) {
         val s = RoundedCornerShape(minOf(radius, 16.dp))
         return drawBehind { drawRoundRect(c.accent.copy(alpha = 0.7f), Offset(3.dp.toPx(), 3.dp.toPx()), size, CornerRadius(minOf(radius, 16.dp).toPx())) }
             .clip(s).background(c.glass).border(2.dp, c.border, s)
     }
-    val shape = RoundedCornerShape(if (k.pitch) minOf(radius, 12.dp) else radius) // Pitch: squarer, like a kit badge
+    val shape = RoundedCornerShape(if (k.pitch) minOf(radius, 12.dp) else radius)
     val sheen = remember(g.depth) { Brush.verticalGradient(listOf(Color.White.copy(alpha = (0.10f * g.depth).coerceIn(0f, 1f)), Color.White.copy(alpha = 0f))) }
     val edge = c.border.copy(alpha = (c.border.alpha * g.depth).coerceIn(0f, 1f))
-    val tint = ((if (fx) GlassAlpha[level - 1] else 0.94f) * g.density).coerceIn(0f, 1f)
-    val lift = if (fx && g.depth > 1f) drawBehind { softShadow(CornerRadius(radius.toPx()), (g.depth - 1f) * 3f) } else this
-    val base = lift.clip(shape).background(c.glass.copy(alpha = tint))
-    val face = if (fx) base.background(sheen) else base
-    if (k.cosmic) { // Orbit: the edge is a lit rim, brighter where the light hits
+    val tint = (GlassAlpha[level - 1] * g.density).coerceIn(0f, 1f)
+    val lift = if (g.depth > 1f) drawBehind { softShadow(CornerRadius(radius.toPx()), (g.depth - 1f) * 3f) } else this
+    val face = lift.clip(shape).background(c.glass.copy(alpha = tint)).background(sheen)
+    if (k.cosmic) {
         val rim = remember(c.accent) { Brush.linearGradient(listOf(c.accent.copy(alpha = 0.75f), c.accent.copy(alpha = 0.08f), NebulaViolet.copy(alpha = 0.45f))) }
         return face.border(1.dp, rim, shape)
     }
-    return face.border(if (k.pitch) 1.dp else 0.5.dp, edge, shape) // Pitch: chalk-line border
+    return face.border(if (k.pitch) 1.dp else 0.5.dp, edge, shape)
 }
 
 private val NebulaViolet = Color(0xFFB36BFF)
@@ -155,7 +148,6 @@ internal val PitchRed = Color(0xFFFF3B30)
 internal val Sakura = Color(0xFFFFB7D5)
 internal val AnimeYellow = Color(0xFFFFD84D)
 
-/** Two cones of stadium light falling from the top corners, and a bright bulb at each. */
 internal fun DrawScope.floodlights(a: Float) {
     val w = size.width; val h = size.height
     for (left in booleanArrayOf(true, false)) {
@@ -166,7 +158,6 @@ internal fun DrawScope.floodlights(a: Float) {
     }
 }
 
-/** Press physics (no ripple): scale down, spring back. */
 @Composable
 fun Modifier.press(onClick: () -> Unit): Modifier {
     val src = remember { MutableInteractionSource() }
@@ -175,15 +166,10 @@ fun Modifier.press(onClick: () -> Unit): Modifier {
     val tv = LocalTvMode.current
     val click by rememberUpdatedState(onClick)
     return graphicsLayer { scaleX = s; scaleY = s }.tvFocusRing(src).tvLockable()
-        // a gamepad's A button is "OK" too (the remote's centre / Enter is already handled by clickable)
         .then(if (tv) Modifier.onKeyEvent { e -> (e.key == Key.ButtonA).also { if (it && e.type == KeyEventType.KeyUp) click() } } else Modifier)
         .clickable(src, null, onClick = onClick)
 }
 
-/**
- * Entrance for a home section: it fades up once, staggered by [index]. [seen] remembers which ones already played, so a section
- * that scrolls out and back in does not play again (the set dies with the page, so coming back to the tab plays it anew).
- */
 @Composable
 fun Modifier.reveal(index: Int, seen: MutableSet<Int>): Modifier {
     val done = index in seen
@@ -192,10 +178,6 @@ fun Modifier.reveal(index: Int, seen: MutableSet<Int>): Modifier {
     return graphicsLayer { alpha = p.value; translationY = (1f - p.value) * 32.dp.toPx() }
 }
 
-/**
- * A card sliding off either end of its row shrinks and fades a little, so the row seems to curve away from the finger.
- * [key] is the item's key in [state]. Reads the row's layout in the draw phase only: scrolling never recomposes.
- */
 fun Modifier.edgeFx(state: LazyListState, key: Any): Modifier = graphicsLayer {
     val info = state.layoutInfo
     val item = info.visibleItemsInfo.firstOrNull { it.key == key } ?: return@graphicsLayer
@@ -205,7 +187,6 @@ fun Modifier.edgeFx(state: LazyListState, key: Any): Modifier = graphicsLayer {
     scaleX = k; scaleY = k; alpha = 1f - 0.45f * f
 }
 
-// ---- Icons (custom, 24dp grid, 1.75 stroke) ------------------------------
 enum class OneIcon { Home, Channels, Settings, Search, Close, Back, Next, Play, Pause, Plus, Check, Star, Replay, Forward, Sun, Volume, Mute, Fit, Fill, Expand, Shrink, Filter, Cc, Wave, Send }
 
 @Composable
@@ -233,11 +214,11 @@ fun OneIconView(icon: OneIcon, modifier: Modifier = Modifier, tint: () -> Color)
             }
             OneIcon.Close -> { line(6f, 6f, 18f, 18f); line(18f, 6f, 6f, 18f) }
             OneIcon.Search -> { drawCircle(color, 6f * k, o(11f, 11f), style = st); line(15.5f, 15.5f, 20f, 20f) }
-            OneIcon.Back -> { // chevron pointing "back" for the current layout direction
+            OneIcon.Back -> {
                 fun mx(x: Float) = (if (rtl) 24f - x else x) * k
                 drawPath(Path().apply { moveTo(mx(15f), 5.5f * k); lineTo(mx(8.5f), 12f * k); lineTo(mx(15f), 18.5f * k) }, color, style = st)
             }
-            OneIcon.Next -> { // chevron pointing "forward" for the current layout direction
+            OneIcon.Next -> {
                 fun mx(x: Float) = (if (rtl) x else 24f - x) * k
                 drawPath(Path().apply { moveTo(mx(15f), 5.5f * k); lineTo(mx(8.5f), 12f * k); lineTo(mx(15f), 18.5f * k) }, color, style = st)
             }
@@ -245,7 +226,7 @@ fun OneIconView(icon: OneIcon, modifier: Modifier = Modifier, tint: () -> Color)
                 drawRoundRect(color, o(6.6f, 5.5f), Size(3.8f * k, 13f * k), CornerRadius(1.4f * k))
                 drawRoundRect(color, o(13.6f, 5.5f), Size(3.8f * k, 13f * k), CornerRadius(1.4f * k))
             }
-            OneIcon.Replay, OneIcon.Forward -> { // open circle arrow (counter-clockwise / clockwise)
+            OneIcon.Replay, OneIcon.Forward -> {
                 val mirror = icon == OneIcon.Replay
                 fun px(x: Float) = (if (mirror) 24f - x else x) * k
                 val cx = 12f; val cy = 12.8f; val r = 7.6f
@@ -260,8 +241,8 @@ fun OneIconView(icon: OneIcon, modifier: Modifier = Modifier, tint: () -> Color)
                 drawPath(arc, color, style = st)
                 val ae = Math.toRadians(225.0)
                 val tipX = cx + r * cos(ae).toFloat(); val tipY = cy + r * sin(ae).toFloat()
-                val tx = -sin(ae).toFloat(); val ty = cos(ae).toFloat() // clockwise tangent at the tip
-                val nx = cos(ae).toFloat(); val ny = sin(ae).toFloat()  // radial direction
+                val tx = -sin(ae).toFloat(); val ty = cos(ae).toFloat()
+                val nx = cos(ae).toFloat(); val ny = sin(ae).toFloat()
                 val d = 3.4f
                 drawPath(Path().apply {
                     moveTo(px(tipX - tx * d + nx * d), (tipY - ty * d + ny * d) * k)
@@ -292,10 +273,10 @@ fun OneIconView(icon: OneIcon, modifier: Modifier = Modifier, tint: () -> Color)
             OneIcon.Expand, OneIcon.Shrink -> {
                 fun corner(x1: Float, y1: Float, x2: Float, y2: Float, x3: Float, y3: Float) =
                     drawPath(Path().apply { moveTo(x1 * k, y1 * k); lineTo(x2 * k, y2 * k); lineTo(x3 * k, y3 * k) }, color, style = st)
-                if (icon == OneIcon.Expand) { // corners point outwards
+                if (icon == OneIcon.Expand) {
                     corner(4f, 9f, 4f, 4f, 9f, 4f); corner(15f, 4f, 20f, 4f, 20f, 9f)
                     corner(20f, 15f, 20f, 20f, 15f, 20f); corner(9f, 20f, 4f, 20f, 4f, 15f)
-                } else { // corners point inwards
+                } else {
                     corner(4f, 9f, 9f, 9f, 9f, 4f); corner(15f, 4f, 15f, 9f, 20f, 9f)
                     corner(20f, 15f, 15f, 15f, 15f, 20f); corner(9f, 20f, 9f, 15f, 4f, 15f)
                 }
@@ -315,9 +296,9 @@ fun OneIconView(icon: OneIcon, modifier: Modifier = Modifier, tint: () -> Color)
             }, color, style = st)
             OneIcon.Play -> {
                 val tri = Path().apply { moveTo(8f * k, 5.5f * k); lineTo(19f * k, 12f * k); lineTo(8f * k, 18.5f * k); close() }
-                drawPath(tri, color); drawPath(tri, color, style = st) // fill + round join = softened corners
+                drawPath(tri, color); drawPath(tri, color, style = st)
             }
-            OneIcon.Send -> { // paper plane: outline + the fold line
+            OneIcon.Send -> {
                 drawPath(Path().apply { moveTo(21f * k, 3f * k); lineTo(14.5f * k, 21f * k); lineTo(10.8f * k, 13.2f * k); lineTo(3f * k, 9.5f * k); close() }, color, style = st)
                 line(21f, 3f, 10.8f, 13.2f)
             }
@@ -333,13 +314,12 @@ fun OneIconView(icon: OneIcon, modifier: Modifier = Modifier, tint: () -> Color)
                     if (i == 0) star.moveTo(x, y) else star.lineTo(x, y)
                 }
                 star.close()
-                drawPath(star, color, style = st) // outline like the rest of the set (a filled yellow star reads as an emoji)
+                drawPath(star, color, style = st)
             }
         }
     }
 }
 
-// ---- Switch (draggable, spring, slight thumb deformation) ---------------
 @Composable
 fun OneSwitch(checked: Boolean, onChange: (Boolean) -> Unit) {
     val c = LocalColors.current
@@ -347,7 +327,7 @@ fun OneSwitch(checked: Boolean, onChange: (Boolean) -> Unit) {
     val p by animateFloatAsState(if (checked) 1f else 0f, spring(0.7f, 600f), label = "switch")
     val off = c.dim.copy(alpha = 0.28f)
     Box(
-        Modifier.size(52.dp, 32.dp).press { onChange(!checked) } // before the clip: the focus glow lives outside the shape
+        Modifier.size(52.dp, 32.dp).press { onChange(!checked) }
             .clip(CircleShape).drawBehind { drawRect(lerp(off, c.active, p)) }
             .pointerInput(checked, rtl) {
                 detectHorizontalDragGestures { change, dx ->
@@ -364,7 +344,6 @@ fun OneSwitch(checked: Boolean, onChange: (Boolean) -> Unit) {
     }
 }
 
-// ---- Segmented control (sliding indicator, same look as the nav blob) ----
 @Composable
 fun OneSegmented(
     labels: List<String>, selected: Int, onSelect: (Int) -> Unit, modifier: Modifier = Modifier,
@@ -394,7 +373,6 @@ fun OneSegmented(
     }
 }
 
-// ---- Slider (gradient track, spring thumb). Always laid out left-to-right so gradients read naturally. ----
 @Composable
 fun OneSlider(
     value: Float, onChange: (Float) -> Unit, onDone: () -> Unit, track: Brush, modifier: Modifier = Modifier,
@@ -412,7 +390,6 @@ fun OneSlider(
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
         Box(
             modifier.fillMaxWidth().height(height).onSizeChanged { w = it.width.toFloat() }
-                // TV Mode: reachable with the D-pad; left / right move the thumb a little, and the value is saved on every step
                 .tvFocusRing(src)
                 .then(
                     if (tv) Modifier.tvLockable().onKeyEvent { e ->
@@ -448,7 +425,6 @@ fun OneSlider(
     }
 }
 
-// ---- Button (primary = solid accent, otherwise glass) ----
 @Composable
 fun OneButton(text: String, icon: OneIcon?, onClick: () -> Unit, modifier: Modifier = Modifier, primary: Boolean = true) {
     val c = LocalColors.current
@@ -464,7 +440,6 @@ fun OneButton(text: String, icon: OneIcon?, onClick: () -> Unit, modifier: Modif
     }
 }
 
-// ---- Chip (single-select filter / tag) ----
 @Composable
 fun OneChip(text: String, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val c = LocalColors.current
@@ -479,7 +454,6 @@ fun OneChip(text: String, selected: Boolean, onClick: () -> Unit, modifier: Modi
     ) { OneText(text, OneType.Body, lerp(c.dim, c.accent, p), maxLines = 1) }
 }
 
-/** Separator dot, drawn (no text glyph). */
 @Composable
 fun OneDot(color: Color, modifier: Modifier = Modifier) {
     Canvas(modifier.size(4.dp)) { drawCircle(color) }

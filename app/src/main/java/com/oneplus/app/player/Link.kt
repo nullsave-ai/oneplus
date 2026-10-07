@@ -7,31 +7,19 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
 
-/** DRM: [licenseUrl] is asked for a license, or [local] already holds a ClearKey response built from keys given in the link. */
 class Drm(val uuid: UUID, val licenseUrl: String?, val local: ByteArray?)
 
-/** A playable link: the media URL plus the request headers and DRM it was given. */
-class Link(val url: String, val headers: Map<String, String>, val drm: Drm?)
+class SubtitleTrack(val url: String, val language: String = "ar", val label: String = "العربية")
+
+class Link(val url: String, val headers: Map<String, String>, val drm: Drm?, val subtitles: List<SubtitleTrack> = emptyList())
 
 private val Schemes = setOf("http", "https", "rtsp", "rtsps")
 
-/** Catalogue data and pasted text are untrusted: only network schemes with a host get through (never file://, content://, data:...). */
 fun isAllowed(u: String): Boolean {
     val uri = runCatching { Uri.parse(u.trim()) }.getOrNull() ?: return false
     return uri.scheme?.lowercase() in Schemes && !uri.host.isNullOrBlank()
 }
 
-/**
- * Two ways to write a link (both give the same result):
- *  1. `URL|option=value&option=value` (the convention IPTV players use). Values may be percent-encoded (use %26 for a literal &).
- *  2. One `name: value` per line (a pasted block):  `url: ...`, `referer: ...`, `userAgent: ...`, `cookies: ...`, `clearKeyId: ...`, `clearKeyVal: ...`
- * Options (names are case-insensitive, `_` and `-` are ignored):
- *  - `User-Agent`, `Referer`, `Origin`, `Cookie` / `Cookies`, any other header name  -> request header (media, keys and license requests)
- *  - `drmScheme`  = widevine | playready | clearkey        (aliases: license_type)
- *  - `drmLicense` = license server URL (widevine/playready/clearkey), or for clearkey: `kid:key[,kid:key...]` in hex, or a ClearKey JSON  (alias: license_key)
- *  - `clearKeyId` + `clearKeyVal` = one ClearKey pair in hex (no scheme needed)
- * Empty values are ignored. Returns null when the URL is not allowed or the DRM part is unusable, so a broken link fails visibly instead of playing wrong.
- */
 fun parseLink(raw: String): Link? {
     val text = raw.trim()
     val parts = Parts()
@@ -54,15 +42,16 @@ fun parseLink(raw: String): Link? {
         }
     }
     if (!isAllowed(base)) return null
-    val scheme = parts.scheme ?: if (parts.kid != null && parts.key != null) "clearkey" else return Link(base, parts.headers, null)
+    val scheme = parts.scheme ?: if (parts.kid != null && parts.key != null) "clearkey" else return Link(base, parts.headers, null, parts.subtitles)
     val license = parts.license ?: "${parts.kid}:${parts.key}"
-    return Link(base, parts.headers, buildDrm(scheme, license) ?: return null)
+    return Link(base, parts.headers, buildDrm(scheme, license) ?: return null, parts.subtitles)
 }
 
 private val BlockStart = Regex("^url\\s*:", RegexOption.IGNORE_CASE)
 
 private class Parts {
     val headers = linkedMapOf<String, String>()
+    val subtitles = mutableListOf<SubtitleTrack>()
     var scheme: String? = null
     var license: String? = null
     var kid: String? = null
@@ -70,16 +59,22 @@ private class Parts {
 
     fun put(name: String, value: String) {
         val k = name.trim()
-        val v = value.trim().filter { it != '\r' && it != '\n' } // no header injection
+        val v = value.trim().filter { it != '\r' && it != '\n' }
         if (k.isEmpty() || v.isEmpty()) return
-        when (k.lowercase().replace("_", "").replace("-", "").replace(" ", "")) {
-            "useragent" -> headers["User-Agent"] = v
-            "referer", "referrer" -> headers["Referer"] = v
-            "cookie", "cookies" -> headers["Cookie"] = v
-            "drmscheme", "licensetype" -> scheme = v.lowercase()
-            "drmlicense", "licensekey" -> license = v
-            "clearkeyid" -> kid = v
-            "clearkeyval", "clearkeyvalue" -> key = v
+        val norm = k.lowercase().replace("_", "").replace("-", "").replace(" ", "")
+        when {
+            norm in setOf("sub", "subtitle", "subar", "subs") -> subtitles.add(SubtitleTrack(v, "ar", "العربية"))
+            norm.startsWith("sub") -> {
+                val lan = norm.removePrefix("sub")
+                subtitles.add(SubtitleTrack(v, lan.ifEmpty { "ar" }, if (lan.startsWith("ar")) "العربية" else lan))
+            }
+            norm == "useragent" -> headers["User-Agent"] = v
+            norm in setOf("referer", "referrer") -> headers["Referer"] = v
+            norm in setOf("cookie", "cookies") -> headers["Cookie"] = v
+            norm in setOf("drmscheme", "licensetype") -> scheme = v.lowercase()
+            norm in setOf("drmlicense", "licensekey") -> license = v
+            norm == "clearkeyid" -> kid = v
+            norm in setOf("clearkeyval", "clearkeyvalue") -> key = v
             else -> if (k.all { it.isLetterOrDigit() || it == '-' }) headers[k] = v
         }
     }
@@ -96,7 +91,6 @@ private fun buildDrm(scheme: String, license: String?): Drm? = when (scheme) {
     else -> null
 }
 
-/** ClearKey license answered locally: from `kid:key,kid:key` (hex) or from a ready-made JSON. */
 private fun clearKeyResponse(s: String): ByteArray? {
     val t = s.trim()
     if (t.startsWith("{")) return runCatching { JSONObject(t); t.toByteArray() }.getOrNull()

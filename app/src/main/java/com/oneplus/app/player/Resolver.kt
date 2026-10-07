@@ -9,10 +9,8 @@ import java.io.ByteArrayOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
 
-/** A fixed-quality alternative, for progressive files that have no manifest to adapt over. */
 data class Variant(val height: Int, val url: String)
 
-/** Everything the player needs to start. Plain links never go through anything but [parseLink]. */
 data class Resolved(
     val url: String,
     val live: Boolean = false,
@@ -20,13 +18,9 @@ data class Resolved(
     val drm: Drm? = null,
     val variants: List<Variant> = emptyList(),
     val defaultVariant: Int = 0,
+    val subtitles: List<SubtitleTrack> = emptyList(),
 )
 
-/**
- * The one page link that is worth a few lines instead of a library: a post on X (x.com / twitter.com /.../status/ID).
- * It asks X's public embed endpoint for the post and picks the video from the reply. Everything else is a media link
- * and is played as is. Unofficial endpoint: X can change it; failure just shows the normal error.
- */
 object Resolver {
     private val XHost = Regex("(^|\\.)(x|twitter)\\.com$")
     private val StatusId = Regex("/status(?:es)?/(\\d{1,25})")
@@ -47,7 +41,6 @@ object Resolver {
             .ifEmpty { j.optJSONObject("video")?.optJSONArray("variants").objs().map { JSONObject().put("content_type", it.optString("type")).put("url", it.optString("src")) } }
         fun JSONObject.link() = optString("url").takeIf { isAllowed(it) }
 
-        // A manifest keeps every quality + audio track: the player lists them itself.
         vars.firstOrNull { it.optString("content_type").contains("mpegurl", true) }?.link()?.let { return Resolved(it) }
 
         val mp4 = vars.filter { it.optString("content_type") == "video/mp4" }
@@ -63,7 +56,6 @@ object Resolver {
         return mp4.maxByOrNull { it.optInt("bitrate") }?.link()?.let { Resolved(it) }
     }
 
-    /** Small, bounded GET (1 MB cap) with timeouts. */
     private fun get(u: String): String? {
         val c = URL(u).openConnection() as HttpURLConnection
         try {

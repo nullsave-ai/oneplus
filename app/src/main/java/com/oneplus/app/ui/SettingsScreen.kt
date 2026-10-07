@@ -21,15 +21,13 @@ import com.oneplus.app.data.Movie
 import com.oneplus.app.ui.system.*
 import kotlin.math.roundToInt
 
-/** Settings: one page for every screen. TV Mode only swaps the touch-only controls (colour wheel, glass pad) for ones a remote can step. */
 @Composable
 fun SettingsScreen(
-    effects: Boolean, onEffects: (Boolean) -> Unit, theme: ThemeController, scroll: ScrollState, subScroll: ScrollState,
+    theme: ThemeController, scroll: ScrollState, subScroll: ScrollState,
     page: Int, onPage: (Int) -> Unit, wide: Boolean, saved: List<Movie>, onMovie: (Int) -> Unit,
     onTelegram: () -> Unit, onClearHistory: () -> Unit,
-) = PhoneSettings(effects, onEffects, theme, scroll, subScroll, page, onPage, wide, saved, onMovie, onTelegram, onClearHistory)
+) = PhoneSettings(theme, scroll, subScroll, page, onPage, wide, saved, onMovie, onTelegram, onClearHistory)
 
-/** Three sliders (hue / saturation / brightness). The whole app recolors live; the value is saved on release. */
 @Composable
 private fun CustomPicker(theme: ThemeController) {
     val p = theme.prefs
@@ -49,7 +47,6 @@ private fun CustomPicker(theme: ThemeController) {
     }
 }
 
-/** Density and depth of the glass. Both sit at the middle of their track when they are "as designed"; the app shows the change live. */
 @Composable
 internal fun GlassSliders(theme: ThemeController) {
     val c = LocalColors.current
@@ -70,7 +67,6 @@ internal fun GlassSliders(theme: ThemeController) {
     GlassReset(theme)
 }
 
-/** "Reset" row: only there while the glass differs from the defaults. */
 @Composable
 private fun GlassReset(theme: ThemeController) {
     val p = theme.prefs
@@ -95,7 +91,6 @@ internal fun PickerRow(label: Int, value: Float, onChange: (Float) -> Unit, onDo
 internal fun lerpF(a: Float, b: Float, f: Float) = a + (b - a) * f
 internal fun unlerp(a: Float, b: Float, v: Float) = ((v - a) / (b - a)).coerceIn(0f, 1f)
 
-/** Colour presets as one row of dots; "Custom" opens the wheel (touch) or the three sliders (TV Mode, steppable with a remote). */
 @Composable
 internal fun ColorStudio(theme: ThemeController, dark: Boolean, tv: Boolean = LocalTvMode.current) {
     val p = theme.prefs
@@ -122,16 +117,12 @@ private fun Dot(a: Accent, p: ThemePrefs, selected: Boolean, dark: Boolean, onCl
         Box(Modifier.size(26.dp).graphicsLayer { val k = 1f + 0.12f * on; scaleX = k; scaleY = k }.drawBehind {
             val r = size.minDimension / 2f
             if (a == Accent.Custom) { drawCircle(spectrum, r); drawCircle(col, r * 0.5f) } else drawCircle(col, r)
-            if (a == Accent.Black) drawCircle(c.dim, r - 0.5.dp.toPx(), style = Stroke(1.dp.toPx()), alpha = 0.6f) // visible on a black screen too
+            if (a == Accent.Black) drawCircle(c.dim, r - 0.5.dp.toPx(), style = Stroke(1.dp.toPx()), alpha = 0.6f)
             if (on > 0.01f) drawCircle(c.text, r + 3.5.dp.toPx(), style = Stroke(1.75.dp.toPx()), alpha = on)
         })
     }
 }
 
-/**
- * One pad instead of two sliders: glass density (x) and depth (y), with a live sample inside it. The whole app answers while the
- * puck moves; the value is saved on release.
- */
 @Composable
 internal fun LookPad(theme: ThemeController) {
     val c = LocalColors.current
@@ -142,7 +133,6 @@ internal fun LookPad(theme: ThemeController) {
             { nx, ny -> theme.update { copy(glassDensity = lerpF(GlassRange.DENSITY_MIN, GlassRange.DENSITY_MAX, nx), glassDepth = lerpF(GlassRange.DEPTH_MIN, GlassRange.DEPTH_MAX, ny)) } },
             theme::save, Modifier.height(200.dp),
         ) {
-            // colourful shapes behind the sample, so translucency and depth are visible
             Box(Modifier.fillMaxSize().background(Brush.linearGradient(listOf(c.accent.copy(alpha = 0.55f), c.dim.copy(alpha = 0.15f)))))
             Box(Modifier.offset(x = (-56).dp, y = (-26).dp).size(84.dp).background(c.accent.copy(alpha = 0.85f), CircleShape))
             Box(Modifier.size(132.dp, 78.dp).glass(2, 22.dp), Alignment.Center) { OneText("Aa", OneType.Title, c.text) }

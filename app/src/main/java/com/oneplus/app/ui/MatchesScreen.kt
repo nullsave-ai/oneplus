@@ -22,10 +22,6 @@ import com.oneplus.app.R
 import com.oneplus.app.data.Match
 import com.oneplus.app.ui.system.*
 
-/**
- * Full-screen schedule, opened by a tap on the Home table. [p] (0..1) is owned by OnePlusApp: it also drives the
- * "page steps back" effect of the layer underneath, so opening feels like moving closer to the page rather than a popup.
- */
 @Composable
 fun MatchesHost(open: Boolean, p: Animatable<Float, AnimationVector1D>, matches: List<Match>, wide: Boolean, focusId: Int, onClose: () -> Unit) {
     var height by remember { mutableFloatStateOf(1f) }
@@ -45,7 +41,7 @@ fun MatchesHost(open: Boolean, p: Animatable<Float, AnimationVector1D>, matches:
                 alpha = (v * 2.2f).coerceIn(0f, 1f)
             }
             .ambient()
-            .pointerInput(Unit) { detectTapGestures { } } // the page underneath must not receive touches
+            .pointerInput(Unit) { detectTapGestures { } }
     ) { MatchesScreen(matches, wide, focusId, onClose) }
 }
 
@@ -58,7 +54,6 @@ private fun MatchesScreen(matches: List<Match>, wide: Boolean, focusId: Int, onC
     val bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 24.dp
 
     Column(Modifier.fillMaxSize().padding(top = topInset()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        // header: back · title + count
         Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 12.dp), Arrangement.spacedBy(8.dp), Alignment.CenterVertically) {
             Box(Modifier.size(44.dp).press(onClose).glass(3, 22.dp), Alignment.Center) { OneIconView(OneIcon.Back) { c.text } }
             Box(Modifier.weight(1f).height(44.dp).glass(3, 22.dp), Alignment.Center) {
@@ -69,7 +64,6 @@ private fun MatchesScreen(matches: List<Match>, wide: Boolean, focusId: Int, onC
                 }
             }
         }
-        // competition filter
         LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             item(key = "all") { OneChip(stringResource(R.string.filter_all), comp == null, { comp = null }, Modifier.tvAutoFocus()) }
             items(competitions, key = { it }) { n -> OneChip(n, comp == n, { comp = n }) }
@@ -83,7 +77,7 @@ private fun MatchesScreen(matches: List<Match>, wide: Boolean, focusId: Int, onC
                     item(key = "h$day") {
                         OneText(stringResource(if (day == 0) R.string.day_today else R.string.day_tomorrow), OneType.Section, c.text, Modifier.padding(horizontal = 24.dp))
                     }
-                    item(key = "d$day") { MatchSchedule(list, wide, focusId) } // the tapped match arrives expanded
+                    item(key = "d$day") { MatchSchedule(list, wide, focusId) }
                 }
             }
         }

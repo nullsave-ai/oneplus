@@ -23,10 +23,6 @@ import androidx.compose.ui.unit.sp
 import com.oneplus.app.R
 import com.oneplus.app.ui.system.*
 
-/**
- * Subtitle look. [preset]: 0 clean (soft shadow) · 1 glass pill · 2 cinema (warm yellow) · 3 brand (accent highlight).
- * [size] and [lift] are 0..1 sliders (text 14-30sp, distance from the bottom 0-120dp). Persisted; values read back are clamped.
- */
 @Immutable
 data class SubStyle(val preset: Int = 1, val size: Float = 0.5f, val lift: Float = 0.15f) {
     fun save(app: Context) {
@@ -60,7 +56,6 @@ fun CaptionText(text: String, s: SubStyle, accent: Color, onAccent: Color, modif
     )
 }
 
-/** Four look cards (each previews itself) + size and position sliders. The caption on the video is the live preview. */
 @Composable
 fun SubtitleStyleEditor(s: SubStyle, onChange: (SubStyle) -> Unit, onDone: () -> Unit) {
     val c = LocalColors.current

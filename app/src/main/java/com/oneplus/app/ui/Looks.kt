@@ -7,16 +7,13 @@ import androidx.compose.ui.unit.dp
 import com.oneplus.app.R
 import com.oneplus.app.ui.system.*
 
-// The registry of phone looks (the architecture is explained in system/Look.kt). The first one is the default.
-
-/** Translucent, tinted by the app colour; a floating pill header and a floating nav island. */
 val GlassLook = Look(
     id = "Glass", label = R.string.style_glass, blurb = R.string.style_glass_blurb,
     top = 84.dp, bottom = 112.dp, collapseAt = 96.dp,
     palette = { dark, amoled ->
         Palette(if (dark) Color(0xFF0A0E16) else Color(0xFFEEF2F9), if (amoled) Color(0xFF16181D) else if (dark) Color(0xFF1A2333) else Color.White)
     },
-    home = { a -> HomeScreen(a.state, a.list, a.wide, a.lib, a.onMovie, a.onChannel, a.onAllMovies, a.onAllChannels, a.onMatches) },
+    home = { a -> HomeScreen(a.state, a.list, a.wide, a.lib, a.onMovie, a.onChannel, a.onAll, a.onAllChannels, a.onMatches) },
     header = { a, m ->
         FloatingToolbar(
             a.title, a.context, a.hasSearch, a.query, a.onQuery, a.collapse,
@@ -26,7 +23,6 @@ val GlassLook = Look(
     nav = { selected, onSelect, m -> LiquidNav(selected, onSelect, m) },
 )
 
-/** Deep space: planets instead of posters, a star field, orbiting nav, 3D coverflow scrolling, a warp between pages. */
 val OrbitLook = Look(
     id = "Orbit", label = R.string.style_orbit, blurb = R.string.style_orbit_blurb,
     top = 72.dp, bottom = 112.dp, collapseAt = 48.dp, cosmic = true,
@@ -44,7 +40,6 @@ val OrbitLook = Look(
     nav = { selected, onSelect, m -> OrbitNav(selected, onSelect, m) },
 )
 
-/** Football night: floodlit pitch, a hanging scoreboard, a dock with a rolling ball, collectible player cards. */
 val PitchLook = Look(
     id = "Pitch", label = R.string.style_pitch, blurb = R.string.style_pitch_blurb,
     top = 72.dp, bottom = 120.dp, collapseAt = 40.dp, pitch = true,
@@ -62,7 +57,6 @@ val PitchLook = Look(
     nav = { selected, onSelect, m -> PitchNav(selected, onSelect, m) },
 )
 
-/** Japanese anime / manga: stickers with ink outlines, speed lines, halftone, falling sakura, comic-panel dock. */
 val AnimeLook = Look(
     id = "Anime", label = R.string.style_anime, blurb = R.string.style_anime_blurb,
     top = 72.dp, bottom = 112.dp, collapseAt = 40.dp, anime = true,
@@ -80,8 +74,6 @@ val AnimeLook = Look(
     nav = { selected, onSelect, m -> AnimeNav(selected, onSelect, m) },
 )
 
-/** Every look the user can pick, in the order of the picker. */
 val Looks = listOf(GlassLook, OrbitLook, PitchLook, AnimeLook)
 
-/** The look stored under [id]; anything unknown (an old or damaged value) falls back to the first. */
 fun lookOf(id: String?): Look = Looks.firstOrNull { it.id == id } ?: Looks[0]

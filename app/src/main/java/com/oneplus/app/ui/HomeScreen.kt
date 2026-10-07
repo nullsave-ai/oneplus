@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.oneplus.app.R
 import com.oneplus.app.data.Channel
+import com.oneplus.app.data.Kind
 import com.oneplus.app.data.Library
 import com.oneplus.app.data.Match
 import com.oneplus.app.data.Movie
@@ -32,12 +33,11 @@ import kotlin.math.roundToInt
 @Composable
 fun HomeScreen(
     state: UiState, list: LazyListState, wide: Boolean,
-    lib: Library, onMovie: (Int) -> Unit, onChannel: (Int) -> Unit, onAllMovies: () -> Unit, onAllChannels: () -> Unit,
+    lib: Library, onMovie: (Int) -> Unit, onChannel: (Int) -> Unit, onAll: (Kind) -> Unit, onAllChannels: () -> Unit,
     onMatches: (Int) -> Unit,
 ) {
     val bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + bottomNavSpace()
     val d = state.data
-    // "continue watching" = movies stopped part-way (newest first), limited to what the search matches
     val byId = d.movies.associateBy { it.id }
     val resume = lib.progress.keys.mapNotNull { byId[it] }
     Box(Modifier.fillMaxSize(), Alignment.TopCenter) {
@@ -46,14 +46,15 @@ fun HomeScreen(
             PaddingValues(top = toolbarInset(), bottom = bottom),
             verticalArrangement = Arrangement.spacedBy(32.dp),
         ) {
-            // a teaser: a tap on any row opens the full matches page (the details are there)
             if (d.matches.isNotEmpty()) item(key = "matches") { Block(R.string.sec_matches, null) { MatchSchedule(d.matches.take(4), wide, onOpen = onMatches) } }
             if (resume.isNotEmpty()) item(key = "resume") { Block(R.string.sec_resume, null) { ResumeRow(resume, wide, lib, onMovie) } }
-            if (d.movies.isNotEmpty()) item(key = "movies") {
-                Block(R.string.sec_movies, onAllMovies) {
-                    LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        // the row is a teaser; the full catalogue lives behind "الكل"
-                        items(d.movies.take(10), key = { it.id }) { m -> Poster(m, Modifier.width(if (wide) 156.dp else 124.dp)) { onMovie(m.id) } }
+            Kind.entries.forEach { k ->
+                val shelf = d.movies.filter { it.kind == k }
+                if (shelf.isNotEmpty()) item(key = k.name) {
+                    Block(k.title, { onAll(k) }) {
+                        LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            items(shelf.take(10), key = { it.id }) { m -> Poster(m, Modifier.width(if (wide) 156.dp else 124.dp)) { onMovie(m.id) } }
+                        }
                     }
                 }
             }
@@ -62,7 +63,6 @@ fun HomeScreen(
     }
 }
 
-/** Section with a title and, optionally, an "الكل" action on the opposite edge. */
 @Composable
 private fun Block(@StringRes title: Int, onAll: (() -> Unit)? = null, content: @Composable () -> Unit) {
     val c = LocalColors.current
@@ -81,11 +81,6 @@ private fun Block(@StringRes title: Int, onAll: (() -> Unit)? = null, content: @
     }
 }
 
-/**
- * "Continue watching": the poster turned on its side. A card is the poster's own box flipped (width = the poster's height) and
- * then 10 % smaller, so it reads as a landscape still rather than a cover, and about two of them fit on a phone with the third
- * peeking in. It shows the movie's second (landscape) artwork.
- */
 @Composable
 private fun ResumeRow(movies: List<Movie>, wide: Boolean, lib: Library, onMovie: (Int) -> Unit) {
     LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -96,7 +91,6 @@ private fun ResumeRow(movies: List<Movie>, wide: Boolean, lib: Library, onMovie:
 @Composable
 internal fun ResumeCard(movie: Movie, progress: Float, modifier: Modifier, onClick: () -> Unit) {
     val c = LocalColors.current
-    // stand-in until the artwork arrives (a bit stronger than the poster's, so the wide card still has presence)
     val fill = remember(c) { Brush.linearGradient(listOf(c.accent.copy(alpha = 0.50f), c.dim.copy(alpha = 0.18f))) }
     val shade = remember { Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0f), Color.Black.copy(alpha = 0.78f))) }
     val left = (movie.durationMin * (1f - progress)).roundToInt().coerceAtLeast(1)
@@ -116,10 +110,6 @@ internal fun ResumeCard(movie: Movie, progress: Float, modifier: Modifier, onCli
     }
 }
 
-/**
- * The schedule table. With [onOpen] (Home) a tap on any row opens the full page instead of expanding it;
- * without it (the matches page) a tap expands the row, and [initialOpen] is the row expanded from the start.
- */
 @Composable
 internal fun MatchSchedule(matches: List<Match>, wide: Boolean, initialOpen: Int = -1, onOpen: ((Int) -> Unit)? = null) {
     var open by rememberSaveable { mutableIntStateOf(initialOpen) }
@@ -169,9 +159,10 @@ internal fun Poster(movie: Movie, modifier: Modifier, onClick: () -> Unit) {
     val c = LocalColors.current
     val fill = remember(c) { Brush.linearGradient(listOf(c.accent.copy(alpha = 0.40f), c.dim.copy(alpha = 0.22f))) }
     Box(modifier.aspectRatio(2f / 3f).press(onClick).clip(RoundedCornerShape(16.dp)).background(fill)) {
+        if (movie.backdrop.isNotBlank()) RemoteImage(movie.backdrop, Modifier.matchParentSize())
         Column(
             Modifier.align(Alignment.BottomStart).fillMaxWidth()
-                .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.5f)))).padding(12.dp)
+                .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.72f)))).padding(12.dp)
         ) {
             OneText(movie.title, OneType.Body, Color.White, maxLines = 1)
             OneText("${movie.year}", OneType.Caption, Color.White.copy(alpha = 0.7f))
@@ -179,7 +170,6 @@ internal fun Poster(movie: Movie, modifier: Modifier, onClick: () -> Unit) {
     }
 }
 
-/** Channels on Home: small square tiles (logo, or the first letter) with the name under them, in one row that slides sideways. */
 @Composable
 internal fun ChannelShelf(channels: List<Channel>, onChannel: (Int) -> Unit) {
     LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -198,7 +188,6 @@ internal fun ChannelTile(ch: Channel, onClick: () -> Unit) {
     }
 }
 
-/** A poster with its title and year UNDER it (the artwork stays clean); rating as a small badge. */
 @Composable
 internal fun TitledPoster(m: Movie, modifier: Modifier, onClick: () -> Unit) {
     val c = LocalColors.current
@@ -206,7 +195,8 @@ internal fun TitledPoster(m: Movie, modifier: Modifier, onClick: () -> Unit) {
     val fill = remember(c) { Brush.linearGradient(listOf(c.accent.copy(alpha = 0.42f), c.dim.copy(alpha = 0.16f))) }
     Column(modifier.press(onClick), Arrangement.spacedBy(9.dp)) {
         Box(Modifier.fillMaxWidth().aspectRatio(2f / 3f).clip(shape).background(fill).border(0.5.dp, c.border, shape), Alignment.Center) {
-            OneText(m.title.take(1), OneType.SerifHero.copy(fontSize = 56.sp), c.text.copy(alpha = 0.22f))
+            if (m.backdrop.isNotBlank()) RemoteImage(m.backdrop, Modifier.matchParentSize())
+            else OneText(m.title.take(1), OneType.SerifHero.copy(fontSize = 56.sp), c.text.copy(alpha = 0.22f))
             OneText(
                 "${(m.rating * 10).roundToInt() / 10f}", OneType.Caption, Color.White,
                 Modifier.align(Alignment.TopStart).padding(10.dp).background(Color.Black.copy(alpha = 0.45f), CircleShape).padding(horizontal = 9.dp, vertical = 3.dp),
@@ -219,7 +209,6 @@ internal fun TitledPoster(m: Movie, modifier: Modifier, onClick: () -> Unit) {
     }
 }
 
-/** One match as a card: time, the two teams, the competition. A live match is outlined in the accent. */
 @Composable
 internal fun MatchCard(m: Match, modifier: Modifier, onClick: () -> Unit) {
     val c = LocalColors.current

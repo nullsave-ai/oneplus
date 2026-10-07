@@ -49,31 +49,20 @@ import com.oneplus.app.R
 import java.io.File
 import java.util.Locale
 
-/** What to play. [live] = channel (no seeking); [cacheable] = a plain movie file that may use the disk cache. */
 data class PlaySource(val url: String, val title: String, val live: Boolean, val cacheable: Boolean = false, val startMs: Long = 0L)
 
-/** One row in the quality / audio / subtitle menus. */
 class Opt(val label: String, val hint: String?, val selected: Boolean, val onSelect: () -> Unit)
 
-/** One small LRU disk cache, used for progressive (MP4) VODs only. Live streams and HLS/DASH never touch it. */
 internal object MediaCache {
     private const val MaxBytes = 64L * 1024 * 1024
     @Volatile private var cache: SimpleCache? = null
 
-    /** Does disk IO: call off the main thread. */
     fun get(app: Context): SimpleCache = cache ?: synchronized(this) {
         cache ?: SimpleCache(File(app.cacheDir, "media"), LeastRecentlyUsedCacheEvictor(MaxBytes), StandaloneDatabaseProvider(app))
             .also { cache = it }
     }
 }
 
-/**
- * Owns one ExoPlayer and exposes its state as Compose state. Created when the player screen opens and
- * [release]d the moment it closes, so nothing (decoders, sockets, buffers) outlives the screen.
- *
- * Quality / audio / subtitles come straight from the player's track list (HLS, DASH, MKV...) and, for resolved
- * progressive streams, from [Resolved.variants]. The UI only ever sees [Opt] rows.
- */
 @Stable
 class Playback(
     private val app: Context, val source: PlaySource, private val res: Resolved, private val cache: SimpleCache?,
@@ -95,14 +84,11 @@ class Playback(
 
     private val http = DefaultHttpDataSource.Factory()
         .setUserAgent(res.headers.entries.firstOrNull { it.key.equals("user-agent", true) }?.value ?: "OnePlus/1.0")
-        // extractor headers (Referer, Origin...) minus the ones that would break the player's own handling
         .setDefaultRequestProperties(res.headers.filterKeys { !it.equals("user-agent", true) && !it.equals("accept-encoding", true) })
         .setConnectTimeoutMs(8_000)
         .setReadTimeoutMs(10_000)
-        .setAllowCrossProtocolRedirects(true) // IPTV links commonly bounce http -> https
+        .setAllowCrossProtocolRedirects(true)
 
-    // DRM (Widevine / PlayReady via a license server, ClearKey via server or keys given in the link). License requests
-    // go through the same HTTP factory, so they carry the link's User-Agent and headers too.
     private val drmProvider: DrmSessionManagerProvider? = res.drm?.let { d ->
         val callback: MediaDrmCallback = d.local?.let { LocalMediaDrmCallback(it) } ?: HttpMediaDrmCallback(d.licenseUrl, http)
         val manager = DefaultDrmSessionManager.Builder()
@@ -113,18 +99,16 @@ class Playback(
     }
 
     private val kind = kindOf(res.url)
-    private var guess = 0 // a link with no telling extension (.php, ?id=...): when it is not a plain file, try HLS, then DASH, then Smooth Streaming
+    private var guess = 0
 
-    // ---- live self-healing: no play/pause button on live, so the player must recover on its own ----
     private val handler = Handler(Looper.getMainLooper())
     private var retries = 0
-    private val unstick = Runnable { player.seekToDefaultPosition(); player.prepare() } // buffering for too long: jump to the live edge
+    private val unstick = Runnable { player.seekToDefaultPosition(); player.prepare() }
 
     val player: ExoPlayer
 
     init {
         val lowRam = (app.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager)?.isLowRamDevice == true
-        // Modest buffers: enough to ride out jitter, small enough not to burn data/RAM. ABR (default selector) adapts quality.
         val load = DefaultLoadControl.Builder()
             .setBufferDurationsMs(if (lowRam) 10_000 else 15_000, if (lowRam) 20_000 else 30_000, 1_500, 3_000)
             .setBackBuffer(if (live) 0 else 10_000, false)
@@ -137,9 +121,13 @@ class Playback(
             )
             .setHandleAudioBecomingNoisy(true)
             .build()
-        params = player.trackSelectionParameters
+        params = player.trackSelectionParameters.buildUpon()
+            .setPreferredTextLanguage("ar")
+            .setPreferredAudioLanguage("ar")
+            .build()
+        player.trackSelectionParameters = params
         player.addListener(this)
-        player.setMediaSource(build(), if (live || source.startMs <= 0L) C.TIME_UNSET else source.startMs) // VOD resumes where it stopped
+        player.setMediaSource(build(), if (live || source.startMs <= 0L) C.TIME_UNSET else source.startMs)
         player.prepare()
         player.playWhenReady = true
     }
@@ -147,8 +135,18 @@ class Playback(
     private fun kindOf(url: String) = Util.inferContentType(Uri.parse(url))
 
     private fun src(url: String, type: Int): MediaSource {
+        val subConfigs = res.subtitles.map { s ->
+            MediaItem.SubtitleConfiguration.Builder(Uri.parse(s.url))
+                .setMimeType(if (s.url.contains(".vtt", true)) androidx.media3.common.MimeTypes.TEXT_VTT else androidx.media3.common.MimeTypes.APPLICATION_SUBRIP)
+                .setLanguage(s.language)
+                .setLabel(s.label)
+                .setSelectionFlags(if (s.language.startsWith("ar", true)) C.SELECTION_FLAG_DEFAULT else 0)
+                .build()
+        }
         val item = MediaItem.Builder().setUri(url)
-            .setMediaMetadata(MediaMetadata.Builder().setTitle(source.title).build()).build()
+            .setMediaMetadata(MediaMetadata.Builder().setTitle(source.title).build())
+            .setSubtitleConfigurations(subConfigs)
+            .build()
         val drm = drmProvider
         return when (type) {
             C.CONTENT_TYPE_HLS -> HlsMediaSource.Factory(http).setAllowChunklessPreparation(true)
@@ -160,7 +158,7 @@ class Playback(
             C.CONTENT_TYPE_RTSP -> RtspMediaSource.Factory()
                 .setUserAgent(res.headers.entries.firstOrNull { it.key.equals("user-agent", true) }?.value ?: "OnePlus/1.0")
                 .createMediaSource(item)
-            else -> { // mp4, mkv, webm, ts, flv, mp3, aac, ogg, flac, wav ... (the extractor sniffs the container)
+            else -> {
                 val factory: DataSource.Factory = if (cache != null) {
                     CacheDataSource.Factory().setCache(cache).setUpstreamDataSourceFactory(http)
                         .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
@@ -175,11 +173,10 @@ class Playback(
         return src(url, forced ?: kindOf(url))
     }
 
-    // ---- controls ----
     fun toggle() {
         if (ended) { player.seekTo(0); player.play(); return }
         if (player.playWhenReady) player.pause() else {
-            if (live) player.seekToDefaultPosition() // resuming a paused live stream jumps back to the live edge
+            if (live) player.seekToDefaultPosition()
             player.play()
         }
     }
@@ -196,7 +193,6 @@ class Playback(
 
     fun retry() { failed = false; buffering = true; retries = 0; player.prepare(); player.play() }
 
-    /** Coming back to a live stream after the app was away: continue from the live edge, not from where it stopped. */
     fun resumeLive() { if (live) { player.seekToDefaultPosition(); player.play() } }
 
     fun release() {
@@ -208,7 +204,6 @@ class Playback(
     val position: Long get() = player.currentPosition
     val bufferedPosition: Long get() = player.bufferedPosition
 
-    // ---- tracks -> menu rows ----
     private fun setParams(change: TrackSelectionParameters.Builder.() -> TrackSelectionParameters.Builder) {
         player.trackSelectionParameters = player.trackSelectionParameters.buildUpon().change().build()
     }
@@ -235,7 +230,6 @@ class Playback(
 
     private fun mbps(bitrate: Int) = if (bitrate > 0) String.format(Locale.US, "%.1f", bitrate / 1e6) + " Mbps" else null
 
-    /** "تلقائي" + one row per distinct height (adaptive streams), or one row per resolved variant. */
     val qualities: List<Opt>
         get() {
             if (res.variants.size > 1) return res.variants.mapIndexed { i, v -> Opt("${v.height}p", null, i == variant) { pickVariant(i) } }
@@ -243,8 +237,7 @@ class Playback(
                 .flatMap { g -> (0 until g.length).filter { g.isTrackSupported(it) && g.getTrackFormat(it).height > 0 }.map { g to it } }
                 .groupBy { (g, i) -> g.getTrackFormat(i).height }
                 .values.map { l -> l.maxBy { (g, i) -> g.getTrackFormat(i).bitrate } }
-                .sortedByDescending { (g, i) -> g.getTrackFormat(i).height }
-            if (best.size < 2) return emptyList()
+            if (best.isEmpty()) return emptyList()
             val auto = params.overrides.values.none { it.type == C.TRACK_TYPE_VIDEO }
             return listOf(Opt(app.getString(R.string.track_auto), null, auto) { setParams { clearOverridesOfType(C.TRACK_TYPE_VIDEO) } }) +
                 best.map { (g, i) ->
@@ -261,7 +254,6 @@ class Playback(
             }
         }
 
-    /** First row is always "إيقاف" (off); empty list when the stream has no subtitles. */
     val texts: List<Opt>
         get() {
             val g = tracks.groups.filter { it.type == C.TRACK_TYPE_TEXT && it.isSupported }
@@ -279,10 +271,8 @@ class Playback(
         )
     }
 
-    // ---- Player.Listener ----
     override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
         wantsPlay = playWhenReady
-        // resumed after a pause (audio focus, call, background): never resume a live stream in the past
         if (playWhenReady && live && player.playbackState == Player.STATE_READY) player.seekToDefaultPosition()
     }
 
@@ -291,7 +281,7 @@ class Playback(
         ended = state == Player.STATE_ENDED
         if (state == Player.STATE_BUFFERING && live) handler.postDelayed(unstick, 15_000) else handler.removeCallbacks(unstick)
         if (state == Player.STATE_READY) retries = 0
-        if (state == Player.STATE_READY && !player.currentTracks.isTypeSelected(C.TRACK_TYPE_VIDEO)) firstFrame = true // audio-only
+        if (state == Player.STATE_READY && !player.currentTracks.isTypeSelected(C.TRACK_TYPE_VIDEO)) firstFrame = true
         refresh()
     }
 
@@ -305,13 +295,11 @@ class Playback(
     override fun onPlayerError(error: PlaybackException) {
         when {
             error.errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW -> { player.seekToDefaultPosition(); player.prepare() }
-            // A link without an extension that is really a playlist / manifest: try the manifest formats one after the other.
             guess < Guesses.size && kind == C.CONTENT_TYPE_OTHER && res.variants.isEmpty() && error.errorCode in Parsing -> {
                 player.setMediaSource(build(Guesses[guess++]))
                 player.prepare()
             }
             else -> {
-                // Live: keep trying with growing waits (1s, 2s, 4s ... 15s). VOD: only network errors, 3 times.
                 val network = error.errorCode / 1000 == 2
                 if (retries < (if (live) 6 else if (network) 3 else 0)) {
                     val wait = minOf(1_000L shl retries, 15_000L)

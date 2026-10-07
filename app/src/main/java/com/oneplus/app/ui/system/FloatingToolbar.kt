@@ -39,15 +39,9 @@ import com.oneplus.app.R
 import kotlinx.coroutines.flow.collectLatest
 import kotlin.math.max
 
-/** 0 = top of page, 1 = fully scrolled. Continuous in the scroll offset. */
 fun scrollTarget(index: Int, offset: Int, range: Float): Float =
     if (index > 0) 1f else (offset / range).coerceIn(0f, 1f)
 
-/**
- * Smooths the scroll target with a spring. Each new target re-aims the running animation with the
- * current velocity, so the morph follows the finger and then settles naturally (no threshold switch).
- * Returns a lambda: read it only in layout/draw phases to avoid recomposition.
- */
 @Composable
 fun rememberToolbarProgress(target: () -> Float): () -> Float {
     val a = remember { Animatable(0f) }
@@ -55,18 +49,12 @@ fun rememberToolbarProgress(target: () -> Float): () -> Float {
     return { a.value }
 }
 
-/** The top edge the app keeps clear of: the status bar, or the camera cut-out once the status bar is hidden. */
 @Composable
 fun topInset(): Dp = maxOf(
     WindowInsets.statusBars.asPaddingValues().calculateTopPadding(),
     WindowInsets.displayCutout.asPaddingValues().calculateTopPadding(),
 )
 
-/**
- * 1 = the header is in view, 0 = it has slid away. It leaves while the page scrolls down and comes back on the first scroll up
- * (and always at the very top). [pos] is any number that grows as the page scrolls; [key] restarts the tracking when the page
- * (and so the meaning of [pos]) changes. Returns a lambda: read it only in layout / draw.
- */
 @Composable
 fun rememberToolbarReveal(key: Any, pos: () -> Int): () -> Float {
     var shown by remember { mutableStateOf(true) }
@@ -83,11 +71,9 @@ fun rememberToolbarReveal(key: Any, pos: () -> Int): () -> Float {
     return { a.value }
 }
 
-/** Top inset screens should reserve so content starts below the header (and, in TV Mode, the navigation under it). */
 @Composable
 fun toolbarInset(): Dp = topInset() + LocalLook.current.top + LocalTvNavHeight.current
 
-/** The search field of a header: open / closed, its morph (0..1), focus and Back. Shared by every look's header. */
 class Search(val open: Boolean, val morph: Float, val focus: FocusRequester, val show: () -> Unit, val close: () -> Unit)
 
 @Composable
@@ -103,7 +89,6 @@ fun rememberSearch(hasSearch: Boolean, onQuery: (String) -> Unit): Search {
     return Search(searching, morph, focus, { searching = true }, close)
 }
 
-/** Search icon, the text field and a close button on one row. */
 @Composable
 fun SearchRow(query: String, onQuery: (String) -> Unit, focus: FocusRequester, onClose: () -> Unit, modifier: Modifier = Modifier) {
     val c = LocalColors.current
@@ -123,10 +108,6 @@ fun SearchRow(query: String, onQuery: (String) -> Unit, focus: FocusRequester, o
     }
 }
 
-/**
- * Drop shadow painted only OUTSIDE the pill. A platform elevation shadow is drawn underneath the whole outline and
- * shows through translucent glass as a dark rectangle; clipping the pill out of the shadow avoids that entirely.
- */
 internal fun DrawScope.softShadow(r: CornerRadius, e: Float) {
     if (e < 0.01f) return
     val hole = Path().apply { addRoundRect(RoundRect(0f, 0f, size.width, size.height, r)) }
@@ -143,7 +124,6 @@ internal fun DrawScope.softShadow(r: CornerRadius, e: Float) {
     }
 }
 
-/** One floating island: width/height/opacity/border/shadow/title scale are all driven by progress and search morph. */
 @Composable
 fun FloatingToolbar(
     title: String, context: String?, hasSearch: Boolean,
@@ -151,11 +131,11 @@ fun FloatingToolbar(
     onBack: (() -> Unit)? = null,
 ) {
     val c = LocalColors.current
-    val fx = LocalGlassEffects.current
+    val solid = LocalSolid.current
     val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
     val s = rememberSearch(hasSearch, onQuery)
     val morph = s.morph
-    val tint = c.glassTint
+    val tint = if (solid) c.bar else c.glassTint
 
     Box(
         modifier
@@ -169,12 +149,11 @@ fun FloatingToolbar(
                 layout(full, h) { pl.place((full - w) / 2, 0) }
             }
             .drawBehind {
-                val e = max(progress(), morph)
+                val e = if (solid) 1f else max(progress(), morph)
                 val r = CornerRadius(24.dp.toPx())
-                // Fully transparent at rest; the glass only exists once the page has scrolled / search is open.
-                softShadow(r, e)
-                drawRoundRect(tint.copy(alpha = e * (if (fx) 0.72f else 0.94f)), cornerRadius = r)
-                if (fx) drawRoundRect(Sheen, cornerRadius = r, alpha = e * 0.9f)
+                if (!solid) softShadow(r, e)
+                drawRoundRect(tint.copy(alpha = e * (if (solid) 1f else 0.72f)), cornerRadius = r)
+                if (!solid) drawRoundRect(Sheen, cornerRadius = r, alpha = e * 0.9f)
                 drawRoundRect(c.border.copy(alpha = c.border.alpha * e), cornerRadius = r, style = Stroke(0.5.dp.toPx()))
             }
     ) {

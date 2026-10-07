@@ -52,29 +52,18 @@ import kotlinx.coroutines.launch
 
 private val DetailSpring = spring<Float>(dampingRatio = 1f, stiffness = 340f)
 
-/**
- * Transition + gesture state of the details page. Read it only in layout/draw phases (graphicsLayer) so the
- * page and the screen underneath animate without recomposing.
- */
 @Stable
 class DetailState(isOpen: Boolean) {
-    /** 0 = closed, 1 = fully open. Spring-driven. */
     val enter = Animatable(if (isOpen) 1f else 0f)
 
-    /** Pull-down distance in px (rubber-banded). */
     var drag by mutableFloatStateOf(0f)
     var height by mutableFloatStateOf(1f)
 
-    /** 0..1: how "open" the page is, reduced while it is pulled down. Drives the depth effect underneath. */
     val depth: Float get() = enter.value * (1f - (drag / height).coerceIn(0f, 1f))
 }
 
-/**
- * Full-screen overlay. Opens with a critically damped spring (slide + scale + fade), closes with back,
- * the back button, or by pulling down while the content is at its top (release past 14% or flick to dismiss).
- */
 @Composable
-fun MovieDetailHost(state: DetailState, movies: List<Movie>, lib: Library, movieId: Int, onOpen: (Int) -> Unit, onPlay: (Int) -> Unit, onClosed: () -> Unit) {
+fun MovieDetailHost(state: DetailState, movies: List<Movie>, lib: Library, movieId: Int, onOpen: (Int) -> Unit, onPlay: (Int, Int) -> Unit, onClosed: () -> Unit) {
     val scope = rememberCoroutineScope()
     val open = movieId >= 0
     val close: () -> Unit = { scope.launch { state.enter.animateTo(0f, DetailSpring); onClosed(); state.drag = 0f } }
@@ -96,7 +85,7 @@ fun MovieDetailHost(state: DetailState, movies: List<Movie>, lib: Library, movie
 
             override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
                 if (available.y > 0f && source == NestedScrollSource.UserInput) {
-                    state.drag += available.y * 0.55f // resistance
+                    state.drag += available.y * 0.55f
                     return Offset(0f, available.y)
                 }
                 return Offset.Zero
@@ -127,7 +116,7 @@ fun MovieDetailHost(state: DetailState, movies: List<Movie>, lib: Library, movie
             }
             .ambient()
             .nestedScroll(connection)
-            .pointerInput(Unit) { detectTapGestures { } } // the page underneath must not receive touches
+            .pointerInput(Unit) { detectTapGestures { } }
     ) {
         Crossfade(movie, Modifier.fillMaxSize(), tween(220), label = "movie") { m ->
             MovieDetail(m, movies, lib, close, onOpen, onPlay)
@@ -136,7 +125,7 @@ fun MovieDetailHost(state: DetailState, movies: List<Movie>, lib: Library, movie
 }
 
 @Composable
-private fun MovieDetail(m: Movie, all: List<Movie>, lib: Library, onBack: () -> Unit, onOpen: (Int) -> Unit, onPlay: (Int) -> Unit) {
+private fun MovieDetail(m: Movie, all: List<Movie>, lib: Library, onBack: () -> Unit, onOpen: (Int) -> Unit, onPlay: (Int, Int) -> Unit) {
     val c = LocalColors.current
     val scroll = rememberScrollState()
     val pitch = LocalLook.current.pitch
@@ -146,7 +135,7 @@ private fun MovieDetail(m: Movie, all: List<Movie>, lib: Library, onBack: () -> 
     val heroPx = with(LocalDensity.current) { heroH.toPx() }
     val added = m.id in lib.list
     val similar = remember(m.id, all) {
-        all.filter { it.id != m.id }.sortedByDescending { o -> o.genres.count { it in m.genres } }.take(6)
+        all.filter { it.id != m.id && it.kind == m.kind }.sortedByDescending { o -> o.genres.count { it in m.genres } }.take(6)
     }
     val duration = "${m.durationMin / 60} ${stringResource(R.string.unit_hour)} ${m.durationMin % 60} ${stringResource(R.string.unit_min)}"
 
@@ -159,7 +148,7 @@ private fun MovieDetail(m: Movie, all: List<Movie>, lib: Library, onBack: () -> 
             Box(Modifier.fillMaxWidth(), Alignment.TopCenter) {
                 Column(Modifier.widthIn(max = 720.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(24.dp)) {
                     Row(Modifier.padding(horizontal = 20.dp), Arrangement.spacedBy(12.dp)) {
-                        OneButton(stringResource(if (lib.resumeMs(m.id) > 0L) R.string.movie_resume else R.string.movie_play), OneIcon.Play, { onPlay(m.id) }, Modifier.weight(1.4f).tvAutoFocus())
+                        OneButton(stringResource(if (lib.resumeMs(m.id) > 0L) R.string.movie_resume else R.string.movie_play), OneIcon.Play, { onPlay(m.id, if (m.episodes.isEmpty()) -1 else 0) }, Modifier.weight(1.4f).tvAutoFocus())
                         OneButton(
                             stringResource(R.string.movie_list), if (added) OneIcon.Check else OneIcon.Plus,
                             { lib.toggle(m.id) }, Modifier.weight(1f), primary = false,
@@ -167,6 +156,11 @@ private fun MovieDetail(m: Movie, all: List<Movie>, lib: Library, onBack: () -> 
                     }
                     if (pitch) PitchStats(m)
                     Genres(m.genres)
+                    if (m.episodes.isNotEmpty()) Section(R.string.movie_episodes, 0, seen) {
+                        Column(Modifier.padding(horizontal = 20.dp).fillMaxWidth().glass(2, 22.dp)) {
+                            m.episodes.forEachIndexed { i, e -> EpisodeRow(i, e.title) { onPlay(m.id, i) } }
+                        }
+                    }
                     Section(R.string.movie_story, 1, seen) { Story(m.synopsis) }
                     Section(R.string.movie_cast, 2, seen) {
                         LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -193,14 +187,12 @@ private fun MovieDetail(m: Movie, all: List<Movie>, lib: Library, onBack: () -> 
     }
 }
 
-/** Banner with parallax, fading into the page background; poster card + title block sit on the fade. */
 @Composable
 private fun Hero(m: Movie, duration: String, height: Dp, scroll: ScrollState) {
     val c = LocalColors.current
     val banner = remember(c) { Brush.linearGradient(listOf(c.accent.copy(alpha = 0.55f), c.dim.copy(alpha = 0.20f))) }
     val poster = remember(c) { Brush.linearGradient(listOf(c.accent.copy(alpha = 0.40f), c.dim.copy(alpha = 0.22f))) }
     val fade = remember(c) { Brush.verticalGradient(0.45f to c.bg.copy(alpha = 0f), 1f to c.bg) }
-    // clipToBounds: the parallax banner is translated downwards and must never paint over the content below the hero.
     Box(Modifier.fillMaxWidth().height(height).clipToBounds()) {
         Box(
             Modifier.matchParentSize().graphicsLayer { translationY = scroll.value * 0.4f }.background(banner)
@@ -211,19 +203,21 @@ private fun Hero(m: Movie, duration: String, height: Dp, scroll: ScrollState) {
                     )
                     onDrawBehind { drawRect(glow); drawDither() }
                 }
-        )
+        ) {
+            if (m.backdrop.isNotBlank()) RemoteImage(m.backdrop, Modifier.matchParentSize())
+        }
         Box(Modifier.matchParentSize().background(fade))
         Row(
             Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(start = 20.dp, end = 20.dp, bottom = 20.dp),
             Arrangement.spacedBy(16.dp), Alignment.Bottom,
         ) {
-            // No elevation shadow: the hero clips its children, so the shadow of a poster sitting on the bottom edge was cut
-            // off in a hard horizontal line right above the buttons. A hairline border gives the edge instead.
             Box(
                 Modifier.width(112.dp).aspectRatio(2f / 3f)
                     .clip(RoundedCornerShape(16.dp)).background(c.bg).background(poster)
                     .border(0.5.dp, c.border, RoundedCornerShape(16.dp))
-            )
+            ) {
+                if (m.backdrop.isNotBlank()) RemoteImage(m.backdrop, Modifier.matchParentSize())
+            }
             Column(Modifier.weight(1f).padding(bottom = 4.dp), Arrangement.spacedBy(6.dp)) {
                 OneText(m.title, OneType.Title, c.text, maxLines = 2)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -240,7 +234,6 @@ private fun Hero(m: Movie, duration: String, height: Dp, scroll: ScrollState) {
     }
 }
 
-/** Floating glass back button; the title pill fades in once the hero has scrolled away. Pitch and Anime add a solid strip behind the status bar. */
 @Composable
 private fun TopBar(title: String, scroll: ScrollState, heroPx: Float, onBack: () -> Unit, modifier: Modifier) {
     val c = LocalColors.current
@@ -267,7 +260,7 @@ private fun TopBar(title: String, scroll: ScrollState, heroPx: Float, onBack: ()
 private fun Genres(genres: List<String>) {
     val c = LocalColors.current
     val thick = LocalLook.current.anime
-    val outlined = LocalLook.current.pitch || thick // Pitch / Anime: outlined pills instead of tinted tags
+    val outlined = LocalLook.current.pitch || thick
     FlowRow(Modifier.padding(horizontal = 20.dp), Arrangement.spacedBy(8.dp), Arrangement.spacedBy(8.dp)) {
         genres.forEach { g ->
             OneText(
@@ -278,7 +271,6 @@ private fun Genres(genres: List<String>) {
     }
 }
 
-/** Synopsis card: tap to expand/collapse with the same press physics and animated height as the rest of the app. */
 @Composable
 private fun Story(text: String) {
     val c = LocalColors.current
@@ -295,6 +287,19 @@ private fun Story(text: String) {
             onTextLayout = { overflow = it.hasVisualOverflow },
         )
         if (overflow || expanded) OneText(stringResource(if (expanded) R.string.movie_less else R.string.movie_more), OneType.Caption, c.accent)
+    }
+}
+
+@Composable
+private fun EpisodeRow(index: Int, title: String, onClick: () -> Unit) {
+    val c = LocalColors.current
+    Row(
+        Modifier.fillMaxWidth().press(onClick).padding(horizontal = 16.dp, vertical = 12.dp),
+        Arrangement.spacedBy(12.dp), Alignment.CenterVertically,
+    ) {
+        OneText("${index + 1}", OneType.Section, c.accent, Modifier.width(28.dp))
+        OneText(title, OneType.Body, c.text, Modifier.weight(1f), 1)
+        OneIconView(OneIcon.Play, Modifier.size(18.dp)) { c.dim }
     }
 }
 
@@ -319,7 +324,6 @@ private fun InfoRow(@StringRes label: Int, value: String) {
     }
 }
 
-/** Pitch / Anime: their own numbered heading that fades up once, staggered (see [reveal]); otherwise the plain heading. */
 @Composable
 private fun Section(@StringRes title: Int, n: Int, seen: MutableSet<Int>, content: @Composable () -> Unit) {
     val pitch = LocalLook.current.pitch
