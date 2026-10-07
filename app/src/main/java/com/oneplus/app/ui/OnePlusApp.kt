@@ -77,6 +77,7 @@ fun OnePlusApp(theme: ThemeController, vm: MainViewModel = viewModel()) {
     var tab by rememberSaveable { mutableIntStateOf(0) }
     var movieId by rememberSaveable { mutableIntStateOf(-1) }
     var showMovies by rememberSaveable { mutableStateOf(false) }
+    var showMine by rememberSaveable { mutableStateOf(false) }
     var moviesKind by rememberSaveable { mutableIntStateOf(0) }
     var showClear by rememberSaveable { mutableStateOf(false) }
     var showMatches by rememberSaveable { mutableStateOf(false) }
@@ -178,7 +179,7 @@ fun OnePlusApp(theme: ThemeController, vm: MainViewModel = viewModel()) {
     var baseFocused by remember { mutableStateOf(false) }
     val dialogOpen = showTg || showClear
     val playerFull = session != null && !wantsInPlace
-    val lockBase = movieId >= 0 || showMatches || showMovies || playerFull || dialogOpen
+    val lockBase = movieId >= 0 || showMatches || showMovies || showMine || playerFull || dialogOpen
     val lockOver = playerFull || dialogOpen
     BackHandler(enabled = tv && baseFocused && !lockBase && !(tab == 2 && sPage >= 0)) { runCatching { tabReqs[tab].requestFocus() } }
     var tvNavH by remember { mutableStateOf(0.dp) }
@@ -188,8 +189,7 @@ fun OnePlusApp(theme: ThemeController, vm: MainViewModel = viewModel()) {
             val portrait = maxHeight >= maxWidth
             Box(Modifier.fillMaxSize().graphicsLayer {
                 val d = maxOf(detail.depth, matchesP.value)
-                val s = if (tv) 1f else 1f - 0.06f * d
-                scaleX = s; scaleY = s
+                if (!tv) underMotion(theme.prefs.transition, d)
             }.drawWithContent {
                 drawContent()
                 drawRect(Color.Black, alpha = 0.35f * maxOf(detail.depth, matchesP.value))
@@ -221,7 +221,7 @@ fun OnePlusApp(theme: ThemeController, vm: MainViewModel = viewModel()) {
                         else -> SettingsScreen(
                             theme, settingsScroll, subScroll, sPage, { sPage = it }, wide,
                             library.list.mapNotNull { byId[it] }, { id -> focus.clearFocus(); movieId = id },
-                            { openTelegram(ctx) }, { showClear = true },
+                            { openTelegram(ctx) }, { showClear = true }, { focus.clearFocus(); showMine = true },
                         )
                     }
                     }
@@ -238,6 +238,7 @@ fun OnePlusApp(theme: ThemeController, vm: MainViewModel = viewModel()) {
                 }
                 TvLayer(movieId >= 0 || lockOver) {
                     MoviesHost(showMovies, Kind.entries[moviesKind], remember(state.all.movies, moviesKind) { state.all.movies.filter { it.kind.ordinal == moviesKind } }, portrait, { id -> movieId = id }) { showMovies = false }
+                    MineHost(showMine && theme.prefs.mine, state.all.movies, theme, { id -> movieId = id }) { showMine = false }
                 }
             }
             TvLayer(lockOver) {
@@ -262,7 +263,7 @@ fun OnePlusApp(theme: ThemeController, vm: MainViewModel = viewModel()) {
                     }
                 }
             }
-            val covered = showMovies || (session != null && !wantsInPlace)
+            val covered = showMovies || showMine || (session != null && !wantsInPlace)
             val navShow by animateFloatAsState(if (covered) 0f else 1f, tween(160), label = "nav")
             val navAlpha = { navShow * (1f - maxOf(detail.depth, matchesP.value)) }
             val navMod = Modifier

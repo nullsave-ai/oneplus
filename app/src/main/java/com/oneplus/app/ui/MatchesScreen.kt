@@ -24,6 +24,7 @@ import com.oneplus.app.ui.system.*
 
 @Composable
 fun MatchesHost(open: Boolean, p: Animatable<Float, AnimationVector1D>, matches: List<Match>, wide: Boolean, focusId: Int, onClose: () -> Unit) {
+    val kind = LocalTransition.current
     var height by remember { mutableFloatStateOf(1f) }
     val visible by remember { derivedStateOf { p.value > 0.001f } }
     LaunchedEffect(open) { p.animateTo(if (open) 1f else 0f, spring(1f, 340f)) }
@@ -35,10 +36,12 @@ fun MatchesHost(open: Boolean, p: Animatable<Float, AnimationVector1D>, matches:
             .onSizeChanged { height = it.height.toFloat() }
             .graphicsLayer {
                 val v = p.value
-                translationY = (1f - v) * height * 0.14f
-                val s = 0.96f + 0.04f * v
-                scaleX = s; scaleY = s
-                alpha = (v * 2.2f).coerceIn(0f, 1f)
+                if (kind == PageTransition.Look) {
+                    translationY = (1f - v) * height * 0.14f
+                    val s = 0.96f + 0.04f * v
+                    scaleX = s; scaleY = s
+                    alpha = (v * 2.2f).coerceIn(0f, 1f)
+                } else overMotion(kind, v)
             }
             .ambient()
             .pointerInput(Unit) { detectTapGestures { } }

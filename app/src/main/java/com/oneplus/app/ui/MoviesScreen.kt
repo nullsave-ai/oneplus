@@ -41,6 +41,7 @@ private val SortLabels = listOf(R.string.sort_new, R.string.sort_rating, R.strin
 
 @Composable
 fun MoviesHost(open: Boolean, kind: Kind, movies: List<Movie>, portrait: Boolean, onMovie: (Int) -> Unit, onClose: () -> Unit) {
+    val motion = LocalTransition.current
     val p = remember { Animatable(if (open) 1f else 0f) }
     var visible by remember { mutableStateOf(open) }
     LaunchedEffect(open) {
@@ -53,7 +54,7 @@ fun MoviesHost(open: Boolean, kind: Kind, movies: List<Movie>, portrait: Boolean
 
     Box(
         Modifier.fillMaxSize()
-            .graphicsLayer { alpha = p.value; translationY = (1f - p.value) * 36.dp.toPx() }
+            .graphicsLayer { if (motion == PageTransition.Look) { alpha = p.value; translationY = (1f - p.value) * 36.dp.toPx() } else overMotion(motion, p.value) }
             .ambient()
             .pointerInput(Unit) { detectTapGestures { } }
     ) { MoviesScreen(kind, movies, portrait, onMovie, onClose) }

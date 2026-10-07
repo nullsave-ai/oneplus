@@ -15,6 +15,8 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.graphics.GraphicsLayerScope
 import androidx.compose.ui.Modifier
 import com.oneplus.app.R
 
@@ -52,4 +54,25 @@ fun pageTransition(kind: PageTransition, dir: Int, own: () -> ContentTransform):
 fun AnimatedContentScope.pageBackdrop(kind: PageTransition): Modifier {
     val moving = transition.currentState != transition.targetState
     return if (kind.opaque && moving) Modifier.ambient() else Modifier
+}
+
+val LocalTransition = staticCompositionLocalOf { PageTransition.Look }
+
+fun GraphicsLayerScope.overMotion(kind: PageTransition, p: Float) {
+    when (kind) {
+        PageTransition.Ios, PageTransition.Slide, PageTransition.Cover -> translationX = -(1f - p) * size.width
+        PageTransition.Google -> { alpha = p; val s = 0.92f + 0.08f * p; scaleX = s; scaleY = s }
+        PageTransition.Zoom -> { val s = 0.86f + 0.14f * p; scaleX = s; scaleY = s }
+        PageTransition.None -> alpha = if (p > 0.001f) 1f else 0f
+        PageTransition.Look -> Unit
+    }
+}
+
+fun GraphicsLayerScope.underMotion(kind: PageTransition, d: Float) {
+    when (kind) {
+        PageTransition.Ios -> translationX = 0.28f * size.width * d
+        PageTransition.Slide -> translationX = size.width * d
+        PageTransition.Look, PageTransition.Google, PageTransition.Zoom -> { val s = 1f - 0.06f * d; scaleX = s; scaleY = s }
+        PageTransition.Cover, PageTransition.None -> Unit
+    }
 }

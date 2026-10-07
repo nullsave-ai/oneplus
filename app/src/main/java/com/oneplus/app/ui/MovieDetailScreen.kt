@@ -65,6 +65,7 @@ class DetailState(isOpen: Boolean) {
 @Composable
 fun MovieDetailHost(state: DetailState, movies: List<Movie>, lib: Library, movieId: Int, onOpen: (Int) -> Unit, onPlay: (Int, Int) -> Unit, onClosed: () -> Unit) {
     val scope = rememberCoroutineScope()
+    val kind = LocalTransition.current
     val open = movieId >= 0
     val close: () -> Unit = { scope.launch { state.enter.animateTo(0f, DetailSpring); onClosed(); state.drag = 0f } }
     val latestClose by rememberUpdatedState(close)
@@ -107,10 +108,16 @@ fun MovieDetailHost(state: DetailState, movies: List<Movie>, lib: Library, movie
             .graphicsLayer {
                 val p = state.enter.value
                 val pull = (state.drag / state.height).coerceIn(0f, 1f)
-                translationY = (1f - p) * state.height * 0.14f + state.drag
-                val s = (0.96f + 0.04f * p) * (1f - 0.07f * pull)
-                scaleX = s; scaleY = s
-                alpha = (p * 2.2f).coerceIn(0f, 1f)
+                if (kind == PageTransition.Look) {
+                    translationY = (1f - p) * state.height * 0.14f + state.drag
+                    val s = (0.96f + 0.04f * p) * (1f - 0.07f * pull)
+                    scaleX = s; scaleY = s
+                    alpha = (p * 2.2f).coerceIn(0f, 1f)
+                } else {
+                    overMotion(kind, p)
+                    translationY = state.drag
+                    scaleX *= 1f - 0.07f * pull; scaleY *= 1f - 0.07f * pull
+                }
                 clip = pull > 0.002f
                 shape = RoundedCornerShape(36.dp * pull)
             }
@@ -157,8 +164,15 @@ private fun MovieDetail(m: Movie, all: List<Movie>, lib: Library, onBack: () -> 
                     if (pitch) PitchStats(m)
                     Genres(m.genres)
                     if (m.episodes.isNotEmpty()) Section(R.string.movie_episodes, 0, seen) {
-                        Column(Modifier.padding(horizontal = 20.dp).fillMaxWidth().glass(2, 22.dp)) {
-                            m.episodes.forEachIndexed { i, e -> EpisodeRow(i, e.title) { onPlay(m.id, i) } }
+                        val seasons = remember(m.id) { m.episodes.map { it.season }.distinct().sorted() }
+                        var season by rememberSaveable(m.id) { mutableIntStateOf(seasons.first()) }
+                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            if (seasons.size > 1) LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                items(seasons) { n -> OneChip(stringResource(R.string.season_n, n), n == season, { season = n }) }
+                            }
+                            Column(Modifier.padding(horizontal = 20.dp).fillMaxWidth().glass(2, 22.dp)) {
+                                m.episodes.withIndex().filter { it.value.season == season }.forEachIndexed { n, (i, e) -> EpisodeRow(n + 1, e.title) { onPlay(m.id, i) } }
+                            }
                         }
                     }
                     Section(R.string.movie_story, 1, seen) { Story(m.synopsis) }

@@ -52,7 +52,7 @@ class RemoteRepository(private val url: String) : HomeRepository {
             },
             movies = j.optJSONArray("movies").objs().mapIndexedNotNull { i, o ->
                 val u = o.optString("url")
-                val eps = o.optJSONArray("episodes").objs().mapNotNull { e -> e.optString("url").takeIf { playable(it) }?.let { Episode(e.optString("title"), it) } }
+                val eps = o.optJSONArray("episodes").objs().mapNotNull { e -> e.optString("url").takeIf { playable(it) }?.let { Episode(e.optString("title"), it, e.optInt("season", 1).coerceAtLeast(1)) } }
                 if (eps.isEmpty() && !playable(u)) return@mapIndexedNotNull null
                 Movie(o.optInt("id", i), o.optString("title"), o.optInt("year"), o.optDouble("rating", 0.0).toFloat(), o.optInt("duration"),
                     o.optJSONArray("genres").strings(), o.optString("synopsis"), o.optString("director"), o.optJSONArray("cast").strings(),

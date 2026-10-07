@@ -66,7 +66,7 @@ internal fun settingsTitle(page: Int): Int = when (page) {
 fun PhoneSettings(
     theme: ThemeController, scroll: ScrollState, subScroll: ScrollState,
     page: Int, onPage: (Int) -> Unit, wide: Boolean, saved: List<Movie>, onMovie: (Int) -> Unit,
-    onTelegram: () -> Unit, onClearHistory: () -> Unit,
+    onTelegram: () -> Unit, onClearHistory: () -> Unit, onMine: () -> Unit,
 ) {
     val bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + bottomNavSpace()
     LaunchedEffect(page) { if (page >= 0) subScroll.scrollTo(0) }
@@ -93,7 +93,7 @@ fun PhoneSettings(
                     .padding(top = toolbarInset(), bottom = bottom),
                 verticalArrangement = Arrangement.spacedBy(22.dp),
             ) {
-                if (p < 0) SettingsList(theme, wide, saved, onMovie, onTelegram, onClearHistory, onPage)
+                if (p < 0) SettingsList(theme, wide, saved, onMovie, onTelegram, onClearHistory, onMine, onPage)
                 else Column(Modifier.padding(horizontal = 20.dp), Arrangement.spacedBy(14.dp)) {
                     when (p) {
                         PageStyle -> StylePage(theme)
@@ -112,7 +112,7 @@ fun PhoneSettings(
 @Composable
 private fun SettingsList(
     theme: ThemeController, wide: Boolean, saved: List<Movie>, onMovie: (Int) -> Unit,
-    onTelegram: () -> Unit, onClearHistory: () -> Unit, onPage: (Int) -> Unit,
+    onTelegram: () -> Unit, onClearHistory: () -> Unit, onMine: () -> Unit, onPage: (Int) -> Unit,
 ) {
     val c = LocalColors.current
     val p = theme.prefs
@@ -144,6 +144,11 @@ private fun SettingsList(
             SwitchRow(OneIcon.Shrink, Gray, R.string.settings_hide_nav, p.hideNavBar, last = true) {
                 theme.update { copy(hideNavBar = it) }; theme.save()
             }
+        }
+        Group(R.string.mine_title) {
+            SwitchRow(OneIcon.Star, Violet, R.string.mine_enable, p.mine) { theme.update { copy(mine = it) }; theme.save() }
+            SwitchRow(OneIcon.Fit, Indigo, R.string.mine_blur, p.nativeBlur, last = !p.mine) { theme.update { copy(nativeBlur = it) }; theme.save() }
+            if (p.mine) NavRow(OneIcon.Play, Pink, R.string.mine_open, "", last = true) { onMine() }
         }
         Group(R.string.settings_general) {
             Row(

@@ -25,8 +25,8 @@ import kotlin.math.roundToInt
 fun SettingsScreen(
     theme: ThemeController, scroll: ScrollState, subScroll: ScrollState,
     page: Int, onPage: (Int) -> Unit, wide: Boolean, saved: List<Movie>, onMovie: (Int) -> Unit,
-    onTelegram: () -> Unit, onClearHistory: () -> Unit,
-) = PhoneSettings(theme, scroll, subScroll, page, onPage, wide, saved, onMovie, onTelegram, onClearHistory)
+    onTelegram: () -> Unit, onClearHistory: () -> Unit, onMine: () -> Unit,
+) = PhoneSettings(theme, scroll, subScroll, page, onPage, wide, saved, onMovie, onTelegram, onClearHistory, onMine)
 
 @Composable
 private fun CustomPicker(theme: ThemeController) {

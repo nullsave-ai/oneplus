@@ -8,7 +8,7 @@ import kotlinx.coroutines.flow.flowOf
 data class Match(val id: Int, val time: String, val live: Boolean, val status: String, val home: String,
                  val away: String, val competition: String, val channel: String, val day: Int = 0)
 enum class Kind(@StringRes val title: Int) { Film(R.string.sec_movies), Series(R.string.sec_series), Anime(R.string.sec_anime) }
-data class Episode(val title: String, val url: String)
+data class Episode(val title: String, val url: String, val season: Int = 1)
 data class Movie(val id: Int, val title: String, val year: Int, val rating: Float, val durationMin: Int,
                  val genres: List<String>, val synopsis: String, val director: String, val cast: List<String>,
                  val url: String,
