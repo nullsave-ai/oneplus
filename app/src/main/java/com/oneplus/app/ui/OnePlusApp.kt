@@ -289,7 +289,14 @@ fun OnePlusApp(theme: ThemeController, vm: MainViewModel = viewModel()) {
                 onConfirm = { showClear = false; library.clearHistory() },
             )
             val appUp = state.data.update ?: state.all.update
-            val curVer = com.oneplus.app.BuildConfig.VERSION_CODE
+            val curVer = runCatching {
+                if (android.os.Build.VERSION.SDK_INT >= 28) {
+                    ctx.packageManager.getPackageInfo(ctx.packageName, 0).longVersionCode.toInt()
+                } else {
+                    @Suppress("DEPRECATION")
+                    ctx.packageManager.getPackageInfo(ctx.packageName, 0).versionCode
+                }
+            }.getOrDefault(5)
             if (appUp != null && (curVer < appUp.minVersionCode || (appUp.forceUpdate && curVer < appUp.latestVersionCode))) {
                 ForceUpdateDialog(
                     title = appUp.updateTitle.ifBlank { "تحديث إجباري متوفر" },
