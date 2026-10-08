@@ -29,6 +29,7 @@ import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.datasource.cache.CacheDataSource
 import androidx.media3.datasource.cache.LeastRecentlyUsedCacheEvictor
 import androidx.media3.datasource.cache.SimpleCache
+import androidx.media3.exoplayer.DefaultLivePlaybackSpeedControl
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
@@ -85,8 +86,8 @@ class Playback(
     private val http = DefaultHttpDataSource.Factory()
         .setUserAgent(res.headers.entries.firstOrNull { it.key.equals("user-agent", true) }?.value ?: "OnePlus/1.0")
         .setDefaultRequestProperties(res.headers.filterKeys { !it.equals("user-agent", true) && !it.equals("accept-encoding", true) })
-        .setConnectTimeoutMs(8_000)
-        .setReadTimeoutMs(10_000)
+        .setConnectTimeoutMs(6_000)
+        .setReadTimeoutMs(8_000)
         .setAllowCrossProtocolRedirects(true)
 
     private val drmProvider: DrmSessionManagerProvider? = res.drm?.let { d ->
@@ -109,13 +110,24 @@ class Playback(
 
     init {
         val lowRam = (app.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager)?.isLowRamDevice == true
+        val minBuf = if (live) 3_000 else if (lowRam) 8_000 else 15_000
+        val maxBuf = if (live) 8_000 else if (lowRam) 16_000 else 30_000
+        val playBuf = if (live) 500 else 1_500
+        val rebuff = if (live) 1_000 else 2_500
         val load = DefaultLoadControl.Builder()
-            .setBufferDurationsMs(if (lowRam) 10_000 else 15_000, if (lowRam) 20_000 else 30_000, 1_500, 3_000)
+            .setBufferDurationsMs(minBuf, maxBuf, playBuf, rebuff)
             .setBackBuffer(if (live) 0 else 10_000, false)
             .setPrioritizeTimeOverSizeThresholds(true)
             .build()
+        val speedControl = DefaultLivePlaybackSpeedControl.Builder()
+            .setFallbackMinPlaybackSpeed(0.97f)
+            .setFallbackMaxPlaybackSpeed(1.03f)
+            .setMinPossibleLiveOffsetMs(1_000)
+            .setMaxPossibleLiveOffsetMs(6_000)
+            .build()
         player = ExoPlayer.Builder(app, DefaultRenderersFactory(app).setEnableDecoderFallback(true))
             .setLoadControl(load)
+            .setLivePlaybackSpeedControl(speedControl)
             .setAudioAttributes(
                 AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MOVIE).build(), true,
             )
@@ -246,20 +258,34 @@ class Playback(
 
     private fun mbps(bitrate: Int) = if (bitrate > 0) String.format(Locale.US, "%.1f", bitrate / 1e6) + " Mbps" else null
 
+    private fun qualityLabel(h: Int): String = when {
+        h >= 2160 -> "${h}p (4K)"
+        h >= 1440 -> "${h}p (2K)"
+        h >= 1080 -> "${h}p (FHD)"
+        h >= 720 -> "${h}p (HD)"
+        h >= 480 -> "${h}p (SD)"
+        else -> "${h}p"
+    }
+
     val qualities: List<Opt>
         get() {
-            if (res.variants.size > 1) return res.variants.mapIndexed { i, v -> Opt("${v.height}p", null, i == variant) { pickVariant(i) } }
+            if (res.variants.size > 1) {
+                val sorted = res.variants.mapIndexed { i, v -> i to v }.sortedByDescending { it.second.height }
+                return sorted.map { (i, v) -> Opt(qualityLabel(v.height), null, i == variant) { pickVariant(i) } }
+            }
             val best = tracks.groups.filter { it.type == C.TRACK_TYPE_VIDEO }
                 .flatMap { g -> (0 until g.length).filter { g.isTrackSupported(it) && g.getTrackFormat(it).height > 0 }.map { g to it } }
                 .groupBy { (g, i) -> g.getTrackFormat(i).height }
                 .values.map { l -> l.maxBy { (g, i) -> g.getTrackFormat(i).bitrate } }
+                .sortedByDescending { (g, i) -> g.getTrackFormat(i).height }
             if (best.isEmpty()) return emptyList()
             val auto = params.overrides.values.none { it.type == C.TRACK_TYPE_VIDEO }
-            return listOf(Opt(app.getString(R.string.track_auto), null, auto) { setParams { clearOverridesOfType(C.TRACK_TYPE_VIDEO) } }) +
-                best.map { (g, i) ->
-                    val f = g.getTrackFormat(i)
-                    Opt("${f.height}p", mbps(f.bitrate), !auto && g.isTrackSelected(i)) { choose(g, listOf(i)) }
-                }
+            val autoLabel = if (auto && videoSize.height > 0) "${app.getString(R.string.track_auto)} (${videoSize.height}p)" else app.getString(R.string.track_auto)
+            val autoOpt = Opt(autoLabel, null, auto) { setParams { clearOverridesOfType(C.TRACK_TYPE_VIDEO) } }
+            return listOf(autoOpt) + best.map { (g, i) ->
+                val f = g.getTrackFormat(i)
+                Opt(qualityLabel(f.height), mbps(f.bitrate), !auto && g.isTrackSelected(i)) { choose(g, listOf(i)) }
+            }
         }
 
     val audios: List<Opt>
@@ -295,7 +321,7 @@ class Playback(
     override fun onPlaybackStateChanged(state: Int) {
         buffering = state == Player.STATE_BUFFERING
         ended = state == Player.STATE_ENDED
-        if (state == Player.STATE_BUFFERING && live) handler.postDelayed(unstick, 15_000) else handler.removeCallbacks(unstick)
+        if (state == Player.STATE_BUFFERING && live) handler.postDelayed(unstick, 4_000) else handler.removeCallbacks(unstick)
         if (state == Player.STATE_READY) retries = 0
         if (state == Player.STATE_READY && !player.currentTracks.isTypeSelected(C.TRACK_TYPE_VIDEO)) firstFrame = true
         refresh()
