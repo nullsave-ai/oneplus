@@ -5,6 +5,8 @@ import androidx.compose.animation.AnimatedContentScope
 import androidx.compose.animation.ContentTransform
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.AnimationVector1D
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
@@ -54,6 +56,12 @@ fun pageTransition(kind: PageTransition, dir: Int, own: () -> ContentTransform):
 fun AnimatedContentScope.pageBackdrop(kind: PageTransition): Modifier {
     val moving = transition.currentState != transition.targetState
     return if (kind.opaque && moving) Modifier.ambient() else Modifier
+}
+
+val PageSpec = tween<Float>(260, easing = FastOutSlowInEasing)
+
+suspend fun Animatable<Float, AnimationVector1D>.move(to: Float, kind: PageTransition) {
+    if (kind == PageTransition.None) snapTo(to) else animateTo(to, PageSpec)
 }
 
 val LocalTransition = staticCompositionLocalOf { PageTransition.Look }

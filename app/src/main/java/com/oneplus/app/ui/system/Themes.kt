@@ -85,7 +85,6 @@ data class ThemePrefs(
     val hideStatusBar: Boolean = false,
     val hideNavBar: Boolean = false,
     val glass: Boolean = true,
-    val mine: Boolean = true,
     val transition: PageTransition = PageTransition.Look,
     val display: DisplayMode = DisplayMode.Auto,
     val glassDensity: Float = GlassRange.DENSITY_DEFAULT,
@@ -204,7 +203,6 @@ class ThemeStore(ctx: Context) {
             hideStatusBar = p.getBoolean("hide_status", d.hideStatusBar),
             hideNavBar = p.getBoolean("hide_nav", d.hideNavBar),
             glass = p.getBoolean("glass", d.glass),
-            mine = p.getBoolean("mine", d.mine),
             transition = PageTransition.entries.firstOrNull { it.name == p.getString("transition", null) } ?: d.transition,
             display = DisplayMode.entries.firstOrNull { it.name == p.getString("display", null) } ?: d.display,
             glassDensity = p.getFloat("glass_density", d.glassDensity).clean(GlassRange.DENSITY_MIN, GlassRange.DENSITY_MAX, d.glassDensity),
@@ -215,7 +213,7 @@ class ThemeStore(ctx: Context) {
 
     fun save(t: ThemePrefs) {
         p.edit().putString("mode", t.mode.name).putString("accent", t.accent.name)
-            .putFloat("hue", t.hue).putFloat("sat", t.sat).putFloat("val", t.value).putBoolean("hide_status", t.hideStatusBar).putBoolean("hide_nav", t.hideNavBar).putBoolean("glass", t.glass).putBoolean("mine", t.mine).putString("transition", t.transition.name).putString("display", t.display.name)
+            .putFloat("hue", t.hue).putFloat("sat", t.sat).putFloat("val", t.value).putBoolean("hide_status", t.hideStatusBar).putBoolean("hide_nav", t.hideNavBar).putBoolean("glass", t.glass).putString("transition", t.transition.name).putString("display", t.display.name)
             .putFloat("glass_density", t.glassDensity).putFloat("glass_depth", t.glassDepth).putString("style", t.look.id)
             .apply()
     }

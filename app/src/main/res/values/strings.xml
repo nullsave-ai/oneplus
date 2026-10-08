@@ -129,10 +129,6 @@
     <string name="trans_zoom">تكبير</string>
     <string name="trans_cover">تغطية</string>
     <string name="trans_none">بدون انتقال</string>
-    <string name="mine_title">ONE+ MINE</string>
-    <string name="mine_enable">تفعيل MINE</string>
-    <string name="mine_open">فتح ONE+ MINE</string>
-    <string name="mine_rated">الأعلى تقييمًا</string>
     <string name="season_n">الموسم %1$d</string>
     <string name="display_confirm">اضغط مرة أخرى للتأكيد</string>
 </resources>

@@ -226,9 +226,9 @@ private fun Modifier.dash(index: Int, seen: MutableSet<Int>, sign: Float): Modif
 fun AnimeHome(a: HomeArgs) {
     val d = a.state.data
     val seen = remember { mutableSetOf<Int>() }
-    val byId = d.movies.associateBy { it.id }
-    val resume = a.lib.progress.keys.mapNotNull { byId[it] }
-    val heroes = remember(d.movies, resume) { (resume.take(2) + d.movies.sortedByDescending { it.rating }).distinct().take(5) }
+    val view = a.state.view
+    val resume = remember(view, a.lib.progress) { a.lib.progress.keys.mapNotNull { view.byId[it] } }
+    val heroes = remember(view, resume) { (resume.take(2) + view.topRated).distinct().take(5) }
     val bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + bottomNavSpace()
     LazyColumn(
         Modifier.fillMaxSize(), a.list, PaddingValues(top = toolbarInset(), bottom = bottom),
@@ -246,7 +246,7 @@ fun AnimeHome(a: HomeArgs) {
             }
         }
         Kind.entries.forEach { k ->
-            val shelf = d.movies.filter { it.kind == k }
+            val shelf = view.shelves[k].orEmpty()
             if (shelf.isNotEmpty()) item(key = k.name) {
                 Chapter(3 + k.ordinal, k.title, { a.onAll(k) }, Modifier.dash(3 + k.ordinal, seen, if (k.ordinal % 2 == 0) -1f else 1f)) { row ->
                     items(shelf.take(10), key = { it.id }) { m -> Cover(m, row) { a.onMovie(m.id) } }

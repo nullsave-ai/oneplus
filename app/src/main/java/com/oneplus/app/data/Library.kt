@@ -22,6 +22,7 @@ class Library(private val sp: SharedPreferences) {
 
     fun saveProgress(id: Int, pos: Long, dur: Long) {
         if (dur <= 0L) return
+        if (progress[id]?.let { it.first == pos && it.second == dur } == true) return
         val rest = progress - id
         progress = if (pos < MinResumeMs || pos >= dur * DoneFraction) rest
         else (mapOf(id to (pos to dur)) + rest).entries.take(MaxResume).associate { it.toPair() }

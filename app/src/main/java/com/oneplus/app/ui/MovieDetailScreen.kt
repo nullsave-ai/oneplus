@@ -2,12 +2,10 @@ package com.oneplus.app.ui
 
 import androidx.activity.compose.BackHandler
 import androidx.annotation.StringRes
-import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -50,8 +48,6 @@ import com.oneplus.app.ui.system.*
 import java.util.Locale
 import kotlinx.coroutines.launch
 
-private val DetailSpring = spring<Float>(dampingRatio = 1f, stiffness = 340f)
-
 @Stable
 class DetailState(isOpen: Boolean) {
     val enter = Animatable(if (isOpen) 1f else 0f)
@@ -67,10 +63,10 @@ fun MovieDetailHost(state: DetailState, movies: List<Movie>, lib: Library, movie
     val scope = rememberCoroutineScope()
     val kind = LocalTransition.current
     val open = movieId >= 0
-    val close: () -> Unit = { scope.launch { state.enter.animateTo(0f, DetailSpring); onClosed(); state.drag = 0f } }
+    val close: () -> Unit = { scope.launch { state.enter.move(0f, kind); onClosed(); state.drag = 0f } }
     val latestClose by rememberUpdatedState(close)
 
-    LaunchedEffect(open) { if (open) state.enter.animateTo(1f, DetailSpring) }
+    LaunchedEffect(open) { if (open) state.enter.move(1f, kind) }
     BackHandler(open, close)
 
     val connection = remember(state) {
@@ -101,7 +97,7 @@ fun MovieDetailHost(state: DetailState, movies: List<Movie>, lib: Library, movie
         }
     }
 
-    val movie = movies.firstOrNull { it.id == movieId } ?: return
+    val movie = remember(movies, movieId) { movies.firstOrNull { it.id == movieId } } ?: return
     Box(
         Modifier.fillMaxSize()
             .onSizeChanged { state.height = it.height.toFloat() }
@@ -109,10 +105,9 @@ fun MovieDetailHost(state: DetailState, movies: List<Movie>, lib: Library, movie
                 val p = state.enter.value
                 val pull = (state.drag / state.height).coerceIn(0f, 1f)
                 if (kind == PageTransition.Look) {
-                    translationY = (1f - p) * state.height * 0.14f + state.drag
-                    val s = (0.96f + 0.04f * p) * (1f - 0.07f * pull)
+                    translationY = (1f - p) * state.height + state.drag
+                    val s = 1f - 0.07f * pull
                     scaleX = s; scaleY = s
-                    alpha = (p * 2.2f).coerceIn(0f, 1f)
                 } else {
                     overMotion(kind, p)
                     translationY = state.drag
@@ -125,9 +120,7 @@ fun MovieDetailHost(state: DetailState, movies: List<Movie>, lib: Library, movie
             .nestedScroll(connection)
             .pointerInput(Unit) { detectTapGestures { } }
     ) {
-        Crossfade(movie, Modifier.fillMaxSize(), tween(220), label = "movie") { m ->
-            MovieDetail(m, movies, lib, close, onOpen, onPlay)
-        }
+        key(movie.id) { MovieDetail(movie, movies, lib, close, onOpen, onPlay) }
     }
 }
 

@@ -3,7 +3,6 @@ package com.oneplus.app.ui
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -46,7 +45,7 @@ fun MoviesHost(open: Boolean, kind: Kind, movies: List<Movie>, portrait: Boolean
     var visible by remember { mutableStateOf(open) }
     LaunchedEffect(open) {
         if (open) visible = true
-        p.animateTo(if (open) 1f else 0f, spring(1f, 380f))
+        p.move(if (open) 1f else 0f, motion)
         if (!open) visible = false
     }
     BackHandler(open, onClose)
@@ -54,7 +53,7 @@ fun MoviesHost(open: Boolean, kind: Kind, movies: List<Movie>, portrait: Boolean
 
     Box(
         Modifier.fillMaxSize()
-            .graphicsLayer { if (motion == PageTransition.Look) { alpha = p.value; translationY = (1f - p.value) * 36.dp.toPx() } else overMotion(motion, p.value) }
+            .graphicsLayer { if (motion == PageTransition.Look) { translationY = (1f - p.value) * size.height } else overMotion(motion, p.value) }
             .ambient()
             .pointerInput(Unit) { detectTapGestures { } }
     ) { MoviesScreen(kind, movies, portrait, onMovie, onClose) }

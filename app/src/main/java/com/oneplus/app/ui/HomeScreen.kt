@@ -38,8 +38,8 @@ fun HomeScreen(
 ) {
     val bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + bottomNavSpace()
     val d = state.data
-    val byId = d.movies.associateBy { it.id }
-    val resume = lib.progress.keys.mapNotNull { byId[it] }
+    val view = state.view
+    val resume = remember(view, lib.progress) { lib.progress.keys.mapNotNull { view.byId[it] } }
     Box(Modifier.fillMaxSize(), Alignment.TopCenter) {
         LazyColumn(
             Modifier.widthIn(max = 880.dp).fillMaxSize(), list,
@@ -48,8 +48,7 @@ fun HomeScreen(
         ) {
             if (d.matches.isNotEmpty()) item(key = "matches") { Block(R.string.sec_matches, null) { MatchSchedule(d.matches.take(4), wide, onOpen = onMatches) } }
             if (resume.isNotEmpty()) item(key = "resume") { Block(R.string.sec_resume, null) { ResumeRow(resume, wide, lib, onMovie) } }
-            Kind.entries.forEach { k ->
-                val shelf = d.movies.filter { it.kind == k }
+            view.shelves.forEach { (k, shelf) ->
                 if (shelf.isNotEmpty()) item(key = k.name) {
                     Block(k.title, { onAll(k) }) {
                         LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -162,7 +161,7 @@ internal fun Poster(movie: Movie, modifier: Modifier, onClick: () -> Unit) {
         if (movie.backdrop.isNotBlank()) RemoteImage(movie.backdrop, Modifier.matchParentSize())
         Column(
             Modifier.align(Alignment.BottomStart).fillMaxWidth()
-                .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.72f)))).padding(12.dp)
+                .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.5f)))).padding(12.dp)
         ) {
             OneText(movie.title, OneType.Body, Color.White, maxLines = 1)
             OneText("${movie.year}", OneType.Caption, Color.White.copy(alpha = 0.7f))
@@ -195,8 +194,7 @@ internal fun TitledPoster(m: Movie, modifier: Modifier, onClick: () -> Unit) {
     val fill = remember(c) { Brush.linearGradient(listOf(c.accent.copy(alpha = 0.42f), c.dim.copy(alpha = 0.16f))) }
     Column(modifier.press(onClick), Arrangement.spacedBy(9.dp)) {
         Box(Modifier.fillMaxWidth().aspectRatio(2f / 3f).clip(shape).background(fill).border(0.5.dp, c.border, shape), Alignment.Center) {
-            if (m.backdrop.isNotBlank()) RemoteImage(m.backdrop, Modifier.matchParentSize())
-            else OneText(m.title.take(1), OneType.SerifHero.copy(fontSize = 56.sp), c.text.copy(alpha = 0.22f))
+            if (m.backdrop.isNotBlank()) RemoteImage(m.backdrop, Modifier.matchParentSize()) else OneText(m.title.take(1), OneType.SerifHero.copy(fontSize = 56.sp), c.text.copy(alpha = 0.22f))
             OneText(
                 "${(m.rating * 10).roundToInt() / 10f}", OneType.Caption, Color.White,
                 Modifier.align(Alignment.TopStart).padding(10.dp).background(Color.Black.copy(alpha = 0.45f), CircleShape).padding(horizontal = 9.dp, vertical = 3.dp),

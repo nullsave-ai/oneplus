@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
 
@@ -15,9 +16,13 @@ const val ApiUrl = "https://apklive-default-rtdb.firebaseio.com/catalog.json"
 
 private const val MaxBytes = 5_000_000
 
-class RemoteRepository(private val url: String) : HomeRepository {
+class RemoteRepository(private val url: String, private val cache: File? = null) : HomeRepository {
     override val data: Flow<HomeData> = flow {
-        emit(runCatching { parse(JSONObject(download() ?: error("empty"))) }.getOrNull() ?: SampleRepository().data.first())
+        val old = cache?.takeIf { it.exists() }?.let { runCatching { parse(JSONObject(it.readText())) }.getOrNull() }
+        if (old != null) emit(old)
+        val fresh = download()?.let { text -> runCatching { parse(JSONObject(text)).also { cache?.writeText(text) } }.getOrNull() }
+        if (fresh != null) emit(fresh)
+        else if (old == null) emit(EmptyHomeData)
     }.flowOn(Dispatchers.IO)
 
     private fun download(): String? {

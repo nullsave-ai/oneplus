@@ -3,7 +3,6 @@ package com.oneplus.app.ui
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationVector1D
-import androidx.compose.animation.core.spring
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -27,7 +26,7 @@ fun MatchesHost(open: Boolean, p: Animatable<Float, AnimationVector1D>, matches:
     val kind = LocalTransition.current
     var height by remember { mutableFloatStateOf(1f) }
     val visible by remember { derivedStateOf { p.value > 0.001f } }
-    LaunchedEffect(open) { p.animateTo(if (open) 1f else 0f, spring(1f, 340f)) }
+    LaunchedEffect(open) { p.move(if (open) 1f else 0f, kind) }
     BackHandler(open, onClose)
     if (!open && !visible) return
 
@@ -37,10 +36,7 @@ fun MatchesHost(open: Boolean, p: Animatable<Float, AnimationVector1D>, matches:
             .graphicsLayer {
                 val v = p.value
                 if (kind == PageTransition.Look) {
-                    translationY = (1f - v) * height * 0.14f
-                    val s = 0.96f + 0.04f * v
-                    scaleX = s; scaleY = s
-                    alpha = (v * 2.2f).coerceIn(0f, 1f)
+                    translationY = (1f - v) * height
                 } else overMotion(kind, v)
             }
             .ambient()

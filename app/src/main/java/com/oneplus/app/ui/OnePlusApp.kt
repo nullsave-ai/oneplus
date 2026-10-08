@@ -58,8 +58,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.oneplus.app.R
+import com.oneplus.app.App
 import com.oneplus.app.data.Kind
-import com.oneplus.app.data.Library
 import com.oneplus.app.player.PlaySource
 import com.oneplus.app.ui.system.*
 import kotlin.math.abs
@@ -68,7 +68,11 @@ import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 @Composable
-fun OnePlusApp(theme: ThemeController, vm: MainViewModel = viewModel()) {
+fun OnePlusApp(
+    theme: ThemeController,
+    app: App = LocalContext.current.applicationContext as App,
+    vm: MainViewModel = viewModel { MainViewModel(app.repository) },
+) {
     val state by vm.state.collectAsStateWithLifecycle()
     val tv = LocalTvMode.current
     val look = LocalLook.current
@@ -77,13 +81,12 @@ fun OnePlusApp(theme: ThemeController, vm: MainViewModel = viewModel()) {
     var tab by rememberSaveable { mutableIntStateOf(0) }
     var movieId by rememberSaveable { mutableIntStateOf(-1) }
     var showMovies by rememberSaveable { mutableStateOf(false) }
-    var showMine by rememberSaveable { mutableStateOf(false) }
     var moviesKind by rememberSaveable { mutableIntStateOf(0) }
     var showClear by rememberSaveable { mutableStateOf(false) }
     var showMatches by rememberSaveable { mutableStateOf(false) }
     var matchFocus by rememberSaveable { mutableIntStateOf(-1) }
     var showTg by rememberSaveable { mutableStateOf(telegramDue(ctx)) }
-    val library = remember { Library(ctx.getSharedPreferences("library", Context.MODE_PRIVATE)) }
+    val library = app.library
     val matchesP = remember { Animatable(if (showMatches) 1f else 0f) }
     var playKind by rememberSaveable { mutableIntStateOf(0) }
     var playId by rememberSaveable { mutableIntStateOf(-1) }
@@ -92,16 +95,16 @@ fun OnePlusApp(theme: ThemeController, vm: MainViewModel = viewModel()) {
     val chPrefs = remember { ctx.getSharedPreferences("channels", Context.MODE_PRIVATE) }
     var lastChannel by rememberSaveable { mutableIntStateOf(-1) }
     var pickedGroup by rememberSaveable { mutableStateOf(chPrefs.getString("group", "").orEmpty()) }
-    val groups = remember(state.all.channels) { state.all.channels.map { it.group }.distinct() }
+    val groups = state.base.groups
     val group = if (pickedGroup in groups) pickedGroup else groups.firstOrNull().orEmpty()
     val pickGroup = { g: String -> pickedGroup = g; chPrefs.edit().putString("group", g).apply() }
     val saveLast = { id: Int ->
         lastChannel = id
-        state.all.channels.firstOrNull { it.id == id }?.let { pickGroup(it.group) }
+        state.base.channelsById[id]?.let { pickGroup(it.group) }
     }
     var fullscreen by rememberSaveable { mutableStateOf(true) }
     var slot by remember { mutableStateOf<Rect?>(null) }
-    val byId = remember(state.all.movies) { state.all.movies.associateBy { it.id } }
+    val byId = state.base.byId
     val detail = remember { DetailState(movieId >= 0) }
     val homeList = rememberLazyListState()
     val channelsList = rememberLazyListState()
@@ -132,19 +135,19 @@ fun OnePlusApp(theme: ThemeController, vm: MainViewModel = viewModel()) {
             homeList.canScrollBackward && info.visibleItemsInfo.any { it.key == "channels" && it.offset < info.viewportSize.height / 2 }
         }
     }
-    val source = remember(playKind, playId, playEp, state.all) {
+    val source = remember(playKind, playId, playEp, state.base) {
         when (playKind) {
-            1 -> state.all.movies.firstOrNull { it.id == playId }?.let { m ->
+            1 -> byId[playId]?.let { m ->
                 val e = m.episodes.getOrNull(playEp)
                 if (e != null) PlaySource(e.url, "${m.title} - ${e.title}", live = false, cacheable = true)
                 else PlaySource(m.url, m.title, live = false, cacheable = true, startMs = playStart)
             }
-            2 -> state.all.channels.firstOrNull { it.id == playId }?.let { PlaySource(it.url, it.name, live = true) }
+            2 -> state.base.channelsById[playId]?.let { PlaySource(it.url, it.name, live = true) }
             else -> null
         }
     }
-    LaunchedEffect(source, playKind, state.all) {
-        if (playKind in 1..2 && source == null && state.all.movies.isNotEmpty()) playKind = 0
+    LaunchedEffect(source, playKind, state.base) {
+        if (playKind in 1..2 && source == null && byId.isNotEmpty()) playKind = 0
     }
     val wantsInPlace = playKind == 2 && !fullscreen
     val parked = wantsInPlace && tab != 1
@@ -161,14 +164,14 @@ fun OnePlusApp(theme: ThemeController, vm: MainViewModel = viewModel()) {
         if (tv && playKind == 2 && playId == id) fullscreen = true else { saveLast(id); playKind = 2; playId = id; playEp = -1; fullscreen = false }
         Unit
     }
-    LaunchedEffect(tab, state.all.channels) {
+    LaunchedEffect(tab, state.base) {
         if (tab != 1) return@LaunchedEffect
         if (playKind == 2) return@LaunchedEffect
-        val inGroup = state.all.channels.filter { it.group == group }
+        val inGroup = state.base.byGroup[group].orEmpty()
         (inGroup.firstOrNull { it.id == lastChannel } ?: inGroup.firstOrNull())?.let { playInline(it.id) }
     }
-    LaunchedEffect(movieId, state.all.movies) {
-        if (movieId >= 0 && state.all.movies.isNotEmpty() && state.all.movies.none { it.id == movieId }) {
+    LaunchedEffect(movieId, state.base) {
+        if (movieId >= 0 && byId.isNotEmpty() && movieId !in byId) {
             detail.enter.snapTo(0f)
             movieId = -1
         }
@@ -179,7 +182,7 @@ fun OnePlusApp(theme: ThemeController, vm: MainViewModel = viewModel()) {
     var baseFocused by remember { mutableStateOf(false) }
     val dialogOpen = showTg || showClear
     val playerFull = session != null && !wantsInPlace
-    val lockBase = movieId >= 0 || showMatches || showMovies || showMine || playerFull || dialogOpen
+    val lockBase = movieId >= 0 || showMatches || showMovies || playerFull || dialogOpen
     val lockOver = playerFull || dialogOpen
     BackHandler(enabled = tv && baseFocused && !lockBase && !(tab == 2 && sPage >= 0)) { runCatching { tabReqs[tab].requestFocus() } }
     var tvNavH by remember { mutableStateOf(0.dp) }
@@ -221,7 +224,7 @@ fun OnePlusApp(theme: ThemeController, vm: MainViewModel = viewModel()) {
                         else -> SettingsScreen(
                             theme, settingsScroll, subScroll, sPage, { sPage = it }, wide,
                             library.list.mapNotNull { byId[it] }, { id -> focus.clearFocus(); movieId = id },
-                            { openTelegram(ctx) }, { showClear = true }, { focus.clearFocus(); showMine = true },
+                            { openTelegram(ctx) }, { showClear = true },
                         )
                     }
                     }
@@ -237,8 +240,7 @@ fun OnePlusApp(theme: ThemeController, vm: MainViewModel = viewModel()) {
                 }
                 }
                 TvLayer(movieId >= 0 || lockOver) {
-                    MoviesHost(showMovies, Kind.entries[moviesKind], remember(state.all.movies, moviesKind) { state.all.movies.filter { it.kind.ordinal == moviesKind } }, portrait, { id -> movieId = id }) { showMovies = false }
-                    MineHost(showMine && theme.prefs.mine, state.all.movies, { id -> movieId = id }) { showMine = false }
+                    MoviesHost(showMovies, Kind.entries[moviesKind], state.base.shelves[Kind.entries[moviesKind]].orEmpty(), portrait, { id -> movieId = id }) { showMovies = false }
                 }
             }
             TvLayer(lockOver) {
@@ -263,7 +265,7 @@ fun OnePlusApp(theme: ThemeController, vm: MainViewModel = viewModel()) {
                     }
                 }
             }
-            val covered = showMovies || showMine || (session != null && !wantsInPlace)
+            val covered = showMovies || (session != null && !wantsInPlace)
             val navShow by animateFloatAsState(if (covered) 0f else 1f, tween(160), label = "nav")
             val navAlpha = { navShow * (1f - maxOf(detail.depth, matchesP.value)) }
             val navMod = Modifier
@@ -297,7 +299,7 @@ fun OnePlusApp(theme: ThemeController, vm: MainViewModel = viewModel()) {
                     @Suppress("DEPRECATION")
                     ctx.packageManager.getPackageInfo(ctx.packageName, 0).versionCode
                 }
-            }.getOrDefault(5)
+            }.getOrDefault(7)
             if (appUp != null && (curVer < appUp.minVersionCode || (appUp.forceUpdate && curVer < appUp.latestVersionCode))) {
                 ForceUpdateDialog(
                     title = appUp.updateTitle.ifBlank { "تحديث إجباري متوفر" },

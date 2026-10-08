@@ -19,6 +19,7 @@ import com.oneplus.app.ui.system.ThemeStore
 import com.oneplus.app.ui.system.TvScreen
 import com.oneplus.app.ui.system.resolveDark
 import com.oneplus.app.ui.system.resolveTv
+import com.oneplus.app.ui.system.trimImages
 
 class MainActivity : ComponentActivity() {
     private lateinit var bars: SystemBars
@@ -51,6 +52,11 @@ class MainActivity : ComponentActivity() {
                 TvScreen(theme.prefs.display.resolveTv()) { OnePlusTheme(theme.prefs, dark) { OnePlusApp(theme) } }
             }
         }
+    }
+
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        trimImages(level)
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {

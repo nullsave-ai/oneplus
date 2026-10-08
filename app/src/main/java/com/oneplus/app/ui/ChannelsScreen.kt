@@ -31,7 +31,7 @@ fun ChannelsScreen(
     onSlot: (Rect) -> Unit, onGroup: (String) -> Unit, onChannel: (Int) -> Unit,
 ) {
     val groups = remember(channels) { channels.map { it.group }.distinct() }
-    val shown = if (searching) channels else channels.filter { it.group == group }
+    val shown = remember(channels, searching, group) { if (searching) channels else channels.filter { it.group == group } }
     val bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + bottomNavSpace()
 
     var positioned by rememberSaveable { mutableStateOf("") }

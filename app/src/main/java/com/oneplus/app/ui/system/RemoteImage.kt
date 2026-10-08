@@ -1,5 +1,6 @@
 package com.oneplus.app.ui.system
 
+import android.content.ComponentCallbacks2
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.util.LruCache
@@ -7,62 +8,120 @@ import androidx.compose.foundation.Image
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import com.oneplus.app.player.isAllowed
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
-import java.io.ByteArrayOutputStream
+import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
+import java.security.MessageDigest
+import java.util.concurrent.ConcurrentHashMap
 
 @Composable
 fun RemoteImage(url: String, modifier: Modifier = Modifier, contentScale: ContentScale = ContentScale.Crop) {
+    val dir = LocalContext.current.cacheDir
     val bitmap by produceState<Bitmap?>(Images.cached(url), url) {
-        if (value == null && isAllowed(url)) value = Images.load(url)
+        if (value == null && isAllowed(url)) value = Images.load(url, dir)
     }
-    bitmap?.let { Image(it.asImageBitmap(), null, modifier, contentScale = contentScale) }
+    val image = remember(bitmap) { bitmap?.asImageBitmap() }
+    if (image != null) Image(image, null, modifier, contentScale = contentScale)
 }
 
+fun trimImages(level: Int) = Images.trim(level)
+
 private object Images {
-    private val lru = object : LruCache<String, Bitmap>((Runtime.getRuntime().maxMemory() / 1024 / 16).toInt()) {
+    private val lru = object : LruCache<String, Bitmap>((Runtime.getRuntime().maxMemory() / 1024 / 8).toInt()) {
         override fun sizeOf(key: String, value: Bitmap) = value.byteCount / 1024
     }
-    private const val MaxBytes = 4_000_000
+    private const val MaxBytes = 16_000_000L
+    private const val DiskLimit = 120_000_000L
+    private const val TouchMs = 600_000L
     private val TargetWidth = if (WeakDevice) 480 else 720
-    private val gate = Semaphore(if (WeakDevice) 2 else 4)
+    private val gate = Semaphore(if (WeakDevice) 3 else 6)
     private val config = if (WeakDevice) Bitmap.Config.RGB_565 else Bitmap.Config.ARGB_8888
+    private var diskBytes = -1L
+    private val inflight = ConcurrentHashMap<String, Mutex>()
+
+    fun trim(level: Int) {
+        if (level >= ComponentCallbacks2.TRIM_MEMORY_MODERATE) lru.evictAll()
+        else if (level >= ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN) lru.trimToSize(lru.size() / 2)
+    }
 
     fun cached(url: String): Bitmap? = lru.get(url)
 
-    suspend fun load(url: String): Bitmap? = gate.withPermit { withContext(Dispatchers.IO) {
-        lru.get(url) ?: runCatching {
-            val c = URL(url).openConnection() as HttpURLConnection
-            c.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 15; K) AppleWebKit/537.36")
-            c.instanceFollowRedirects = true
-            val bytes = try {
-                c.connectTimeout = 8_000; c.readTimeout = 10_000
-                if (c.responseCode !in 200..299) return@runCatching null
-                c.inputStream.use { s ->
-                    val out = ByteArrayOutputStream()
-                    val buf = ByteArray(8192)
-                    while (true) {
-                        val n = s.read(buf)
-                        if (n < 0) break
-                        if (out.size() + n > MaxBytes) return@runCatching null
-                        out.write(buf, 0, n)
-                    }
-                    out.toByteArray()
+    suspend fun load(url: String, cache: File): Bitmap? {
+        val lock = inflight.getOrPut(url) { Mutex() }
+        return try {
+            lock.withLock { lru.get(url) ?: gate.withPermit { withContext(Dispatchers.IO) { decode(url, cache) } } }
+        } finally { inflight.remove(url, lock) }
+    }
+
+    private fun decode(url: String, cache: File): Bitmap? =
+            lru.get(url) ?: runCatching {
+                val dir = File(cache, "img").apply { mkdirs() }
+                val file = File(dir, name(url))
+                if (file.exists()) {
+                    val now = System.currentTimeMillis()
+                    if (now - file.lastModified() > TouchMs) file.setLastModified(now)
+                } else if ((0..1).any { fetch(url, file) }) account(dir, file.length()) else return@runCatching null
+                val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                BitmapFactory.decodeFile(file.path, bounds)
+                var sample = 1
+                while (bounds.outWidth / (sample * 2) >= TargetWidth) sample *= 2
+                BitmapFactory.decodeFile(file.path, BitmapFactory.Options().apply { inSampleSize = sample; inPreferredConfig = config })
+                    ?: run { file.delete(); null }
+            }.getOrNull()?.also { lru.put(url, it) }
+
+    private fun fetch(url: String, file: File): Boolean {
+        val tmp = File(file.path + ".tmp")
+        return runCatching {
+            var target = url
+            for (hop in 0..5) {
+                val c = URL(target).openConnection() as HttpURLConnection
+                c.connectTimeout = 8_000; c.readTimeout = 12_000; c.instanceFollowRedirects = false
+                c.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android) AppleWebKit/537.36")
+                c.setRequestProperty("Accept", "image/*")
+                val code = c.responseCode
+                if (code in 300..399) {
+                    val next = c.getHeaderField("Location")
+                    c.disconnect()
+                    if (next.isNullOrBlank()) return@runCatching false
+                    target = URL(URL(target), next).toString()
+                    continue
                 }
-            } finally { c.disconnect() }
-            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-            BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
-            var sample = 1
-            while (bounds.outWidth / (sample * 2) >= TargetWidth) sample *= 2
-            BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = sample; inPreferredConfig = config })
-        }.getOrNull()?.also { lru.put(url, it) }
-    } }
+                if (code != 200) { c.disconnect(); return@runCatching false }
+                val ok = try {
+                    c.inputStream.use { s -> tmp.outputStream().use { o -> s.copyTo(o) } }
+                    tmp.length() in 1..MaxBytes
+                } finally { c.disconnect() }
+                return@runCatching ok && tmp.renameTo(file)
+            }
+            false
+        }.getOrDefault(false).also { if (!it) tmp.delete() }
+    }
+
+    private fun name(url: String) = MessageDigest.getInstance("SHA-1").digest(url.toByteArray()).joinToString("") { "%02x".format(it) }
+
+    @Synchronized
+    private fun account(dir: File, added: Long) {
+        if (diskBytes < 0) diskBytes = dir.listFiles().orEmpty().sumOf { it.length() }
+        else diskBytes += added
+        if (diskBytes <= DiskLimit) return
+        var total = diskBytes
+        for (f in dir.listFiles().orEmpty().sortedBy { it.lastModified() }) {
+            if (total <= DiskLimit * 4 / 5) break
+            total -= f.length()
+            f.delete()
+        }
+        diskBytes = total
+    }
 }
