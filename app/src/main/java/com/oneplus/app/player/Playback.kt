@@ -132,7 +132,17 @@ class Playback(
         player.playWhenReady = true
     }
 
-    private fun kindOf(url: String) = Util.inferContentType(Uri.parse(url))
+    private fun kindOf(url: String): Int {
+        val u = url.lowercase()
+        val h = res.headers["type"]?.lowercase() ?: ""
+        return when {
+            h in setOf("hls", "m3u8") || u.contains(".m3u8") || u.contains("m3u8") || u.contains("dramacardinal") || u.contains("bluetier.top") || u.contains("checklist") -> C.CONTENT_TYPE_HLS
+            h in setOf("dash", "mpd") || u.contains(".mpd") || u.contains("dash") -> C.CONTENT_TYPE_DASH
+            h in setOf("ss", "ism") || u.contains(".ism") -> C.CONTENT_TYPE_SS
+            u.startsWith("rtsp") -> C.CONTENT_TYPE_RTSP
+            else -> Util.inferContentType(Uri.parse(url))
+        }
+    }
 
     private fun src(url: String, type: Int): MediaSource {
         val subConfigs = res.subtitles.map { s ->
@@ -143,11 +153,17 @@ class Playback(
                 .setSelectionFlags(if (s.language.startsWith("ar", true)) C.SELECTION_FLAG_DEFAULT else 0)
                 .build()
         }
+        val drm = drmProvider
+        val drmConfig = res.drm?.let { d ->
+            MediaItem.DrmConfiguration.Builder(d.uuid)
+                .apply { d.licenseUrl?.let { setLicenseUri(it) } }
+                .build()
+        }
         val item = MediaItem.Builder().setUri(url)
             .setMediaMetadata(MediaMetadata.Builder().setTitle(source.title).build())
             .setSubtitleConfigurations(subConfigs)
+            .apply { drmConfig?.let { setDrmConfiguration(it) } }
             .build()
-        val drm = drmProvider
         return when (type) {
             C.CONTENT_TYPE_HLS -> HlsMediaSource.Factory(http).setAllowChunklessPreparation(true)
                 .apply { drm?.let { setDrmSessionManagerProvider(it) } }.createMediaSource(item)

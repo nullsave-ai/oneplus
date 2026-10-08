@@ -75,6 +75,7 @@ private class Parts {
             norm in setOf("drmlicense", "licensekey") -> license = v
             norm == "clearkeyid" -> kid = v
             norm in setOf("clearkeyval", "clearkeyvalue") -> key = v
+            norm in setOf("type", "streamtype", "contenttype") -> headers["type"] = v
             else -> if (k.all { it.isLetterOrDigit() || it == '-' }) headers[k] = v
         }
     }
