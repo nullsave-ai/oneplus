@@ -46,6 +46,10 @@ import kotlinx.coroutines.delay
 import androidx.compose.ui.unit.dp
 import kotlin.math.roundToInt
 
+val WeakDevice: Boolean = Runtime.getRuntime().maxMemory() <= 192L * 1024 * 1024 || Runtime.getRuntime().availableProcessors() <= 2 || android.os.Build.VERSION.SDK_INT < 24
+
+val HighDevice: Boolean = !WeakDevice && Runtime.getRuntime().maxMemory() >= 320L * 1024 * 1024 && Runtime.getRuntime().availableProcessors() >= 6 && android.os.Build.VERSION.SDK_INT >= 28
+
 val LocalTvMode = staticCompositionLocalOf { false }
 
 val LocalTvLock = compositionLocalOf { false }
@@ -125,11 +129,11 @@ private fun DrawScope.focusGlow(color: Color, a: Float) {
     val r = (minOf(size.width, size.height) / 2f).coerceAtMost(22.dp.toPx())
     val hole = Path().apply { addRoundRect(RoundRect(0f, 0f, size.width, size.height, CornerRadius(r))) }
     clipPath(hole, ClipOp.Difference) {
-        val layers = 7
+        val layers = if (HighDevice) 7 else 3
         for (i in 1..layers) {
-            val grow = i * 2.dp.toPx()
+            val grow = i * (14f / layers).dp.toPx()
             drawRoundRect(
-                color.copy(alpha = 0.17f * a * (1f - (i - 1f) / layers)),
+                color.copy(alpha = 0.17f * a * (1f - (i - 1f) / layers) * (7f / layers).coerceAtMost(1.6f)),
                 Offset(-grow, -grow), Size(size.width + grow * 2f, size.height + grow * 2f), CornerRadius(r + grow),
             )
         }

@@ -68,7 +68,7 @@ fun Modifier.ambient(): Modifier {
     val c = LocalColors.current
     if (LocalSolid.current) return background(c.bg)
     if (LocalLook.current.anime) {
-        val fall = rememberInfiniteTransition(label = "petals").animateFloat(0f, 1f, infiniteRepeatable(tween(26000, easing = LinearEasing)), label = "t")
+        val fall: State<Float> = if (HighDevice) rememberInfiniteTransition(label = "petals").animateFloat(0f, 1f, infiniteRepeatable(tween(26000, easing = LinearEasing)), label = "t") else remember { mutableStateOf(0.3f) }
         val petals = remember { val r = kotlin.random.Random(5); List(16) { floatArrayOf(r.nextFloat(), r.nextFloat(), (1 + r.nextInt(2)).toFloat(), r.nextFloat() * 6.28f, 0.7f + r.nextFloat() * 0.7f) } }
         val dusk = remember(c) { Brush.verticalGradient(listOf(c.bg, lerp(c.bg, c.accent, 0.14f))) }
         return background(dusk).drawBehind {
@@ -85,7 +85,7 @@ fun Modifier.ambient(): Modifier {
         }
     }
     if (LocalLook.current.pitch) {
-        val breath = rememberInfiniteTransition(label = "lights").animateFloat(0.55f, 1f, infiniteRepeatable(tween(3600, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "b")
+        val breath: State<Float> = if (HighDevice) rememberInfiniteTransition(label = "lights").animateFloat(0.55f, 1f, infiniteRepeatable(tween(3600, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "b") else remember { mutableStateOf(0.8f) }
         return background(c.bg).drawBehind {
             val band = 76.dp.toPx(); var y = 0f
             while (y < size.height) { drawRect(c.text.copy(alpha = 0.035f), Offset(0f, y), Size(size.width, band)); y += band * 2f }
@@ -133,7 +133,7 @@ fun Modifier.glass(level: Int, radius: Dp): Modifier {
     val sheen = remember(g.depth) { Brush.verticalGradient(listOf(Color.White.copy(alpha = (0.10f * g.depth).coerceIn(0f, 1f)), Color.White.copy(alpha = 0f))) }
     val edge = c.border.copy(alpha = (c.border.alpha * g.depth).coerceIn(0f, 1f))
     val tint = (GlassAlpha[level - 1] * g.density).coerceIn(0f, 1f)
-    val lift = if (g.depth > 1f) drawBehind { softShadow(CornerRadius(radius.toPx()), (g.depth - 1f) * 3f) } else this
+    val lift = if (g.depth > 1f && HighDevice) drawBehind { softShadow(CornerRadius(radius.toPx()), (g.depth - 1f) * 3f) } else this
     val face = lift.clip(shape).background(c.glass.copy(alpha = tint)).background(sheen)
     if (k.cosmic) {
         val rim = remember(c.accent) { Brush.linearGradient(listOf(c.accent.copy(alpha = 0.75f), c.accent.copy(alpha = 0.08f), NebulaViolet.copy(alpha = 0.45f))) }

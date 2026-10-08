@@ -146,9 +146,8 @@ private fun SettingsList(
             }
         }
         Group(R.string.mine_title) {
-            SwitchRow(OneIcon.Star, Violet, R.string.mine_enable, p.mine) { theme.update { copy(mine = it) }; theme.save() }
-            SwitchRow(OneIcon.Fit, Indigo, R.string.mine_blur, p.nativeBlur, last = !p.mine) { theme.update { copy(nativeBlur = it) }; theme.save() }
-            if (p.mine) NavRow(OneIcon.Play, Pink, R.string.mine_open, "", last = true) { onMine() }
+            SwitchRow(OneIcon.Star, Orange, R.string.mine_enable, p.mine, last = !p.mine) { theme.update { copy(mine = it) }; theme.save() }
+            if (p.mine) NavRow(OneIcon.Play, Orange, R.string.mine_open, "", last = true) { onMine() }
         }
         Group(R.string.settings_general) {
             Row(

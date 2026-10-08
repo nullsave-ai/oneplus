@@ -238,7 +238,7 @@ fun OnePlusApp(theme: ThemeController, vm: MainViewModel = viewModel()) {
                 }
                 TvLayer(movieId >= 0 || lockOver) {
                     MoviesHost(showMovies, Kind.entries[moviesKind], remember(state.all.movies, moviesKind) { state.all.movies.filter { it.kind.ordinal == moviesKind } }, portrait, { id -> movieId = id }) { showMovies = false }
-                    MineHost(showMine && theme.prefs.mine, state.all.movies, theme, { id -> movieId = id }) { showMine = false }
+                    MineHost(showMine && theme.prefs.mine, state.all.movies, { id -> movieId = id }) { showMine = false }
                 }
             }
             TvLayer(lockOver) {

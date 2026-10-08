@@ -12,6 +12,8 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import com.oneplus.app.player.isAllowed
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
 import java.net.HttpURLConnection
@@ -30,11 +32,13 @@ private object Images {
         override fun sizeOf(key: String, value: Bitmap) = value.byteCount / 1024
     }
     private const val MaxBytes = 4_000_000
-    private const val TargetWidth = 720
+    private val TargetWidth = if (WeakDevice) 480 else 720
+    private val gate = Semaphore(if (WeakDevice) 2 else 4)
+    private val config = if (WeakDevice) Bitmap.Config.RGB_565 else Bitmap.Config.ARGB_8888
 
     fun cached(url: String): Bitmap? = lru.get(url)
 
-    suspend fun load(url: String): Bitmap? = withContext(Dispatchers.IO) {
+    suspend fun load(url: String): Bitmap? = gate.withPermit { withContext(Dispatchers.IO) {
         lru.get(url) ?: runCatching {
             val c = URL(url).openConnection() as HttpURLConnection
             c.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 15; K) AppleWebKit/537.36")
@@ -58,7 +62,7 @@ private object Images {
             BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
             var sample = 1
             while (bounds.outWidth / (sample * 2) >= TargetWidth) sample *= 2
-            BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = sample })
+            BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = sample; inPreferredConfig = config })
         }.getOrNull()?.also { lru.put(url, it) }
-    }
+    } }
 }

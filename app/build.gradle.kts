@@ -10,8 +10,8 @@ android {
         applicationId = "com.oneplus.app"
         minSdk = 21
         targetSdk = 35
-        versionCode = 6
-        versionName = "2.4"
+        versionCode = 7
+        versionName = "2.5"
     }
     buildTypes {
         release {
@@ -35,6 +35,8 @@ dependencies {
     implementation("androidx.activity:activity-compose:1.9.3")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
+
+    implementation("androidx.profileinstaller:profileinstaller:1.4.1")
 
     val media3 = "1.5.1"
     implementation("androidx.media3:media3-exoplayer:$media3")
