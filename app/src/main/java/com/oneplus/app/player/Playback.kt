@@ -122,8 +122,6 @@ class Playback(
         val speedControl = DefaultLivePlaybackSpeedControl.Builder()
             .setFallbackMinPlaybackSpeed(0.97f)
             .setFallbackMaxPlaybackSpeed(1.03f)
-            .setMinPossibleLiveOffsetMs(1_000)
-            .setMaxPossibleLiveOffsetMs(6_000)
             .build()
         player = ExoPlayer.Builder(app, DefaultRenderersFactory(app).setEnableDecoderFallback(true))
             .setLoadControl(load)
