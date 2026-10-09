@@ -134,6 +134,7 @@ class Playback(
         params = player.trackSelectionParameters.buildUpon()
             .setPreferredTextLanguage("ar")
             .setPreferredAudioLanguage("ar")
+            .setSelectUndeterminedTextLanguage(true)
             .build()
         player.trackSelectionParameters = params
         player.addListener(this)
@@ -174,7 +175,7 @@ class Playback(
             .setSubtitleConfigurations(subConfigs)
             .apply { drmConfig?.let { setDrmConfiguration(it) } }
             .build()
-        return when (type) {
+        val baseSource = when (type) {
             C.CONTENT_TYPE_HLS -> HlsMediaSource.Factory(http).setAllowChunklessPreparation(true)
                 .apply { drm?.let { setDrmSessionManagerProvider(it) } }.createMediaSource(item)
             C.CONTENT_TYPE_DASH -> DashMediaSource.Factory(http)
@@ -191,6 +192,19 @@ class Playback(
                 } else http
                 ProgressiveMediaSource.Factory(factory).apply { drm?.let { setDrmSessionManagerProvider(it) } }.createMediaSource(item)
             }
+        }
+        return if (subConfigs.isNotEmpty()) {
+            val subHttp = DefaultHttpDataSource.Factory()
+                .setUserAgent("Mozilla/5.0 (Linux; Android 15; K) AppleWebKit/537.36")
+                .setConnectTimeoutMs(8_000)
+                .setReadTimeoutMs(10_000)
+                .setAllowCrossProtocolRedirects(true)
+            val subSources = subConfigs.map { s ->
+                androidx.media3.exoplayer.source.SingleSampleMediaSource.Factory(subHttp).createMediaSource(s, C.TIME_UNSET)
+            }
+            androidx.media3.exoplayer.source.MergingMediaSource(baseSource, *subSources.toTypedArray())
+        } else {
+            baseSource
         }
     }
 
@@ -326,8 +340,21 @@ class Playback(
     }
 
     override fun onTimelineChanged(timeline: Timeline, reason: Int) = refresh()
-    override fun onTracksChanged(tracks: Tracks) { this.tracks = tracks }
     override fun onTrackSelectionParametersChanged(parameters: TrackSelectionParameters) { params = parameters }
+    override fun onTracksChanged(tracks: Tracks) {
+        this.tracks = tracks
+        val textGroups = tracks.groups.filter { it.type == C.TRACK_TYPE_TEXT && it.isSupported }
+        if (textGroups.isNotEmpty() && !params.disabledTrackTypes.contains(C.TRACK_TYPE_TEXT) && textGroups.none { it.isSelected }) {
+            val arGroup = textGroups.firstOrNull { g ->
+                (0 until g.length).any { i ->
+                    val f = g.getTrackFormat(i)
+                    f.language?.startsWith("ar", true) == true || f.label?.contains("عرب", true) == true
+                }
+            } ?: textGroups.first()
+            val trackIdx = (0 until arGroup.length).firstOrNull { arGroup.isTrackSupported(it) } ?: 0
+            choose(arGroup, listOf(trackIdx))
+        }
+    }
     override fun onCues(cueGroup: CueGroup) { caption = cueGroup.cues.mapNotNull { it.text?.toString() }.joinToString("\n") }
     override fun onVideoSizeChanged(videoSize: VideoSize) { this.videoSize = videoSize }
     override fun onRenderedFirstFrame() { firstFrame = true }

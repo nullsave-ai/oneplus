@@ -18,7 +18,7 @@ import com.oneplus.app.data.local.DataCacheEntity
 
 const val ApiUrl = "https://apklive-default-rtdb.firebaseio.com/catalog.json"
 
-private const val MaxBytes = 5_000_000
+private const val MaxBytes = 35_000_000
 
 class RemoteRepository(private val url: String, private val db: AppDatabase) : HomeRepository {
     override val data: Flow<HomeData> = flow {

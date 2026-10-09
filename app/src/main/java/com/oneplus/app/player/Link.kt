@@ -36,7 +36,15 @@ fun parseLink(raw: String): Link? {
         base = url
     } else {
         base = text.substringBefore('|').trim()
-        text.substringAfter('|', "").split('&').forEach { kv ->
+        val after = text.substringAfter('|', "")
+        val optDelim = Regex("&(?=(?:[a-zA-Z0-9_-]+)=)", RegexOption.IGNORE_CASE)
+        val tokens = if (after.contains("sub", true)) {
+            val delim = Regex("&(?=(?:User-Agent|Referer|Origin|Cookie|drmScheme|drmLicense|clearKeyId|clearKeyVal|type|streamType|sub|subtitle|sub_ar|subs)[=:])", RegexOption.IGNORE_CASE)
+            after.split(delim)
+        } else {
+            after.split('&')
+        }
+        tokens.forEach { kv ->
             val i = kv.indexOf('=')
             if (i > 0) parts.put(Uri.decode(kv.substring(0, i)), Uri.decode(kv.substring(i + 1)))
         }

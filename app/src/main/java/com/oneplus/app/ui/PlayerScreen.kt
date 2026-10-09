@@ -239,9 +239,27 @@ fun PlayerScreen(
                     .onFocusChanged { inside = it.hasFocus }.focusable(interactionSource = keySrc)
                 else Modifier
             )
-    ) {
         val corner = with(LocalDensity.current) { 20.dp.toPx() }
-        if (pb != null) key(pb) {
+        if (session.isWebEmbed && link != null) {
+            AndroidView(
+                factory = { c ->
+                    android.webkit.WebView(c).apply {
+                        layoutParams = android.view.ViewGroup.LayoutParams(
+                            android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                            android.view.ViewGroup.LayoutParams.MATCH_PARENT
+                        )
+                        settings.javaScriptEnabled = true
+                        settings.domStorageEnabled = true
+                        settings.mediaPlaybackRequiresUserGesture = false
+                        settings.userAgentString = "Mozilla/5.0 (Linux; Android 15; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36"
+                        webChromeClient = android.webkit.WebChromeClient()
+                        webViewClient = android.webkit.WebViewClient()
+                        loadUrl(link.url)
+                    }
+                },
+                modifier = Modifier.fillMaxSize()
+            )
+        } else if (pb != null) key(pb) {
             BoxWithConstraints(Modifier.fillMaxSize().clipToBounds(), Alignment.Center) {
                 val vs = pb.videoSize
                 val ratio = if (vs.width > 0 && vs.height > 0) vs.width * vs.pixelWidthHeightRatio / vs.height else 16f / 9f
