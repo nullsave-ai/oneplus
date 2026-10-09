@@ -239,6 +239,7 @@ fun PlayerScreen(
                     .onFocusChanged { inside = it.hasFocus }.focusable(interactionSource = keySrc)
                 else Modifier
             )
+    ) {
         val corner = with(LocalDensity.current) { 20.dp.toPx() }
         if (session.isWebEmbed && link != null) {
             AndroidView(
