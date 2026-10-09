@@ -16,10 +16,6 @@ import kotlinx.coroutines.withContext
 @Stable
 class PlayerSession internal constructor(val source: PlaySource) {
     val link: Link? = parseLink(source.url)
-    val isWebEmbed: Boolean = link?.url?.let { u ->
-        val low = u.lowercase()
-        low.contains("videasy.to") || low.contains("vidlink.pro") || (low.contains("/embed") && !low.contains(".m3u8") && !low.contains(".mp4"))
-    } == true
     var attempt by mutableIntStateOf(if (link != null && Resolver.needsExtractor(link.url)) 1 else 0); internal set
     var retryKey by mutableIntStateOf(0); internal set
     var resolveFailed by mutableStateOf(false); internal set
@@ -27,7 +23,7 @@ class PlayerSession internal constructor(val source: PlaySource) {
     internal var wanted by mutableStateOf(false)
     internal var wasParked = false
 
-    val failed: Boolean get() = if (isWebEmbed) link == null else (link == null || resolveFailed || playback?.failed == true)
+    val failed: Boolean get() = link == null || resolveFailed || playback?.failed == true
 
     fun retry() { val p = playback; if (p == null || resolveFailed) retryKey++ else p.retry() }
 }
@@ -56,10 +52,9 @@ private fun SessionEffects(s: PlayerSession, parked: Boolean, onProgress: ((Long
     LaunchedEffect(s, s.attempt, s.retryKey, s.wanted) {
         val link = s.link
         if (link == null || !s.wanted) return@LaunchedEffect
-        if (s.isWebEmbed) return@LaunchedEffect
         s.playback = null
         s.resolveFailed = false
-        val res = if (s.attempt == 0) Resolved(link.url, s.source.live, link.headers, link.drm, subtitles = link.subtitles) else Resolver.resolve(link.url)?.copy(headers = link.headers, subtitles = link.subtitles)
+        val res = if (s.attempt == 0) Resolved(link.url, s.source.live, link.headers, link.drm) else Resolver.resolve(link.url)?.copy(headers = link.headers)
         if (res == null) { s.resolveFailed = true; return@LaunchedEffect }
         val cache = if (s.attempt == 0 && s.source.cacheable) withContext(Dispatchers.IO) { MediaCache.get(app) } else null
         s.playback = Playback(app, s.source, res, cache)

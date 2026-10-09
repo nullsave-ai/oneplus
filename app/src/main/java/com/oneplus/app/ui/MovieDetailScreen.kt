@@ -210,9 +210,7 @@ private fun Hero(m: Movie, duration: String, height: Dp, scroll: ScrollState) {
                     )
                     onDrawBehind { drawRect(glow); drawDither() }
                 }
-        ) {
-            if (m.backdrop.isNotBlank()) RemoteImage(m.backdrop, Modifier.matchParentSize())
-        }
+        )
         Box(Modifier.matchParentSize().background(fade))
         Row(
             Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(start = 20.dp, end = 20.dp, bottom = 20.dp),
@@ -222,9 +220,7 @@ private fun Hero(m: Movie, duration: String, height: Dp, scroll: ScrollState) {
                 Modifier.width(112.dp).aspectRatio(2f / 3f)
                     .clip(RoundedCornerShape(16.dp)).background(c.bg).background(poster)
                     .border(0.5.dp, c.border, RoundedCornerShape(16.dp))
-            ) {
-                if (m.backdrop.isNotBlank()) RemoteImage(m.backdrop, Modifier.matchParentSize())
-            }
+            )
             Column(Modifier.weight(1f).padding(bottom = 4.dp), Arrangement.spacedBy(6.dp)) {
                 OneText(m.title, OneType.Title, c.text, maxLines = 2)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {

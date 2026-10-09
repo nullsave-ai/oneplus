@@ -114,8 +114,9 @@ fun PlayerScreen(
     val window = activity?.window
     val audio = remember(app) { app.getSystemService(Context.AUDIO_SERVICE) as AudioManager }
 
-    DisposableEffect(view) {
-        view.keepScreenOn = true
+    val awake = session.playback?.wantsPlay != false
+    DisposableEffect(view, awake) {
+        view.keepScreenOn = awake
         onDispose {
             view.keepScreenOn = false
             window?.let { w -> val lp = w.attributes; lp.screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE; w.attributes = lp }
@@ -241,26 +242,7 @@ fun PlayerScreen(
             )
     ) {
         val corner = with(LocalDensity.current) { 20.dp.toPx() }
-        if (session.isWebEmbed && link != null) {
-            AndroidView(
-                factory = { c ->
-                    android.webkit.WebView(c).apply {
-                        layoutParams = android.view.ViewGroup.LayoutParams(
-                            android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-                            android.view.ViewGroup.LayoutParams.MATCH_PARENT
-                        )
-                        settings.javaScriptEnabled = true
-                        settings.domStorageEnabled = true
-                        settings.mediaPlaybackRequiresUserGesture = false
-                        settings.userAgentString = "Mozilla/5.0 (Linux; Android 15; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36"
-                        webChromeClient = android.webkit.WebChromeClient()
-                        webViewClient = android.webkit.WebViewClient()
-                        loadUrl(link.url)
-                    }
-                },
-                modifier = Modifier.fillMaxSize()
-            )
-        } else if (pb != null) key(pb) {
+        if (pb != null) key(pb) {
             BoxWithConstraints(Modifier.fillMaxSize().clipToBounds(), Alignment.Center) {
                 val vs = pb.videoSize
                 val ratio = if (vs.width > 0 && vs.height > 0) vs.width * vs.pixelWidthHeightRatio / vs.height else 16f / 9f
@@ -448,11 +430,11 @@ fun PlayerScreen(
                                 OneText(fmt(dur), OneType.Caption, Color.White.copy(alpha = 0.7f))
                             }
                         } else Spacer(Modifier.weight(1f))
-                        GlassBtn({ open(2) }, bs) { OneIconView(OneIcon.Cc) { if (texts.drop(1).any { it.selected }) c.accent else Color.White } }
-                        GlassBtn({ open(1) }, bs) { OneIconView(OneIcon.Wave) { if (audios.any { it.selected }) c.accent else Color.White } }
-                        Box(
+                        if (texts.isNotEmpty()) GlassBtn({ open(2) }, bs) { OneIconView(OneIcon.Cc) { if (texts.drop(1).any { it.selected }) c.accent else Color.White } }
+                        if (audios.size > 1) GlassBtn({ open(1) }, bs) { OneIconView(OneIcon.Wave) { Color.White } }
+                        if (qualities.size > 1) Box(
                             Modifier.height(bs).press { open(0) }.vGlass(bs / 2).padding(horizontal = 12.dp), Alignment.Center,
-                        ) { OneText(qualities.firstOrNull { it.selected }?.label ?: stringResource(R.string.track_auto), OneType.Caption, Color.White, maxLines = 1) }
+                        ) { OneText(qualities.firstOrNull { it.selected }?.label ?: "", OneType.Caption, Color.White, maxLines = 1) }
                         if (fullscreen) GlassBtn({ fit = !fit; tick++ }, bs) { OneIconView(if (fit) OneIcon.Fit else OneIcon.Fill) { Color.White } }
                         if (onToggleFullscreen != null) GlassBtn({ onToggleFullscreen() }, bs, if (keysOn && pb.live && !fullscreen) Modifier.focusRequester(first) else Modifier) {
                             OneIconView(if (fullscreen) OneIcon.Shrink else OneIcon.Expand) { Color.White }

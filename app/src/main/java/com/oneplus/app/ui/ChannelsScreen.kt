@@ -75,75 +75,15 @@ fun ChannelsScreen(
 private fun ChannelRow(ch: Channel, playing: Boolean, onClick: () -> Unit) {
     val c = LocalColors.current
     val shape = RoundedCornerShape(16.dp)
-    val logo = ch.logo.ifBlank { smartChannelLogo(ch.name) }
     Row(
         Modifier.fillMaxWidth().press(onClick).glass(1, 16.dp)
             .then(if (playing) Modifier.background(c.accentSoft).border(0.5.dp, c.accent.copy(alpha = 0.5f), shape) else Modifier)
-            .padding(horizontal = 10.dp, vertical = 7.dp),
-        Arrangement.spacedBy(12.dp), Alignment.CenterVertically,
+            .padding(8.dp),
+        Arrangement.spacedBy(10.dp), Alignment.CenterVertically,
     ) {
         Box(
-            Modifier.size(42.dp).background(c.glass, RoundedCornerShape(12.dp)).clip(RoundedCornerShape(12.dp)),
-            Alignment.Center,
-        ) {
-            if (logo.isNotBlank()) {
-                RemoteImage(
-                    url = logo,
-                    modifier = Modifier.fillMaxSize().padding(3.dp),
-                    contentScale = androidx.compose.ui.layout.ContentScale.Fit,
-                    fallback = {
-                        OneText("${ch.number}", OneType.Section, if (playing) c.accent else c.dim)
-                    }
-                )
-            } else {
-                OneText("${ch.number}", OneType.Section, if (playing) c.accent else c.dim)
-            }
-        }
-        Column(Modifier.weight(1f)) {
-            OneText(ch.name, OneType.Body, if (playing) c.accent else c.text, maxLines = 1)
-            if (ch.group.isNotBlank()) {
-                OneText(ch.group, OneType.Caption, c.dim, maxLines = 1)
-            }
-        }
-        if (playing) {
-            Box(Modifier.size(8.dp).background(c.accent, androidx.compose.foundation.shape.CircleShape))
-        }
-    }
-}
-
-private fun smartChannelLogo(name: String): String {
-    val n = name.lowercase()
-    return when {
-        n.contains("bein") && n.contains("1") -> "https://i.imgur.com/Vtk2cGI.png"
-        n.contains("bein") && n.contains("2") -> "https://i.imgur.com/vUJZSvs.png"
-        n.contains("bein") && n.contains("3") -> "https://i.imgur.com/UYSMao3.png"
-        n.contains("bein") && n.contains("4") -> "https://i.imgur.com/vwAgJNi.png"
-        n.contains("bein") && n.contains("5") -> "https://i.imgur.com/2Rha5aY.png"
-        n.contains("bein") && n.contains("6") -> "https://i.imgur.com/0wBdLYb.png"
-        n.contains("bein") && n.contains("7") -> "https://i.imgur.com/iODFwZi.png"
-        n.contains("bein") && n.contains("8") -> "https://i.imgur.com/CaFEyVn.png"
-        n.contains("bein") && n.contains("news") -> "https://assets.bein.com/mena/sites/3/2015/06/NEWS_DIGITAL_Mono.png"
-        n.contains("bein") && n.contains("4k") -> "https://assets.bein.com/mena/sites/4/2015/06/4k_DIGITAL_Mono.png"
-        n.contains("bein") -> "https://i.imgur.com/Vtk2cGI.png"
-        n.contains("alkass") || n.contains("كأس") || n.contains("الكاس") -> "https://apklive.web.app/logos/alkass.png"
-        n.contains("mbc") && n.contains("1") -> "https://apklive.web.app/logos/mbc1.png"
-        n.contains("mbc") && n.contains("4") -> "https://apklive.web.app/logos/mbc4.png"
-        n.contains("mbc") && (n.contains("مصر 2") || n.contains("masr 2")) -> "https://apklive.web.app/logos/mbc_masr.png"
-        n.contains("mbc") && (n.contains("مصر") || n.contains("masr")) -> "https://apklive.web.app/logos/mbc_masr.png"
-        n.contains("mbc") && (n.contains("دراما") || n.contains("drama")) -> "https://apklive.web.app/logos/mbc_drama.png"
-        n.contains("mbc") && n.contains("5") -> "https://apklive.web.app/logos/mbc5.png"
-        n.contains("mbc") && (n.contains("عراق") || n.contains("iraq")) -> "https://apklive.web.app/logos/mbc_iraq.png"
-        n.contains("جزيرة") || n.contains("jazeera") -> "https://apklive.web.app/logos/jazeera.png"
-        n.contains("عربية") || n.contains("arabiya") -> "https://apklive.web.app/logos/arabiya.png"
-        n.contains("سكاي") || n.contains("sky") -> "https://apklive.web.app/logos/sky.png"
-        n.contains("كويت") || n.contains("kuwait") || n.contains("kwt") -> "https://apklive.web.app/logos/kuwait.png"
-        n.contains("عمان") || n.contains("oman") -> "https://apklive.web.app/logos/oman.png"
-        n.contains("أكشن") || n.contains("action") -> "https://apklive.web.app/logos/aflam_action.png"
-        n.contains("أفلام") || n.contains("aflam") -> "https://apklive.web.app/logos/aflam.png"
-        n.contains("باب الحارة") -> "https://apklive.web.app/logos/bab_alhara.png"
-        n.contains("مرايا") -> "https://apklive.web.app/logos/maraya.png"
-        n.contains("وثائقية") -> "https://apklive.web.app/logos/asharq_doc.png"
-        n.contains("شرق") || n.contains("asharq") -> "https://apklive.web.app/logos/asharq.png"
-        else -> ""
+            Modifier.size(34.dp).background(if (playing) c.accent else c.accentSoft, RoundedCornerShape(11.dp)), Alignment.Center,
+        ) { OneText("${ch.number}", OneType.Section, if (playing) c.onAccent else c.accent) }
+        OneText(ch.name, OneType.Body, if (playing) c.accent else c.text, Modifier.weight(1f), 1)
     }
 }

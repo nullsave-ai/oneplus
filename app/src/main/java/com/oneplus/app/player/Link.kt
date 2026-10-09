@@ -9,9 +9,7 @@ import java.util.UUID
 
 class Drm(val uuid: UUID, val licenseUrl: String?, val local: ByteArray?)
 
-class SubtitleTrack(val url: String, val language: String = "ar", val label: String = "العربية")
-
-class Link(val url: String, val headers: Map<String, String>, val drm: Drm?, val subtitles: List<SubtitleTrack> = emptyList())
+class Link(val url: String, val headers: Map<String, String>, val drm: Drm?)
 
 private val Schemes = setOf("http", "https", "rtsp", "rtsps")
 
@@ -36,30 +34,21 @@ fun parseLink(raw: String): Link? {
         base = url
     } else {
         base = text.substringBefore('|').trim()
-        val after = text.substringAfter('|', "")
-        val optDelim = Regex("&(?=(?:[a-zA-Z0-9_-]+)=)", RegexOption.IGNORE_CASE)
-        val tokens = if (after.contains("sub", true)) {
-            val delim = Regex("&(?=(?:User-Agent|Referer|Origin|Cookie|drmScheme|drmLicense|clearKeyId|clearKeyVal|type|streamType|sub|subtitle|sub_ar|subs)[=:])", RegexOption.IGNORE_CASE)
-            after.split(delim)
-        } else {
-            after.split('&')
-        }
-        tokens.forEach { kv ->
+        text.substringAfter('|', "").split('&').forEach { kv ->
             val i = kv.indexOf('=')
             if (i > 0) parts.put(Uri.decode(kv.substring(0, i)), Uri.decode(kv.substring(i + 1)))
         }
     }
     if (!isAllowed(base)) return null
-    val scheme = parts.scheme ?: if (parts.kid != null && parts.key != null) "clearkey" else return Link(base, parts.headers, null, parts.subtitles)
+    val scheme = parts.scheme ?: if (parts.kid != null && parts.key != null) "clearkey" else return Link(base, parts.headers, null)
     val license = parts.license ?: "${parts.kid}:${parts.key}"
-    return Link(base, parts.headers, buildDrm(scheme, license) ?: return null, parts.subtitles)
+    return Link(base, parts.headers, buildDrm(scheme, license) ?: return null)
 }
 
 private val BlockStart = Regex("^url\\s*:", RegexOption.IGNORE_CASE)
 
 private class Parts {
     val headers = linkedMapOf<String, String>()
-    val subtitles = mutableListOf<SubtitleTrack>()
     var scheme: String? = null
     var license: String? = null
     var kid: String? = null
@@ -69,21 +58,14 @@ private class Parts {
         val k = name.trim()
         val v = value.trim().filter { it != '\r' && it != '\n' }
         if (k.isEmpty() || v.isEmpty()) return
-        val norm = k.lowercase().replace("_", "").replace("-", "").replace(" ", "")
-        when {
-            norm in setOf("sub", "subtitle", "subar", "subs") -> subtitles.add(SubtitleTrack(v, "ar", "العربية"))
-            norm.startsWith("sub") -> {
-                val lan = norm.removePrefix("sub")
-                subtitles.add(SubtitleTrack(v, lan.ifEmpty { "ar" }, if (lan.startsWith("ar")) "العربية" else lan))
-            }
-            norm == "useragent" -> headers["User-Agent"] = v
-            norm in setOf("referer", "referrer") -> headers["Referer"] = v
-            norm in setOf("cookie", "cookies") -> headers["Cookie"] = v
-            norm in setOf("drmscheme", "licensetype") -> scheme = v.lowercase()
-            norm in setOf("drmlicense", "licensekey") -> license = v
-            norm == "clearkeyid" -> kid = v
-            norm in setOf("clearkeyval", "clearkeyvalue") -> key = v
-            norm in setOf("type", "streamtype", "contenttype") -> headers["type"] = v
+        when (k.lowercase().replace("_", "").replace("-", "").replace(" ", "")) {
+            "useragent" -> headers["User-Agent"] = v
+            "referer", "referrer" -> headers["Referer"] = v
+            "cookie", "cookies" -> headers["Cookie"] = v
+            "drmscheme", "licensetype" -> scheme = v.lowercase()
+            "drmlicense", "licensekey" -> license = v
+            "clearkeyid" -> kid = v
+            "clearkeyval", "clearkeyvalue" -> key = v
             else -> if (k.all { it.isLetterOrDigit() || it == '-' }) headers[k] = v
         }
     }

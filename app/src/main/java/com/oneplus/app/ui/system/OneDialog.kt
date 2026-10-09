@@ -43,25 +43,3 @@ fun OneDialog(onDismiss: () -> Unit, content: @Composable ColumnScope.(leave: ((
         ) { content(leave) }
     }
 }
-
-@Composable
-fun ForceUpdateDialog(title: String, message: String, onUpdate: () -> Unit) {
-    val c = LocalColors.current
-    val card = RoundedCornerShape(28.dp)
-    BackHandler { }
-    Box(
-        Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.88f))
-            .pointerInput(Unit) { detectTapGestures { } },
-        Alignment.Center,
-    ) {
-        Column(
-            Modifier.padding(24.dp).widthIn(max = 380.dp).fillMaxWidth()
-                .clip(card).background(c.bg).border(1.dp, c.accent, card).padding(24.dp),
-            Arrangement.spacedBy(16.dp), Alignment.CenterHorizontally,
-        ) {
-            OneText(title, OneType.Title, c.text)
-            OneText(message, OneType.Body, c.dim)
-            OneButton("تحديث الآن", OneIcon.Next, onUpdate, Modifier.fillMaxWidth())
-        }
-    }
-}

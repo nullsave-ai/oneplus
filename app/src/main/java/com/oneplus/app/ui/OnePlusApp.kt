@@ -1,7 +1,6 @@
 package com.oneplus.app.ui
 
 import androidx.activity.compose.BackHandler
-import android.content.Context
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.ContentTransform
 import androidx.compose.animation.fadeIn
@@ -92,12 +91,11 @@ fun OnePlusApp(
     var playId by rememberSaveable { mutableIntStateOf(-1) }
     var playEp by rememberSaveable { mutableIntStateOf(-1) }
     var playStart by rememberSaveable { mutableLongStateOf(0L) }
-    val chPrefs = remember { ctx.getSharedPreferences("channels", Context.MODE_PRIVATE) }
     var lastChannel by rememberSaveable { mutableIntStateOf(-1) }
-    var pickedGroup by rememberSaveable { mutableStateOf(chPrefs.getString("group", "").orEmpty()) }
+    var pickedGroup by rememberSaveable { mutableStateOf(app.prefs.string("group").orEmpty()) }
     val groups = state.base.groups
     val group = if (pickedGroup in groups) pickedGroup else groups.firstOrNull().orEmpty()
-    val pickGroup = { g: String -> pickedGroup = g; chPrefs.edit().putString("group", g).apply() }
+    val pickGroup = { g: String -> pickedGroup = g; app.prefs.put("group" to g) }
     val saveLast = { id: Int ->
         lastChannel = id
         state.base.channelsById[id]?.let { pickGroup(it.group) }
@@ -291,25 +289,6 @@ fun OnePlusApp(
                 onCancel = { showClear = false },
                 onConfirm = { showClear = false; library.clearHistory() },
             )
-            val appUp = state.data.update ?: state.all.update
-            val curVer = runCatching {
-                if (android.os.Build.VERSION.SDK_INT >= 28) {
-                    ctx.packageManager.getPackageInfo(ctx.packageName, 0).longVersionCode.toInt()
-                } else {
-                    @Suppress("DEPRECATION")
-                    ctx.packageManager.getPackageInfo(ctx.packageName, 0).versionCode
-                }
-            }.getOrDefault(7)
-            if (appUp != null && (curVer < appUp.minVersionCode || (appUp.forceUpdate && curVer < appUp.latestVersionCode))) {
-                ForceUpdateDialog(
-                    title = appUp.updateTitle.ifBlank { "تحديث إجباري متوفر" },
-                    message = appUp.updateMessage.ifBlank { "يرجى تنزيل الإصدار الجديد لمتابعة المشاهدة بأحدث الميزات." },
-                    onUpdate = {
-                        val target = appUp.updateUrl.ifBlank { "https://apklive.web.app" }
-                        runCatching { ctx.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(target))) }
-                    }
-                )
-            }
         }
     }
 }

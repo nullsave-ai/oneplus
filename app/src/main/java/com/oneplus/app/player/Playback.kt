@@ -29,7 +29,6 @@ import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.datasource.cache.CacheDataSource
 import androidx.media3.datasource.cache.LeastRecentlyUsedCacheEvictor
 import androidx.media3.datasource.cache.SimpleCache
-import androidx.media3.exoplayer.DefaultLivePlaybackSpeedControl
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
@@ -86,8 +85,8 @@ class Playback(
     private val http = DefaultHttpDataSource.Factory()
         .setUserAgent(res.headers.entries.firstOrNull { it.key.equals("user-agent", true) }?.value ?: "OnePlus/1.0")
         .setDefaultRequestProperties(res.headers.filterKeys { !it.equals("user-agent", true) && !it.equals("accept-encoding", true) })
-        .setConnectTimeoutMs(6_000)
-        .setReadTimeoutMs(8_000)
+        .setConnectTimeoutMs(8_000)
+        .setReadTimeoutMs(10_000)
         .setAllowCrossProtocolRedirects(true)
 
     private val drmProvider: DrmSessionManagerProvider? = res.drm?.let { d ->
@@ -110,72 +109,32 @@ class Playback(
 
     init {
         val lowRam = (app.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager)?.isLowRamDevice == true
-        val minBuf = if (live) 3_000 else if (lowRam) 8_000 else 15_000
-        val maxBuf = if (live) 8_000 else if (lowRam) 16_000 else 30_000
-        val playBuf = if (live) 500 else 1_500
-        val rebuff = if (live) 1_000 else 2_500
         val load = DefaultLoadControl.Builder()
-            .setBufferDurationsMs(minBuf, maxBuf, playBuf, rebuff)
+            .setBufferDurationsMs(if (lowRam) 10_000 else 15_000, if (lowRam) 20_000 else 30_000, 1_500, 3_000)
             .setBackBuffer(if (live) 0 else 10_000, false)
             .setPrioritizeTimeOverSizeThresholds(true)
             .build()
-        val speedControl = DefaultLivePlaybackSpeedControl.Builder()
-            .setFallbackMinPlaybackSpeed(0.97f)
-            .setFallbackMaxPlaybackSpeed(1.03f)
-            .build()
         player = ExoPlayer.Builder(app, DefaultRenderersFactory(app).setEnableDecoderFallback(true))
             .setLoadControl(load)
-            .setLivePlaybackSpeedControl(speedControl)
             .setAudioAttributes(
                 AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MOVIE).build(), true,
             )
             .setHandleAudioBecomingNoisy(true)
             .build()
-        params = player.trackSelectionParameters.buildUpon()
-            .setPreferredTextLanguage("ar")
-            .setPreferredAudioLanguage("ar")
-            .setSelectUndeterminedTextLanguage(true)
-            .build()
-        player.trackSelectionParameters = params
+        params = player.trackSelectionParameters
         player.addListener(this)
         player.setMediaSource(build(), if (live || source.startMs <= 0L) C.TIME_UNSET else source.startMs)
         player.prepare()
         player.playWhenReady = true
     }
 
-    private fun kindOf(url: String): Int {
-        val u = url.lowercase()
-        val h = res.headers["type"]?.lowercase() ?: ""
-        return when {
-            h in setOf("hls", "m3u8") || u.contains(".m3u8") || u.contains("m3u8") || u.contains("dramacardinal") || u.contains("bluetier.top") || u.contains("checklist") -> C.CONTENT_TYPE_HLS
-            h in setOf("dash", "mpd") || u.contains(".mpd") || u.contains("dash") -> C.CONTENT_TYPE_DASH
-            h in setOf("ss", "ism") || u.contains(".ism") -> C.CONTENT_TYPE_SS
-            u.startsWith("rtsp") -> C.CONTENT_TYPE_RTSP
-            else -> Util.inferContentType(Uri.parse(url))
-        }
-    }
+    private fun kindOf(url: String) = Util.inferContentType(Uri.parse(url))
 
     private fun src(url: String, type: Int): MediaSource {
-        val subConfigs = res.subtitles.map { s ->
-            MediaItem.SubtitleConfiguration.Builder(Uri.parse(s.url))
-                .setMimeType(if (s.url.contains(".vtt", true)) androidx.media3.common.MimeTypes.TEXT_VTT else androidx.media3.common.MimeTypes.APPLICATION_SUBRIP)
-                .setLanguage(s.language)
-                .setLabel(s.label)
-                .setSelectionFlags(if (s.language.startsWith("ar", true)) C.SELECTION_FLAG_DEFAULT else 0)
-                .build()
-        }
-        val drm = drmProvider
-        val drmConfig = res.drm?.let { d ->
-            MediaItem.DrmConfiguration.Builder(d.uuid)
-                .apply { d.licenseUrl?.let { setLicenseUri(it) } }
-                .build()
-        }
         val item = MediaItem.Builder().setUri(url)
-            .setMediaMetadata(MediaMetadata.Builder().setTitle(source.title).build())
-            .setSubtitleConfigurations(subConfigs)
-            .apply { drmConfig?.let { setDrmConfiguration(it) } }
-            .build()
-        val baseSource = when (type) {
+            .setMediaMetadata(MediaMetadata.Builder().setTitle(source.title).build()).build()
+        val drm = drmProvider
+        return when (type) {
             C.CONTENT_TYPE_HLS -> HlsMediaSource.Factory(http).setAllowChunklessPreparation(true)
                 .apply { drm?.let { setDrmSessionManagerProvider(it) } }.createMediaSource(item)
             C.CONTENT_TYPE_DASH -> DashMediaSource.Factory(http)
@@ -192,19 +151,6 @@ class Playback(
                 } else http
                 ProgressiveMediaSource.Factory(factory).apply { drm?.let { setDrmSessionManagerProvider(it) } }.createMediaSource(item)
             }
-        }
-        return if (subConfigs.isNotEmpty()) {
-            val subHttp = DefaultHttpDataSource.Factory()
-                .setUserAgent("Mozilla/5.0 (Linux; Android 15; K) AppleWebKit/537.36")
-                .setConnectTimeoutMs(8_000)
-                .setReadTimeoutMs(10_000)
-                .setAllowCrossProtocolRedirects(true)
-            val subSources = subConfigs.map { s ->
-                androidx.media3.exoplayer.source.SingleSampleMediaSource.Factory(subHttp).createMediaSource(s, C.TIME_UNSET)
-            }
-            androidx.media3.exoplayer.source.MergingMediaSource(baseSource, *subSources.toTypedArray())
-        } else {
-            baseSource
         }
     }
 
@@ -262,7 +208,7 @@ class Playback(
     private fun Format.title(n: Int): String {
         label?.let { return it }
         language?.takeIf { it != C.LANGUAGE_UNDETERMINED }?.let { tag ->
-            val name = Locale.forLanguageTag(tag).getDisplayLanguage(Locale("ar"))
+            val name = Locale.forLanguageTag(tag).getDisplayLanguage(Arabic)
             if (name.isNotBlank()) return name
         }
         return "${app.getString(R.string.track_n)} ${n + 1}"
@@ -270,34 +216,21 @@ class Playback(
 
     private fun mbps(bitrate: Int) = if (bitrate > 0) String.format(Locale.US, "%.1f", bitrate / 1e6) + " Mbps" else null
 
-    private fun qualityLabel(h: Int): String = when {
-        h >= 2160 -> "${h}p (4K)"
-        h >= 1440 -> "${h}p (2K)"
-        h >= 1080 -> "${h}p (FHD)"
-        h >= 720 -> "${h}p (HD)"
-        h >= 480 -> "${h}p (SD)"
-        else -> "${h}p"
-    }
-
     val qualities: List<Opt>
         get() {
-            if (res.variants.size > 1) {
-                val sorted = res.variants.mapIndexed { i, v -> i to v }.sortedByDescending { it.second.height }
-                return sorted.map { (i, v) -> Opt(qualityLabel(v.height), null, i == variant) { pickVariant(i) } }
-            }
+            if (res.variants.size > 1) return res.variants.mapIndexed { i, v -> Opt("${v.height}p", null, i == variant) { pickVariant(i) } }
             val best = tracks.groups.filter { it.type == C.TRACK_TYPE_VIDEO }
                 .flatMap { g -> (0 until g.length).filter { g.isTrackSupported(it) && g.getTrackFormat(it).height > 0 }.map { g to it } }
                 .groupBy { (g, i) -> g.getTrackFormat(i).height }
                 .values.map { l -> l.maxBy { (g, i) -> g.getTrackFormat(i).bitrate } }
                 .sortedByDescending { (g, i) -> g.getTrackFormat(i).height }
-            if (best.isEmpty()) return emptyList()
+            if (best.size < 2) return emptyList()
             val auto = params.overrides.values.none { it.type == C.TRACK_TYPE_VIDEO }
-            val autoLabel = if (auto && videoSize.height > 0) "${app.getString(R.string.track_auto)} (${videoSize.height}p)" else app.getString(R.string.track_auto)
-            val autoOpt = Opt(autoLabel, null, auto) { setParams { clearOverridesOfType(C.TRACK_TYPE_VIDEO) } }
-            return listOf(autoOpt) + best.map { (g, i) ->
-                val f = g.getTrackFormat(i)
-                Opt(qualityLabel(f.height), mbps(f.bitrate), !auto && g.isTrackSelected(i)) { choose(g, listOf(i)) }
-            }
+            return listOf(Opt(app.getString(R.string.track_auto), null, auto) { setParams { clearOverridesOfType(C.TRACK_TYPE_VIDEO) } }) +
+                best.map { (g, i) ->
+                    val f = g.getTrackFormat(i)
+                    Opt("${f.height}p", mbps(f.bitrate), !auto && g.isTrackSelected(i)) { choose(g, listOf(i)) }
+                }
         }
 
     val audios: List<Opt>
@@ -318,6 +251,7 @@ class Playback(
         }
 
     private companion object {
+        val Arabic: Locale = Locale.forLanguageTag("ar")
         val Guesses = listOf(C.CONTENT_TYPE_HLS, C.CONTENT_TYPE_DASH, C.CONTENT_TYPE_SS)
         val Parsing = setOf(
             PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED, PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED,
@@ -333,29 +267,16 @@ class Playback(
     override fun onPlaybackStateChanged(state: Int) {
         buffering = state == Player.STATE_BUFFERING
         ended = state == Player.STATE_ENDED
-        if (state == Player.STATE_BUFFERING && live) handler.postDelayed(unstick, 4_000) else handler.removeCallbacks(unstick)
+        if (state == Player.STATE_BUFFERING && live) handler.postDelayed(unstick, 15_000) else handler.removeCallbacks(unstick)
         if (state == Player.STATE_READY) retries = 0
         if (state == Player.STATE_READY && !player.currentTracks.isTypeSelected(C.TRACK_TYPE_VIDEO)) firstFrame = true
         refresh()
     }
 
     override fun onTimelineChanged(timeline: Timeline, reason: Int) = refresh()
+    override fun onTracksChanged(tracks: Tracks) { this.tracks = tracks }
     override fun onTrackSelectionParametersChanged(parameters: TrackSelectionParameters) { params = parameters }
-    override fun onTracksChanged(tracks: Tracks) {
-        this.tracks = tracks
-        val textGroups = tracks.groups.filter { it.type == C.TRACK_TYPE_TEXT && it.isSupported }
-        if (textGroups.isNotEmpty() && !params.disabledTrackTypes.contains(C.TRACK_TYPE_TEXT) && textGroups.none { it.isSelected }) {
-            val arGroup = textGroups.firstOrNull { g ->
-                (0 until g.length).any { i ->
-                    val f = g.getTrackFormat(i)
-                    f.language?.startsWith("ar", true) == true || f.label?.contains("عرب", true) == true
-                }
-            } ?: textGroups.first()
-            val trackIdx = (0 until arGroup.length).firstOrNull { arGroup.isTrackSupported(it) } ?: 0
-            choose(arGroup, listOf(trackIdx))
-        }
-    }
-    override fun onCues(cueGroup: CueGroup) { caption = cueGroup.cues.mapNotNull { it.text?.toString() }.joinToString("\n") }
+    override fun onCues(cueGroup: CueGroup) { caption = if (cueGroup.cues.isEmpty()) "" else cueGroup.cues.mapNotNull { it.text?.toString() }.joinToString("\n") }
     override fun onVideoSizeChanged(videoSize: VideoSize) { this.videoSize = videoSize }
     override fun onRenderedFirstFrame() { firstFrame = true }
 

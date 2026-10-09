@@ -20,22 +20,22 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.oneplus.app.App
 import com.oneplus.app.R
 import com.oneplus.app.ui.system.*
 
 @Immutable
 data class SubStyle(val preset: Int = 1, val size: Float = 0.5f, val lift: Float = 0.15f) {
     fun save(app: Context) {
-        app.getSharedPreferences("player", Context.MODE_PRIVATE).edit()
-            .putInt("sub_preset", preset).putFloat("sub_size", size).putFloat("sub_lift", lift).apply()
+        (app.applicationContext as App).prefs.put("sub_preset" to preset, "sub_size" to size, "sub_lift" to lift)
     }
 
     companion object {
         fun load(app: Context): SubStyle = runCatching {
-            val p = app.getSharedPreferences("player", Context.MODE_PRIVATE)
+            val p = (app.applicationContext as App).prefs
             val d = SubStyle()
-            fun f(k: String, def: Float) = p.getFloat(k, def).let { if (it.isNaN() || it.isInfinite()) def else it.coerceIn(0f, 1f) }
-            SubStyle(p.getInt("sub_preset", d.preset).coerceIn(0, 3), f("sub_size", d.size), f("sub_lift", d.lift))
+            fun f(k: String, def: Float) = (p.float(k) ?: def).let { if (it.isNaN() || it.isInfinite()) def else it.coerceIn(0f, 1f) }
+            SubStyle((p.int("sub_preset") ?: d.preset).coerceIn(0, 3), f("sub_size", d.size), f("sub_lift", d.lift))
         }.getOrDefault(SubStyle())
     }
 }

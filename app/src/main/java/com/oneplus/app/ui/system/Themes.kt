@@ -2,6 +2,7 @@ package com.oneplus.app.ui.system
 
 import android.app.Activity
 import android.content.Context
+import com.oneplus.app.App
 import android.graphics.drawable.ColorDrawable
 import androidx.annotation.StringRes
 import androidx.compose.animation.core.Animatable
@@ -190,32 +191,33 @@ class ThemeController(private val store: ThemeStore) {
 }
 
 class ThemeStore(ctx: Context) {
-    private val p = ctx.getSharedPreferences("theme", Context.MODE_PRIVATE)
+    private val p = (ctx.applicationContext as App).prefs
 
     fun load(): ThemePrefs = runCatching {
         val d = ThemePrefs()
         ThemePrefs(
-            mode = ThemeMode.entries.firstOrNull { it.name == p.getString("mode", null) } ?: d.mode,
-            accent = Accent.entries.firstOrNull { it.name == p.getString("accent", null) } ?: d.accent,
-            hue = p.getFloat("hue", d.hue).clean(0f, 360f, d.hue),
-            sat = p.getFloat("sat", d.sat).clean(CustomRange.SAT_MIN, 1f, d.sat),
-            value = p.getFloat("val", d.value).clean(CustomRange.VAL_MIN, 1f, d.value),
-            hideStatusBar = p.getBoolean("hide_status", d.hideStatusBar),
-            hideNavBar = p.getBoolean("hide_nav", d.hideNavBar),
-            glass = p.getBoolean("glass", d.glass),
-            transition = PageTransition.entries.firstOrNull { it.name == p.getString("transition", null) } ?: d.transition,
-            display = DisplayMode.entries.firstOrNull { it.name == p.getString("display", null) } ?: d.display,
-            glassDensity = p.getFloat("glass_density", d.glassDensity).clean(GlassRange.DENSITY_MIN, GlassRange.DENSITY_MAX, d.glassDensity),
-            glassDepth = p.getFloat("glass_depth", d.glassDepth).clean(GlassRange.DEPTH_MIN, GlassRange.DEPTH_MAX, d.glassDepth),
-            look = lookOf(p.getString("style", null)),
+            mode = ThemeMode.entries.firstOrNull { it.name == p.string("mode") } ?: d.mode,
+            accent = Accent.entries.firstOrNull { it.name == p.string("accent") } ?: d.accent,
+            hue = (p.float("hue") ?: d.hue).clean(0f, 360f, d.hue),
+            sat = (p.float("sat") ?: d.sat).clean(CustomRange.SAT_MIN, 1f, d.sat),
+            value = (p.float("val") ?: d.value).clean(CustomRange.VAL_MIN, 1f, d.value),
+            hideStatusBar = p.bool("hide_status") ?: d.hideStatusBar,
+            hideNavBar = p.bool("hide_nav") ?: d.hideNavBar,
+            glass = p.bool("glass") ?: d.glass,
+            transition = PageTransition.entries.firstOrNull { it.name == p.string("transition") } ?: d.transition,
+            display = DisplayMode.entries.firstOrNull { it.name == p.string("display") } ?: d.display,
+            glassDensity = (p.float("glass_density") ?: d.glassDensity).clean(GlassRange.DENSITY_MIN, GlassRange.DENSITY_MAX, d.glassDensity),
+            glassDepth = (p.float("glass_depth") ?: d.glassDepth).clean(GlassRange.DEPTH_MIN, GlassRange.DEPTH_MAX, d.glassDepth),
+            look = lookOf(p.string("style")),
         )
     }.getOrDefault(ThemePrefs())
 
     fun save(t: ThemePrefs) {
-        p.edit().putString("mode", t.mode.name).putString("accent", t.accent.name)
-            .putFloat("hue", t.hue).putFloat("sat", t.sat).putFloat("val", t.value).putBoolean("hide_status", t.hideStatusBar).putBoolean("hide_nav", t.hideNavBar).putBoolean("glass", t.glass).putString("transition", t.transition.name).putString("display", t.display.name)
-            .putFloat("glass_density", t.glassDensity).putFloat("glass_depth", t.glassDepth).putString("style", t.look.id)
-            .apply()
+        p.put(
+            "mode" to t.mode.name, "accent" to t.accent.name, "hue" to t.hue, "sat" to t.sat, "val" to t.value,
+            "hide_status" to t.hideStatusBar, "hide_nav" to t.hideNavBar, "glass" to t.glass, "transition" to t.transition.name,
+            "display" to t.display.name, "glass_density" to t.glassDensity, "glass_depth" to t.glassDepth, "style" to t.look.id,
+        )
     }
 
     private fun Float.clean(lo: Float, hi: Float, fallback: Float) =

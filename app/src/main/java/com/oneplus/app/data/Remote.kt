@@ -8,40 +8,20 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import org.json.JSONArray
 import org.json.JSONObject
-import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
 
-import com.oneplus.app.data.local.AppDatabase
-import com.oneplus.app.data.local.ChannelEntity
-import com.oneplus.app.data.local.DataCacheEntity
-
 const val ApiUrl = "https://apklive-default-rtdb.firebaseio.com/catalog.json"
 
-private const val MaxBytes = 35_000_000
+private const val MaxBytes = 10_000_000
+private const val MaxCached = 5_000_000
 
-class RemoteRepository(private val url: String, private val db: AppDatabase) : HomeRepository {
+class RemoteRepository(private val url: String, private val store: Store) : HomeRepository {
     override val data: Flow<HomeData> = flow {
-        val cached = db.dataCache().getPayload("catalog")?.let {
-            runCatching { parse(JSONObject(it)) }.getOrNull()
-        }
-        if (cached != null) emit(cached)
-
-        val freshText = download()
-        if (freshText != null) {
-            val freshData = runCatching {
-                val parsed = parse(JSONObject(freshText))
-                db.dataCache().put(DataCacheEntity("catalog", freshText))
-                val chEntities = parsed.channels.map {
-                    ChannelEntity(it.id, it.name, it.url, it.group, it.number, it.logo)
-                }
-                db.channels().replaceAll(chEntities)
-                parsed
-            }.getOrNull()
-            if (freshData != null) emit(freshData)
-        } else if (cached == null) {
-            emit(EmptyHomeData)
-        }
+        val old = runCatching { parse(JSONObject(store.page("home") ?: error("none"))) }.getOrNull()
+        if (old != null) emit(old)
+        val fresh = download()?.let { text -> runCatching { parse(JSONObject(text)).also { if (text.length <= MaxCached) store.putPage(Page("home", text)) } }.getOrNull() }
+        if (fresh != null) emit(fresh) else if (old == null) emit(SampleRepository().data.first())
     }.flowOn(Dispatchers.IO)
 
     private fun download(): String? {
@@ -89,16 +69,6 @@ class RemoteRepository(private val url: String, private val db: AppDatabase) : H
                 val n = (perGroup[g] ?: 0) + 1
                 perGroup[g] = n
                 Channel(o.optInt("id", i), o.optString("name"), u, g, n, o.optString("logo"))
-            },
-            update = j.optJSONObject("app_config")?.let { c ->
-                AppUpdate(
-                    minVersionCode = c.optInt("min_version_code", 1),
-                    latestVersionCode = c.optInt("latest_version_code", 1),
-                    updateUrl = c.optString("update_url"),
-                    updateTitle = c.optString("update_title"),
-                    updateMessage = c.optString("update_message"),
-                    forceUpdate = c.optBoolean("force_update", false),
-                )
             },
         )
     }

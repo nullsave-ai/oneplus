@@ -18,42 +18,19 @@ data class Resolved(
     val drm: Drm? = null,
     val variants: List<Variant> = emptyList(),
     val defaultVariant: Int = 0,
-    val subtitles: List<SubtitleTrack> = emptyList(),
 )
 
 object Resolver {
     private val XHost = Regex("(^|\\.)(x|twitter)\\.com$")
+    private val Size = Regex("/(\\d+)x(\\d+)/")
     private val StatusId = Regex("/status(?:es)?/(\\d{1,25})")
 
     fun needsExtractor(url: String): Boolean {
         val u = runCatching { Uri.parse(url) }.getOrNull() ?: return false
-        val host = u.host?.lowercase().orEmpty()
-        return (host.let { XHost.containsMatchIn(it) } && StatusId.containsMatchIn(u.path.orEmpty()))
-            || host.contains("wideiptv.top") || (host.isNotEmpty() && u.path.orEmpty().contains("/player/"))
+        return u.host?.lowercase()?.let { XHost.containsMatchIn(it) } == true && StatusId.containsMatchIn(u.path.orEmpty())
     }
 
-    suspend fun resolve(url: String): Resolved? = withContext(Dispatchers.IO) {
-        runCatching {
-            val u = url.lowercase()
-            if (u.contains("wideiptv.top") || u.contains("/player/")) webPlayer(url)
-            else x(url)
-        }.getOrNull()
-    }
-
-    private fun webPlayer(url: String): Resolved? {
-        val html = get(url, referer = "https://wideiptv.top/") ?: return null
-        val match = Regex("""streamUrl:\s*["']([^"']+)["']""").find(html) ?: return null
-        val raw = match.groupValues[1].replace("\\/", "/")
-        if (!isAllowed(raw)) return null
-        return Resolved(
-            url = raw,
-            live = true,
-            headers = mapOf(
-                "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-                "Referer" to "https://wideiptv.top/"
-            )
-        )
-    }
+    suspend fun resolve(url: String): Resolved? = withContext(Dispatchers.IO) { runCatching { x(url) }.getOrNull() }
 
     private fun x(url: String): Resolved? {
         val id = StatusId.find(Uri.parse(url).path.orEmpty())?.groupValues?.get(1) ?: return null
@@ -69,7 +46,7 @@ object Resolver {
         val mp4 = vars.filter { it.optString("content_type") == "video/mp4" }
         val variants = mp4.mapNotNull { v ->
             val u = v.link() ?: return@mapNotNull null
-            val h = Regex("/(\\d+)x(\\d+)/").find(u)?.groupValues?.get(2)?.toIntOrNull() ?: return@mapNotNull null
+            val h = Size.find(u)?.groupValues?.get(2)?.toIntOrNull() ?: return@mapNotNull null
             Variant(h, u)
         }.distinctBy { it.height }.sortedByDescending { it.height }
         if (variants.size > 1) {
@@ -79,16 +56,11 @@ object Resolver {
         return mp4.maxByOrNull { it.optInt("bitrate") }?.link()?.let { Resolved(it) }
     }
 
-    private fun get(u: String, referer: String? = null): String? {
+    private fun get(u: String): String? {
         val c = URL(u).openConnection() as HttpURLConnection
         try {
             c.connectTimeout = 8_000; c.readTimeout = 10_000
-            c.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-            if (!referer.isNullOrBlank()) c.setRequestProperty("Referer", referer)
-            if (c.responseCode in 300..399) {
-                val loc = c.getHeaderField("Location") ?: return null
-                return get(loc, referer)
-            }
+            c.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 Chrome/124.0 Mobile Safari/537.36")
             if (c.responseCode != 200) return null
             return c.inputStream.use { s ->
                 val out = ByteArrayOutputStream()

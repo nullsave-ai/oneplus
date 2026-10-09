@@ -4,7 +4,6 @@ import androidx.annotation.StringRes
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
@@ -39,7 +38,7 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.Outline
+import androidx.compose.ui.graphics.drawscope.drawOutline
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
@@ -84,17 +83,6 @@ private fun burst(points: Int, inner: Float): Shape = GenericShape { size, _ ->
 }
 private val Starburst = burst(12, 0.8f)
 private val Spark = burst(4, 0.28f)
-
-private fun DrawScope.drawOutline(outline: Outline, color: Color) {
-    when (outline) {
-        is Outline.Rectangle -> drawRect(color, outline.rect.topLeft, outline.rect.size)
-        is Outline.Rounded -> {
-            val path = Path().apply { addRoundRect(outline.roundRect) }
-            drawPath(path, color)
-        }
-        is Outline.Generic -> drawPath(outline.path, color)
-    }
-}
 
 private fun Modifier.sticker(shape: Shape, fill: Color, ink: Color, shadow: Color, off: Dp = 3.dp): Modifier =
     drawBehind { translate(off.toPx(), off.toPx()) { drawOutline(shape.createOutline(size, layoutDirection, this), shadow) } }

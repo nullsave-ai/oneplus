@@ -39,11 +39,6 @@ fun HomeScreen(
     val bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + bottomNavSpace()
     val d = state.data
     val view = state.view
-    val context = androidx.compose.ui.platform.LocalContext.current
-    LaunchedEffect(d) {
-        val urls = d.channels.mapNotNull { it.logo.ifBlank { null } } + d.movies.take(30).mapNotNull { it.backdrop.ifBlank { null } }
-        if (urls.isNotEmpty()) preloadImages(urls, context)
-    }
     val resume = remember(view, lib.progress) { lib.progress.keys.mapNotNull { view.byId[it] } }
     Box(Modifier.fillMaxSize(), Alignment.TopCenter) {
         LazyColumn(
