@@ -1,7 +1,7 @@
 package com.oneplus.app.data
 
 import android.content.Context
-import androidx.datastore.migrations.SharedPreferencesMigration
+import androidx.datastore.preferences.SharedPreferencesMigration
 import androidx.datastore.preferences.core.MutablePreferences
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
