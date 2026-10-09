@@ -83,7 +83,7 @@ private fun ChannelRow(ch: Channel, playing: Boolean, onClick: () -> Unit) {
         Arrangement.spacedBy(12.dp), Alignment.CenterVertically,
     ) {
         Box(
-            Modifier.size(42.dp).background(c.surfaceHigh, RoundedCornerShape(12.dp)).clip(RoundedCornerShape(12.dp)),
+            Modifier.size(42.dp).background(c.glass, RoundedCornerShape(12.dp)).clip(RoundedCornerShape(12.dp)),
             Alignment.Center,
         ) {
             if (logo.isNotBlank()) {
@@ -92,17 +92,17 @@ private fun ChannelRow(ch: Channel, playing: Boolean, onClick: () -> Unit) {
                     modifier = Modifier.fillMaxSize().padding(3.dp),
                     contentScale = androidx.compose.ui.layout.ContentScale.Fit,
                     fallback = {
-                        OneText("${ch.number}", OneType.Section, if (playing) c.accent else c.textMuted)
+                        OneText("${ch.number}", OneType.Section, if (playing) c.accent else c.dim)
                     }
                 )
             } else {
-                OneText("${ch.number}", OneType.Section, if (playing) c.accent else c.textMuted)
+                OneText("${ch.number}", OneType.Section, if (playing) c.accent else c.dim)
             }
         }
         Column(Modifier.weight(1f)) {
             OneText(ch.name, OneType.Body, if (playing) c.accent else c.text, maxLines = 1)
             if (ch.group.isNotBlank()) {
-                OneText(ch.group, OneType.Caption, c.textMuted, maxLines = 1)
+                OneText(ch.group, OneType.Caption, c.dim, maxLines = 1)
             }
         }
         if (playing) {

@@ -139,7 +139,7 @@ private object Images {
             ?.also { lru.put(url, it) }
     }.getOrNull()
 
-    private fun decodeAndStore(url: String, cache: File, db: AppDatabase): Bitmap? =
+    private suspend fun decodeAndStore(url: String, cache: File, db: AppDatabase): Bitmap? =
         lru.get(url) ?: runCatching {
             val dir = File(cache, "img").apply { mkdirs() }
             val file = File(dir, name(url))
