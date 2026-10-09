@@ -23,7 +23,7 @@ private const val MaxQuery = 64
 class MainViewModel(repo: HomeRepository) : ViewModel() {
     private val query = MutableStateFlow("")
 
-    val state: StateFlow<UiState> = combine(repo.data.map { Catalog(it) }, query.distinctUntilChanged()) { base, q ->
+    val state: StateFlow<UiState> = combine(repo.data.map { Catalog(it) }, query) { base, q ->
         val d = base.data
         if (q.isBlank()) UiState(q, base, base) else UiState(q, Catalog(HomeData(
             d.matches.filter { q in it.home || q in it.away || q in it.competition },
