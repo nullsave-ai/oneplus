@@ -165,61 +165,58 @@ class Playback(
     private fun kindOf(url: String) = Util.inferContentType(Uri.parse(url))
     private fun src(url: String, type: Int): MediaSource {
         val subConfigs = mutableListOf<MediaItem.SubtitleConfiguration>()
-        if (res.subtitles.isNotEmpty()) {
-            for (sub in res.subtitles) {
-                val mime = if (sub.url.contains(".vtt", true)) MimeTypes.TEXT_VTT else MimeTypes.APPLICATION_SUBRIP
-                val isAr = sub.lang.equals("ar", true) || sub.name.contains("عرب")
-                val b = MediaItem.SubtitleConfiguration.Builder(Uri.parse(sub.url))
-                    .setMimeType(mime)
-                    .setLanguage(sub.lang)
-                    .setLabel(sub.name)
-                if (isAr) b.setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
-                subConfigs.add(b.build())
-            }
+        val effectiveSubs = if (res.subtitles.isNotEmpty()) {
+            res.subtitles
+        } else if (!res.subtitleUrl.isNullOrBlank()) {
+            listOf(SubtitleTrack("العربية", "ar", res.subtitleUrl))
         } else {
-            res.subtitleUrl?.takeIf { it.isNotBlank() }?.let { subUri ->
-                val mime = if (subUri.contains(".vtt", true)) MimeTypes.TEXT_VTT else MimeTypes.APPLICATION_SUBRIP
-                subConfigs.add(
-                    MediaItem.SubtitleConfiguration.Builder(Uri.parse(subUri))
-                        .setMimeType(mime)
-                        .setLanguage("ar")
-                        .setLabel("العربية")
-                        .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
-                        .build()
-                )
-            }
+            emptyList()
         }
+
+        for (sub in effectiveSubs) {
+            val mime = if (sub.url.contains(".vtt", true)) MimeTypes.TEXT_VTT else MimeTypes.APPLICATION_SUBRIP
+            val isAr = sub.lang.equals("ar", true) || sub.name.contains("عرب") || sub.name.contains("العربية")
+            val b = MediaItem.SubtitleConfiguration.Builder(Uri.parse(sub.url))
+                .setMimeType(mime)
+                .setLanguage(if (isAr) "ar" else sub.lang)
+                .setLabel(sub.name)
+            if (isAr) b.setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
+            subConfigs.add(b.build())
+        }
+
         val item = MediaItem.Builder().setUri(url)
             .apply { if (subConfigs.isNotEmpty()) setSubtitleConfigurations(subConfigs) }
             .setMediaMetadata(MediaMetadata.Builder().setTitle(source.title).build()).build()
         val drm = drmProvider
-        val baseSource = when (type) {
-            C.CONTENT_TYPE_HLS -> HlsMediaSource.Factory(http).setAllowChunklessPreparation(true).setLoadErrorHandlingPolicy(policy)
-                .apply { drm?.let { setDrmSessionManagerProvider(it) } }.createMediaSource(item)
+        return when (type) {
+            C.CONTENT_TYPE_HLS -> {
+                val base = HlsMediaSource.Factory(http).setAllowChunklessPreparation(true).setLoadErrorHandlingPolicy(policy)
+                    .apply { drm?.let { setDrmSessionManagerProvider(it) } }.createMediaSource(item)
+                if (subConfigs.isNotEmpty()) {
+                    val subSources = subConfigs.take(2).map { subConfig ->
+                        SingleSampleMediaSource.Factory(http).setLoadErrorHandlingPolicy(policy).createMediaSource(subConfig, C.TIME_UNSET)
+                    }
+                    MergingMediaSource(base, *subSources.toTypedArray())
+                } else base
+            }
             C.CONTENT_TYPE_DASH -> DashMediaSource.Factory(http).setLoadErrorHandlingPolicy(policy)
                 .apply { drm?.let { setDrmSessionManagerProvider(it) } }.createMediaSource(item)
             C.CONTENT_TYPE_SS -> SsMediaSource.Factory(DefaultSsChunkSource.Factory(http), http).setLoadErrorHandlingPolicy(policy)
                 .apply { drm?.let { setDrmSessionManagerProvider(it) } }.createMediaSource(item)
             C.CONTENT_TYPE_RTSP -> RtspMediaSource.Factory()
-                .setUserAgent(res.headers.entries.firstOrNull { it.key.equals("user-agent", true) }?.value ?: "OnePlus/1.0")
+                .setUserAgent(res.headers.entries.firstOrNull { it.key.equals("user-agent", true) }?.value ?: "Mozilla/5.0")
                 .createMediaSource(item)
             else -> {
                 val factory: DataSource.Factory = if (cache != null) {
                     CacheDataSource.Factory().setCache(cache).setUpstreamDataSourceFactory(http)
                         .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
                 } else http
-                ProgressiveMediaSource.Factory(factory).setLoadErrorHandlingPolicy(policy).apply { drm?.let { setDrmSessionManagerProvider(it) } }.createMediaSource(item)
-            }
-        }
-        return if (subConfigs.isNotEmpty()) {
-            val subSources = subConfigs.map { subConfig ->
-                SingleSampleMediaSource.Factory(http)
+                androidx.media3.exoplayer.source.DefaultMediaSourceFactory(app, androidx.media3.extractor.DefaultExtractorsFactory())
+                    .setDataSourceFactory(factory)
                     .setLoadErrorHandlingPolicy(policy)
-                    .createMediaSource(subConfig, C.TIME_UNSET)
+                    .apply { drm?.let { setDrmSessionManagerProvider(it) } }
+                    .createMediaSource(item)
             }
-            MergingMediaSource(baseSource, *subSources.toTypedArray())
-        } else {
-            baseSource
         }
     }
 

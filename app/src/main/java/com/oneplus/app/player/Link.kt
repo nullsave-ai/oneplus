@@ -34,9 +34,27 @@ fun parseLink(raw: String): Link? {
         base = url
     } else {
         base = text.substringBefore('|').trim()
-        text.substringAfter('|', "").split('&').forEach { kv ->
-            val i = kv.indexOf('=')
-            if (i > 0) parts.put(Uri.decode(kv.substring(0, i)), Uri.decode(kv.substring(i + 1)))
+        val extra = text.substringAfter('|', "")
+        if (extra.isNotEmpty()) {
+            val items = extra.split('&')
+            var i = 0
+            while (i < items.size) {
+                val kv = items[i]
+                val eq = kv.indexOf('=')
+                if (eq > 0) {
+                    val k = Uri.decode(kv.substring(0, eq))
+                    var v = Uri.decode(kv.substring(eq + 1))
+                    // If v is a URL with signed parameters split by '&' (e.g. sub_ar=http...&Policy=...&Signature=...)
+                    if (v.startsWith("http://") || v.startsWith("https://")) {
+                        while (i + 1 < items.size && (!items[i + 1].contains("=") || items[i + 1].startsWith("Policy=") || items[i + 1].startsWith("Signature=") || items[i + 1].startsWith("Key-Pair-Id=") || items[i + 1].startsWith("sign=") || items[i + 1].startsWith("t="))) {
+                            i++
+                            v += "&" + items[i]
+                        }
+                    }
+                    parts.put(k, v)
+                }
+                i++
+            }
         }
     }
     if (!isAllowed(base)) return null

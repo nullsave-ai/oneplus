@@ -36,8 +36,8 @@ object Resolver {
         val scheme = u.scheme?.lowercase().orEmpty()
         if (scheme == "cinema" || scheme == "wecima") return true
         val host = u.host?.lowercase().orEmpty()
-        if (host.contains("aoneroom.com") || host.contains("wecima.bar") || host.contains("govid.live")) return true
-        if (u.path.orEmpty().contains("api.php") && u.getQueryParameter("action") == "stream") return true
+        if (host.contains("aoneroom.com") || host.contains("wecima.bar") || host.contains("govid.live") || host.contains("hakunaymatata.com") || host.contains("shalltry.com")) return true
+        if (u.path.orEmpty().contains("api.php") && (u.getQueryParameter("action") == "stream" || u.getQueryParameter("id") != null)) return true
         return XHost.containsMatchIn(host) && StatusId.containsMatchIn(u.path.orEmpty())
     }
 
@@ -47,10 +47,10 @@ object Resolver {
         val host = u.host?.lowercase().orEmpty()
         val path = u.path.orEmpty()
 
-        if (scheme == "wecima" || host.contains("wecima.bar") || (path.contains("api.php") && u.getQueryParameter("action") == "stream")) {
+        if (scheme == "wecima" || host.contains("wecima.bar") || (path.contains("api.php") && u.getQueryParameter("action") == "stream" && u.getQueryParameter("realid") != null)) {
             return@withContext resolveWeCima(u)
         }
-        if (scheme == "cinema" || host.contains("aoneroom.com")) {
+        if (scheme == "cinema" || host.contains("aoneroom.com") || host.contains("hakunaymatata.com") || (path.contains("api.php") && u.getQueryParameter("action") == "stream")) {
             return@withContext resolveUpstream(u)
         }
         runCatching { x(url) }.getOrNull()
@@ -74,16 +74,46 @@ object Resolver {
     }
 
     private fun resolveUpstream(u: Uri): Resolved? {
-        val id = u.getQueryParameter("id") ?: u.getQueryParameter("subjectId") ?: ""
-        if (id.isBlank()) return null
+        var id = u.getQueryParameter("id") ?: u.getQueryParameter("subjectId") ?: ""
+        if (id.isBlank()) {
+            val titleParam = u.getQueryParameter("title")
+            if (!titleParam.isNullOrBlank()) {
+                val searchJson = get("https://h5.aoneroom.com/wefeed-h5-bff/mini/search?keyword=" + Uri.encode(titleParam))
+                val sj = runCatching { JSONObject(searchJson) }.getOrNull()
+                id = sj?.optJSONObject("data")?.optJSONArray("items")?.objs()?.firstOrNull()?.optString("subjectId").orEmpty()
+            }
+        }
+        if (id.isBlank()) {
+            // If already a direct link with no id, return direct link
+            val rawStr = u.toString()
+            if (rawStr.startsWith("http://") || rawStr.startsWith("https://")) {
+                return Resolved(url = rawStr, headers = mapOf("User-Agent" to "okhttp/4.12.0"))
+            }
+            return null
+        }
         val season = u.getQueryParameter("se")?.toIntOrNull() ?: u.getQueryParameter("season")?.toIntOrNull() ?: 1
         val episode = u.getQueryParameter("ep")?.toIntOrNull() ?: 1
-        val isSeries = u.host == "stream" || u.getQueryParameter("se") != null || u.getQueryParameter("season") != null
+        val isSeries = u.host == "stream" && (u.getQueryParameter("se") != null || u.getQueryParameter("ep") != null) || u.getQueryParameter("season") != null
 
         val allSubs = mutableListOf<SubtitleTrack>()
         val variants = mutableListOf<Variant>()
         var primaryUrl = ""
         var arSubtitle: String? = null
+
+        fun checkAndAddSub(lan: String, lanName: String, sUrl: String) {
+            if (sUrl.isBlank()) return
+            val isAr = lan.equals("ar", true) || lan.equals("ara", true) ||
+                       lanName.contains("عرب") || lanName.contains("اَلْعَرَبِيَّةُ") ||
+                       lanName.equals("Arabic", true)
+            val cleanLabel = if (isAr) "العربية [MovieBox]" else cleanName(lanName)
+            val track = SubtitleTrack(cleanLabel, if (isAr) "ar" else lan, sUrl)
+            if (allSubs.none { it.url == sUrl }) {
+                if (isAr) allSubs.add(0, track) else allSubs.add(track)
+            }
+            if (isAr && arSubtitle == null) {
+                arSubtitle = sUrl
+            }
+        }
 
         if (isSeries) {
             val resJson = get("https://h5.aoneroom.com/wefeed-h5-bff/mini/subject-resource?subjectId=" + Uri.encode(id) + "&page=1&perPage=100")
@@ -102,16 +132,7 @@ object Resolver {
                     }
                     val caps = targetEp.optJSONArray("extCaptions").objs()
                     for (cap in caps) {
-                        val lan = cap.optString("lan")
-                        val lanName = cap.optString("lanName").ifBlank { lan }
-                        val sUrl = cap.optString("url")
-                        if (sUrl.isNotBlank()) {
-                            val track = SubtitleTrack(cleanName(lanName), lan, sUrl)
-                            allSubs.add(track)
-                            if (lan.equals("ar", true) || lanName.contains("عرب")) {
-                                arSubtitle = sUrl
-                            }
-                        }
+                        checkAndAddSub(cap.optString("lan"), cap.optString("lanName"), cap.optString("url"))
                     }
                 }
             }
@@ -122,14 +143,17 @@ object Resolver {
             if (!detailJson.isNullOrBlank()) {
                 val j = runCatching { JSONObject(detailJson) }.getOrNull()
                 val d = j?.optJSONObject("data")
-                val detector = d?.optJSONArray("resourceDetectors").objs().firstOrNull()
-                if (detector != null) {
+                val detectors = d?.optJSONArray("resourceDetectors").objs()
+                for (detector in detectors) {
                     val rList = detector.optJSONArray("resolutionList").objs()
                     for (r in rList) {
                         val res = r.optInt("resolution", 0)
                         val rLink = r.optString("resourceLink").ifBlank { r.optString("sourceUrl") }
                         if (res > 0 && rLink.isNotBlank()) {
                             variants.add(Variant(res, rLink))
+                        }
+                        for (cap in r.optJSONArray("extCaptions").objs()) {
+                            checkAndAddSub(cap.optString("lan"), cap.optString("lanName"), cap.optString("url"))
                         }
                     }
                     if (primaryUrl.isBlank()) {
@@ -138,16 +162,7 @@ object Resolver {
                         }
                     }
                     for (cap in detector.optJSONArray("extCaptions").objs()) {
-                        val lan = cap.optString("lan")
-                        val lanName = cap.optString("lanName").ifBlank { lan }
-                        val sUrl = cap.optString("url")
-                        if (sUrl.isNotBlank()) {
-                            val track = SubtitleTrack(cleanName(lanName), lan, sUrl)
-                            allSubs.add(track)
-                            if (lan.equals("ar", true) || lanName.contains("عرب")) {
-                                arSubtitle = sUrl
-                            }
-                        }
+                        checkAndAddSub(cap.optString("lan"), cap.optString("lanName"), cap.optString("url"))
                     }
                 }
             }
@@ -161,7 +176,7 @@ object Resolver {
 
         return Resolved(
             url = finalUrl,
-            headers = mapOf("User-Agent" to "OnePlus/1.0"),
+            headers = mapOf("User-Agent" to "Mozilla/5.0 (Linux; Android 15; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36"),
             variants = sortedVariants,
             defaultVariant = defVar,
             subtitleUrl = arSubtitle,
