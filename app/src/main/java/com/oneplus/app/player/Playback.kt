@@ -49,7 +49,9 @@ import androidx.media3.exoplayer.smoothstreaming.DefaultSsChunkSource
 import androidx.media3.exoplayer.smoothstreaming.SsMediaSource
 import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.exoplayer.source.MediaSource
+import androidx.media3.exoplayer.source.MergingMediaSource
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
+import androidx.media3.exoplayer.source.SingleSampleMediaSource
 import androidx.media3.exoplayer.trackselection.AdaptiveTrackSelection
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
@@ -191,7 +193,7 @@ class Playback(
             .apply { if (subConfigs.isNotEmpty()) setSubtitleConfigurations(subConfigs) }
             .setMediaMetadata(MediaMetadata.Builder().setTitle(source.title).build()).build()
         val drm = drmProvider
-        return when (type) {
+        val baseSource = when (type) {
             C.CONTENT_TYPE_HLS -> HlsMediaSource.Factory(http).setAllowChunklessPreparation(true).setLoadErrorHandlingPolicy(policy)
                 .apply { drm?.let { setDrmSessionManagerProvider(it) } }.createMediaSource(item)
             C.CONTENT_TYPE_DASH -> DashMediaSource.Factory(http).setLoadErrorHandlingPolicy(policy)
@@ -208,6 +210,16 @@ class Playback(
                 } else http
                 ProgressiveMediaSource.Factory(factory).setLoadErrorHandlingPolicy(policy).apply { drm?.let { setDrmSessionManagerProvider(it) } }.createMediaSource(item)
             }
+        }
+        return if (subConfigs.isNotEmpty()) {
+            val subSources = subConfigs.map { subConfig ->
+                SingleSampleMediaSource.Factory(http)
+                    .setLoadErrorHandlingPolicy(policy)
+                    .createMediaSource(subConfig, C.TIME_UNSET)
+            }
+            MergingMediaSource(baseSource, *subSources.toTypedArray())
+        } else {
+            baseSource
         }
     }
 

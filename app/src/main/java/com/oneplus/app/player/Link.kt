@@ -11,7 +11,7 @@ class Drm(val uuid: UUID, val licenseUrl: String?, val local: ByteArray?)
 
 class Link(val url: String, val headers: Map<String, String>, val drm: Drm?, val subtitleUrl: String? = null)
 
-private val Schemes = setOf("http", "https", "rtsp", "rtsps", "cinema")
+private val Schemes = setOf("http", "https", "rtsp", "rtsps", "cinema", "wecima")
 
 fun isAllowed(u: String): Boolean {
     val uri = runCatching { Uri.parse(u.trim()) }.getOrNull() ?: return false

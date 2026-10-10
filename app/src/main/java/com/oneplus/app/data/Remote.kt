@@ -126,7 +126,7 @@ class RemoteRepository(private val url: String, private val store: Store) : Home
         return HomeData(matches = matches, movies = movies, channels = channels)
     }
 
-    private fun playable(u: String) = isAllowed(u.substringBefore('|').trim()) || u.trimStart().startsWith("url", true)
+    private fun playable(u: String) = isAllowed(u.substringBefore('|').trim()) || u.trimStart().startsWith("url", true) || u.startsWith("cinema://") || u.startsWith("wecima://")
 
     private fun JSONArray?.objs(): List<JSONObject> = if (this == null) emptyList() else (0 until length()).mapNotNull { optJSONObject(it) }
     private fun JSONArray?.strings(): List<String> = if (this == null) emptyList() else (0 until length()).map { optString(it) }.filter { it.isNotBlank() }

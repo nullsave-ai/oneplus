@@ -141,16 +141,14 @@ private fun MovieDetail(m: Movie, all: List<Movie>, lib: Library, onBack: () -> 
 
     var liveDetails by remember(m.id) { mutableStateOf<com.oneplus.app.data.MovieDetailData?>(null) }
     LaunchedEffect(m.id) {
-        val sid = runCatching { android.net.Uri.parse(m.url).getQueryParameter("id") }.getOrNull()
-        if (!sid.isNullOrBlank()) {
-            val isSeries = m.kind == com.oneplus.app.data.Kind.Series || m.kind == com.oneplus.app.data.Kind.ArabicSeries || m.kind == com.oneplus.app.data.Kind.WesternSeries || m.episodes.isNotEmpty()
-            val d = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                com.oneplus.app.data.CinemaApi.fetchDetails(sid, isSeries)
-            }
-            liveDetails = d
-            if (d != null && d.episodes.isNotEmpty()) {
-                onEpisodesLoaded(m.id, d.episodes)
-            }
+        val target = if (m.url.isNotBlank()) m.url else "cinema://detail?id=${m.id}"
+        val isSeries = m.kind == com.oneplus.app.data.Kind.Series || m.kind == com.oneplus.app.data.Kind.ArabicSeries || m.kind == com.oneplus.app.data.Kind.WesternSeries || m.episodes.isNotEmpty()
+        val d = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            com.oneplus.app.data.CinemaApi.fetchDetails(target, isSeries)
+        }
+        liveDetails = d
+        if (d != null && d.episodes.isNotEmpty()) {
+            onEpisodesLoaded(m.id, d.episodes)
         }
     }
     val currentEpisodes = liveDetails?.episodes?.ifEmpty { m.episodes } ?: m.episodes

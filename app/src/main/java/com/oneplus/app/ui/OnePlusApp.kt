@@ -142,7 +142,13 @@ fun OnePlusApp(
                 if (e != null) {
                     PlaySource(e.url, "${m.title} - ${e.title}", live = false, cacheable = true)
                 } else if (playEp >= 0) {
-                    PlaySource("cinema://stream?id=${m.id}&se=1&ep=${playEp + 1}", "${m.title} - الحلقة ${playEp + 1}", live = false, cacheable = true)
+                    val parsedSid = runCatching { Uri.parse(m.url).getQueryParameter("id") ?: Uri.parse(m.url).getQueryParameter("subjectId") }.getOrNull()
+                    val targetId = if (!parsedSid.isNullOrBlank()) parsedSid else m.url
+                    if (m.url.startsWith("wecima://")) {
+                        PlaySource("wecima://stream?realid=$targetId", "${m.title} - الحلقة ${playEp + 1}", live = false, cacheable = true)
+                    } else {
+                        PlaySource("cinema://stream?id=$targetId&se=1&ep=${playEp + 1}", "${m.title} - الحلقة ${playEp + 1}", live = false, cacheable = true)
+                    }
                 } else {
                     PlaySource(m.url, m.title, live = false, cacheable = true, startMs = playStart)
                 }

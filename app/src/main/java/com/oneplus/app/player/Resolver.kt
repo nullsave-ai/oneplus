@@ -34,9 +34,9 @@ object Resolver {
     fun needsExtractor(url: String): Boolean {
         val u = runCatching { Uri.parse(url) }.getOrNull() ?: return false
         val scheme = u.scheme?.lowercase().orEmpty()
-        if (scheme == "cinema") return true
+        if (scheme == "cinema" || scheme == "wecima") return true
         val host = u.host?.lowercase().orEmpty()
-        if (host.contains("aoneroom.com")) return true
+        if (host.contains("aoneroom.com") || host.contains("wecima.bar") || host.contains("govid.live")) return true
         if (u.path.orEmpty().contains("api.php") && u.getQueryParameter("action") == "stream") return true
         return XHost.containsMatchIn(host) && StatusId.containsMatchIn(u.path.orEmpty())
     }
@@ -47,10 +47,30 @@ object Resolver {
         val host = u.host?.lowercase().orEmpty()
         val path = u.path.orEmpty()
 
-        if (scheme == "cinema" || host.contains("aoneroom.com") || (path.contains("api.php") && u.getQueryParameter("action") == "stream")) {
+        if (scheme == "wecima" || host.contains("wecima.bar") || (path.contains("api.php") && u.getQueryParameter("action") == "stream")) {
+            return@withContext resolveWeCima(u)
+        }
+        if (scheme == "cinema" || host.contains("aoneroom.com")) {
             return@withContext resolveUpstream(u)
         }
         runCatching { x(url) }.getOrNull()
+    }
+
+    private fun resolveWeCima(u: Uri): Resolved? {
+        val realId = u.getQueryParameter("realid") ?: u.getQueryParameter("id") ?: ""
+        if (realId.isBlank()) return null
+        val streamApiUrl = "https://wecima.bar/api.php?action=stream&realid=" + Uri.encode(realId)
+        val jsonStr = getWeCima(streamApiUrl) ?: return null
+        val j = runCatching { JSONObject(jsonStr) }.getOrNull() ?: return null
+        val streamUrl = j.optString("url").trim()
+        if (streamUrl.isBlank()) return null
+        val ua = j.optString("user_agent", "okhttp/4.12.0")
+        val headers = mapOf("User-Agent" to ua)
+        return Resolved(
+            url = streamUrl,
+            headers = headers,
+            live = false
+        )
     }
 
     private fun resolveUpstream(u: Uri): Resolved? {
@@ -66,7 +86,7 @@ object Resolver {
         var arSubtitle: String? = null
 
         if (isSeries) {
-            val resJson = get("https://h5.aoneroom.com/wefeed-h5-bff/mini/subject-resource?subjectId=" + Uri.encode(id) + "&page=1&perPage=50")
+            val resJson = get("https://h5.aoneroom.com/wefeed-h5-bff/mini/subject-resource?subjectId=" + Uri.encode(id) + "&page=1&perPage=100")
             if (!resJson.isNullOrBlank()) {
                 val j = runCatching { JSONObject(resJson) }.getOrNull()
                 val list = j?.optJSONObject("data")?.optJSONArray("list").objs()
@@ -76,6 +96,10 @@ object Resolver {
 
                 if (targetEp != null) {
                     primaryUrl = targetEp.optString("resourceLink").ifBlank { targetEp.optString("sourceUrl") }
+                    val epRes = targetEp.optInt("resolution", 0)
+                    if (epRes > 0 && primaryUrl.isNotBlank()) {
+                        variants.add(Variant(epRes, primaryUrl))
+                    }
                     val caps = targetEp.optJSONArray("extCaptions").objs()
                     for (cap in caps) {
                         val lan = cap.optString("lan")
@@ -93,7 +117,7 @@ object Resolver {
             }
         }
 
-        if (primaryUrl.isBlank()) {
+        if (primaryUrl.isBlank() || variants.isEmpty()) {
             val detailJson = get("https://h5.aoneroom.com/wefeed-h5-bff/mini/subject_detail?subjectId=" + Uri.encode(id))
             if (!detailJson.isNullOrBlank()) {
                 val j = runCatching { JSONObject(detailJson) }.getOrNull()
@@ -137,6 +161,7 @@ object Resolver {
 
         return Resolved(
             url = finalUrl,
+            headers = mapOf("User-Agent" to "OnePlus/1.0"),
             variants = sortedVariants,
             defaultVariant = defVar,
             subtitleUrl = arSubtitle,
@@ -201,6 +226,27 @@ object Resolver {
         } catch (_: Exception) {
             return null
         } finally { c.disconnect() }
+    }
+
+    private fun getWeCima(urlStr: String): String? {
+        val c = URL(urlStr).openConnection() as HttpURLConnection
+        try {
+            c.connectTimeout = 10_000
+            c.readTimeout = 12_000
+            c.setRequestProperty("User-Agent", "okhttp/4.12.0")
+            c.setRequestProperty("X-App-Key", "sv_x9k2m7p4q8n3r6t1w5y0z")
+            c.setRequestProperty("X-App-Sig", "0de08ec6cd0526dcc699041ed8e6dfb3")
+            c.setRequestProperty("X-App-Chk", "cebe2159")
+            c.setRequestProperty("X-Device-ID", "3b29c9ef4e872d8a")
+            c.setRequestProperty("X-Device-Name", "Samsung SM-S901B")
+            c.setRequestProperty("Accept", "application/json, text/plain, */*")
+            if (c.responseCode != 200) return null
+            return c.inputStream.bufferedReader().use { it.readText() }
+        } catch (_: Exception) {
+            return null
+        } finally {
+            c.disconnect()
+        }
     }
 
     private fun JSONArray?.objs(): List<JSONObject> = if (this == null) emptyList() else (0 until length()).mapNotNull { optJSONObject(it) }
