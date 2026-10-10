@@ -59,7 +59,7 @@ class DetailState(isOpen: Boolean) {
 }
 
 @Composable
-fun MovieDetailHost(state: DetailState, movies: List<Movie>, lib: Library, movieId: Int, onOpen: (Int) -> Unit, onPlay: (Int, Int) -> Unit, onClosed: () -> Unit) {
+fun MovieDetailHost(state: DetailState, movies: List<Movie>, lib: Library, movieId: Int, onOpen: (Int) -> Unit, onPlay: (Int, Int) -> Unit, onEpisodesLoaded: (Int, List<com.oneplus.app.data.Episode>) -> Unit = { _, _ -> }, onClosed: () -> Unit) {
     val scope = rememberCoroutineScope()
     val kind = LocalTransition.current
     val open = movieId >= 0
@@ -120,12 +120,12 @@ fun MovieDetailHost(state: DetailState, movies: List<Movie>, lib: Library, movie
             .nestedScroll(connection)
             .pointerInput(Unit) { detectTapGestures { } }
     ) {
-        key(movie.id) { MovieDetail(movie, movies, lib, close, onOpen, onPlay) }
+        key(movie.id) { MovieDetail(movie, movies, lib, close, onOpen, onPlay, onEpisodesLoaded) }
     }
 }
 
 @Composable
-private fun MovieDetail(m: Movie, all: List<Movie>, lib: Library, onBack: () -> Unit, onOpen: (Int) -> Unit, onPlay: (Int, Int) -> Unit) {
+private fun MovieDetail(m: Movie, all: List<Movie>, lib: Library, onBack: () -> Unit, onOpen: (Int) -> Unit, onPlay: (Int, Int) -> Unit, onEpisodesLoaded: (Int, List<com.oneplus.app.data.Episode>) -> Unit) {
     val c = LocalColors.current
     val scroll = rememberScrollState()
     val pitch = LocalLook.current.pitch
@@ -139,16 +139,44 @@ private fun MovieDetail(m: Movie, all: List<Movie>, lib: Library, onBack: () -> 
     }
     val duration = "${m.durationMin / 60} ${stringResource(R.string.unit_hour)} ${m.durationMin % 60} ${stringResource(R.string.unit_min)}"
 
+    var liveDetails by remember(m.id) { mutableStateOf<com.oneplus.app.data.MovieDetailData?>(null) }
+    LaunchedEffect(m.id) {
+        val sid = runCatching { android.net.Uri.parse(m.url).getQueryParameter("id") }.getOrNull()
+        if (!sid.isNullOrBlank()) {
+            val d = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                com.oneplus.app.data.CinemaApi.fetchDetails(sid, m.kind == com.oneplus.app.data.Kind.Series)
+            }
+            liveDetails = d
+            if (d != null && d.episodes.isNotEmpty()) {
+                onEpisodesLoaded(m.id, d.episodes)
+            }
+        }
+    }
+    val currentEpisodes = liveDetails?.episodes?.ifEmpty { m.episodes } ?: m.episodes
+    val currentSynopsis = liveDetails?.synopsis?.ifBlank { m.synopsis } ?: m.synopsis
+    val currentDirector = liveDetails?.director?.ifBlank { m.director } ?: m.director
+    val currentCast = liveDetails?.cast?.ifEmpty { m.cast } ?: m.cast
+    val currentBackdrop = liveDetails?.backdrop?.ifBlank { m.backdrop } ?: m.backdrop
+    val activeMovie = remember(m, liveDetails) {
+        m.copy(
+            synopsis = currentSynopsis,
+            director = currentDirector,
+            cast = currentCast,
+            episodes = currentEpisodes,
+            backdrop = currentBackdrop
+        )
+    }
+
     Box(Modifier.fillMaxSize()) {
         Column(
             Modifier.fillMaxSize().verticalScroll(scroll)
                 .padding(bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 32.dp)
         ) {
-            if (anime) AnimeHero(m, duration, heroH, scroll) else if (pitch) PitchHero(m, duration, heroH, scroll) else Hero(m, duration, heroH, scroll)
+            if (anime) AnimeHero(activeMovie, duration, heroH, scroll) else if (pitch) PitchHero(activeMovie, duration, heroH, scroll) else Hero(activeMovie, duration, heroH, scroll)
             Box(Modifier.fillMaxWidth(), Alignment.TopCenter) {
                 Column(Modifier.widthIn(max = 720.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(24.dp)) {
                     Row(Modifier.padding(horizontal = 20.dp), Arrangement.spacedBy(12.dp)) {
-                        OneButton(stringResource(if (lib.resumeMs(m.id) > 0L) R.string.movie_resume else R.string.movie_play), OneIcon.Play, { onPlay(m.id, if (m.episodes.isEmpty()) -1 else 0) }, Modifier.weight(1.4f).tvAutoFocus())
+                        OneButton(stringResource(if (lib.resumeMs(m.id) > 0L) R.string.movie_resume else R.string.movie_play), OneIcon.Play, { onPlay(m.id, if (currentEpisodes.isEmpty()) -1 else 0) }, Modifier.weight(1.4f).tvAutoFocus())
                         OneButton(
                             stringResource(R.string.movie_list), if (added) OneIcon.Check else OneIcon.Plus,
                             { lib.toggle(m.id) }, Modifier.weight(1f), primary = false,
@@ -156,27 +184,27 @@ private fun MovieDetail(m: Movie, all: List<Movie>, lib: Library, onBack: () -> 
                     }
                     if (pitch) PitchStats(m)
                     Genres(m.genres)
-                    if (m.episodes.isNotEmpty()) Section(R.string.movie_episodes, 0, seen) {
-                        val seasons = remember(m.id) { m.episodes.map { it.season }.distinct().sorted() }
-                        var season by rememberSaveable(m.id) { mutableIntStateOf(seasons.first()) }
+                    if (currentEpisodes.isNotEmpty()) Section(R.string.movie_episodes, 0, seen) {
+                        val seasons = remember(m.id, currentEpisodes) { currentEpisodes.map { it.season }.distinct().sorted() }
+                        var season by rememberSaveable(m.id) { mutableIntStateOf(seasons.firstOrNull() ?: 1) }
                         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                             if (seasons.size > 1) LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 items(seasons) { n -> OneChip(stringResource(R.string.season_n, n), n == season, { season = n }) }
                             }
                             Column(Modifier.padding(horizontal = 20.dp).fillMaxWidth().glass(2, 22.dp)) {
-                                m.episodes.withIndex().filter { it.value.season == season }.forEachIndexed { n, (i, e) -> EpisodeRow(n + 1, e.title) { onPlay(m.id, i) } }
+                                currentEpisodes.withIndex().filter { it.value.season == season }.forEachIndexed { n, (i, e) -> EpisodeRow(n + 1, e.title) { onPlay(m.id, i) } }
                             }
                         }
                     }
-                    Section(R.string.movie_story, 1, seen) { Story(m.synopsis) }
+                    Section(R.string.movie_story, 1, seen) { Story(currentSynopsis) }
                     Section(R.string.movie_cast, 2, seen) {
                         LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                            items(m.cast) { name -> CastMember(name) }
+                            items(currentCast) { name -> CastMember(name) }
                         }
                     }
                     Section(R.string.movie_details, 3, seen) {
                         Column(Modifier.padding(horizontal = 20.dp).fillMaxWidth().glass(2, 22.dp).padding(vertical = 4.dp)) {
-                            InfoRow(R.string.movie_director, m.director)
+                            InfoRow(R.string.movie_director, currentDirector)
                             InfoRow(R.string.movie_year, m.year.toString())
                             InfoRow(R.string.movie_duration, duration)
                         }
@@ -201,16 +229,20 @@ private fun Hero(m: Movie, duration: String, height: Dp, scroll: ScrollState) {
     val poster = remember(c) { Brush.linearGradient(listOf(c.accent.copy(alpha = 0.40f), c.dim.copy(alpha = 0.22f))) }
     val fade = remember(c) { Brush.verticalGradient(0.45f to c.bg.copy(alpha = 0f), 1f to c.bg) }
     Box(Modifier.fillMaxWidth().height(height).clipToBounds()) {
-        Box(
-            Modifier.matchParentSize().graphicsLayer { translationY = scroll.value * 0.4f }.background(banner)
-                .drawWithCache {
-                    val glow = Brush.radialGradient(
-                        listOf(c.accent.copy(alpha = 0.35f), c.accent.copy(alpha = 0f)),
-                        Offset(size.width * 0.82f, size.height * 0.18f), size.maxDimension * 0.6f,
-                    )
-                    onDrawBehind { drawRect(glow); drawDither() }
-                }
-        )
+        if (m.backdrop.isNotBlank()) {
+            RemoteImage(m.backdrop, Modifier.matchParentSize().graphicsLayer { translationY = scroll.value * 0.4f })
+        } else {
+            Box(
+                Modifier.matchParentSize().graphicsLayer { translationY = scroll.value * 0.4f }.background(banner)
+                    .drawWithCache {
+                        val glow = Brush.radialGradient(
+                            listOf(c.accent.copy(alpha = 0.35f), c.accent.copy(alpha = 0f)),
+                            Offset(size.width * 0.82f, size.height * 0.18f), size.maxDimension * 0.6f,
+                        )
+                        onDrawBehind { drawRect(glow); drawDither() }
+                    }
+            )
+        }
         Box(Modifier.matchParentSize().background(fade))
         Row(
             Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(start = 20.dp, end = 20.dp, bottom = 20.dp),
@@ -218,9 +250,15 @@ private fun Hero(m: Movie, duration: String, height: Dp, scroll: ScrollState) {
         ) {
             Box(
                 Modifier.width(112.dp).aspectRatio(2f / 3f)
-                    .clip(RoundedCornerShape(16.dp)).background(c.bg).background(poster)
+                    .clip(RoundedCornerShape(16.dp)).background(c.bg)
                     .border(0.5.dp, c.border, RoundedCornerShape(16.dp))
-            )
+            ) {
+                if (m.backdrop.isNotBlank()) {
+                    RemoteImage(m.backdrop, Modifier.fillMaxSize())
+                } else {
+                    Box(Modifier.fillMaxSize().background(poster))
+                }
+            }
             Column(Modifier.weight(1f).padding(bottom = 4.dp), Arrangement.spacedBy(6.dp)) {
                 OneText(m.title, OneType.Title, c.text, maxLines = 2)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {

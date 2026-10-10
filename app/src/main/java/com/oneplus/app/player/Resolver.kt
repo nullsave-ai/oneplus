@@ -11,6 +11,8 @@ import java.net.URL
 
 data class Variant(val height: Int, val url: String)
 
+data class SubtitleTrack(val name: String, val lang: String, val url: String)
+
 data class Resolved(
     val url: String,
     val live: Boolean = false,
@@ -19,6 +21,7 @@ data class Resolved(
     val variants: List<Variant> = emptyList(),
     val defaultVariant: Int = 0,
     val subtitleUrl: String? = null,
+    val subtitles: List<SubtitleTrack> = emptyList(),
 )
 
 object Resolver {
@@ -26,12 +29,127 @@ object Resolver {
     private val Size = Regex("/(\\d+)x(\\d+)/")
     private val StatusId = Regex("/status(?:es)?/(\\d{1,25})")
 
+    private const val UA = "Mozilla/5.0 (Linux; Android 15; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36"
+
     fun needsExtractor(url: String): Boolean {
         val u = runCatching { Uri.parse(url) }.getOrNull() ?: return false
-        return u.host?.lowercase()?.let { XHost.containsMatchIn(it) } == true && StatusId.containsMatchIn(u.path.orEmpty())
+        val scheme = u.scheme?.lowercase().orEmpty()
+        if (scheme == "cinema") return true
+        val host = u.host?.lowercase().orEmpty()
+        if (host.contains("aoneroom.com")) return true
+        if (u.path.orEmpty().contains("api.php") && u.getQueryParameter("action") == "stream") return true
+        return XHost.containsMatchIn(host) && StatusId.containsMatchIn(u.path.orEmpty())
     }
 
-    suspend fun resolve(url: String): Resolved? = withContext(Dispatchers.IO) { runCatching { x(url) }.getOrNull() }
+    suspend fun resolve(url: String): Resolved? = withContext(Dispatchers.IO) {
+        val u = runCatching { Uri.parse(url) }.getOrNull() ?: return@withContext null
+        val scheme = u.scheme?.lowercase().orEmpty()
+        val host = u.host?.lowercase().orEmpty()
+        val path = u.path.orEmpty()
+
+        if (scheme == "cinema" || host.contains("aoneroom.com") || (path.contains("api.php") && u.getQueryParameter("action") == "stream")) {
+            return@withContext resolveUpstream(u)
+        }
+        runCatching { x(url) }.getOrNull()
+    }
+
+    private fun resolveUpstream(u: Uri): Resolved? {
+        val id = u.getQueryParameter("id") ?: u.getQueryParameter("subjectId") ?: ""
+        if (id.isBlank()) return null
+        val season = u.getQueryParameter("se")?.toIntOrNull() ?: u.getQueryParameter("season")?.toIntOrNull() ?: 1
+        val episode = u.getQueryParameter("ep")?.toIntOrNull() ?: 1
+        val isSeries = u.host == "stream" || u.getQueryParameter("se") != null || u.getQueryParameter("season") != null
+
+        val allSubs = mutableListOf<SubtitleTrack>()
+        val variants = mutableListOf<Variant>()
+        var primaryUrl = ""
+        var arSubtitle: String? = null
+
+        if (isSeries) {
+            val resJson = get("https://h5.aoneroom.com/wefeed-h5-bff/mini/subject-resource?subjectId=" + Uri.encode(id) + "&page=1&perPage=50")
+            if (!resJson.isNullOrBlank()) {
+                val j = runCatching { JSONObject(resJson) }.getOrNull()
+                val list = j?.optJSONObject("data")?.optJSONArray("list").objs()
+                val targetEp = list.firstOrNull { it.optInt("se", 1) == season && it.optInt("ep", 1) == episode }
+                    ?: list.firstOrNull { it.optInt("episode", 1) == episode }
+                    ?: list.firstOrNull()
+
+                if (targetEp != null) {
+                    primaryUrl = targetEp.optString("resourceLink").ifBlank { targetEp.optString("sourceUrl") }
+                    val caps = targetEp.optJSONArray("extCaptions").objs()
+                    for (cap in caps) {
+                        val lan = cap.optString("lan")
+                        val lanName = cap.optString("lanName").ifBlank { lan }
+                        val sUrl = cap.optString("url")
+                        if (sUrl.isNotBlank()) {
+                            val track = SubtitleTrack(cleanName(lanName), lan, sUrl)
+                            allSubs.add(track)
+                            if (lan.equals("ar", true) || lanName.contains("عرب")) {
+                                arSubtitle = sUrl
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if (primaryUrl.isBlank()) {
+            val detailJson = get("https://h5.aoneroom.com/wefeed-h5-bff/mini/subject_detail?subjectId=" + Uri.encode(id))
+            if (!detailJson.isNullOrBlank()) {
+                val j = runCatching { JSONObject(detailJson) }.getOrNull()
+                val d = j?.optJSONObject("data")
+                val detector = d?.optJSONArray("resourceDetectors").objs().firstOrNull()
+                if (detector != null) {
+                    val rList = detector.optJSONArray("resolutionList").objs()
+                    for (r in rList) {
+                        val res = r.optInt("resolution", 0)
+                        val rLink = r.optString("resourceLink").ifBlank { r.optString("sourceUrl") }
+                        if (res > 0 && rLink.isNotBlank()) {
+                            variants.add(Variant(res, rLink))
+                        }
+                    }
+                    if (primaryUrl.isBlank()) {
+                        primaryUrl = detector.optString("downloadUrl").ifBlank {
+                            rList.firstOrNull()?.optString("resourceLink") ?: ""
+                        }
+                    }
+                    for (cap in detector.optJSONArray("extCaptions").objs()) {
+                        val lan = cap.optString("lan")
+                        val lanName = cap.optString("lanName").ifBlank { lan }
+                        val sUrl = cap.optString("url")
+                        if (sUrl.isNotBlank()) {
+                            val track = SubtitleTrack(cleanName(lanName), lan, sUrl)
+                            allSubs.add(track)
+                            if (lan.equals("ar", true) || lanName.contains("عرب")) {
+                                arSubtitle = sUrl
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if (primaryUrl.isBlank() && variants.isEmpty()) return null
+
+        val sortedVariants = variants.distinctBy { it.height }.sortedByDescending { it.height }
+        val defVar = sortedVariants.indexOfFirst { it.height <= 1080 }.coerceAtLeast(0)
+        val finalUrl = sortedVariants.getOrNull(defVar)?.url ?: primaryUrl
+
+        return Resolved(
+            url = finalUrl,
+            variants = sortedVariants,
+            defaultVariant = defVar,
+            subtitleUrl = arSubtitle,
+            subtitles = allSubs.distinctBy { it.lang + it.name }
+        )
+    }
+
+    private fun cleanName(name: String): String {
+        return name.replace("اَلْعَرَبِيَّةُ", "العربية")
+            .replace("ar", "العربية")
+            .replace("en", "English")
+            .trim()
+    }
 
     private fun x(url: String): Resolved? {
         val id = StatusId.find(Uri.parse(url).path.orEmpty())?.groupValues?.get(1) ?: return null
@@ -61,7 +179,11 @@ object Resolver {
         val c = URL(u).openConnection() as HttpURLConnection
         try {
             c.connectTimeout = 8_000; c.readTimeout = 10_000
-            c.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 Chrome/124.0 Mobile Safari/537.36")
+            c.setRequestProperty("User-Agent", UA)
+            c.setRequestProperty("x-tr-devtype", "h5")
+            c.setRequestProperty("x-tr-region", "CN")
+            c.setRequestProperty("x-md-global-color", "lane4")
+            c.setRequestProperty("Accept", "application/json, text/plain, */*")
             if (c.responseCode != 200) return null
             return c.inputStream.use { s ->
                 val out = ByteArrayOutputStream()
@@ -71,11 +193,13 @@ object Resolver {
                     val n = s.read(buf)
                     if (n < 0) break
                     total += n
-                    if (total > 1_000_000) return null
+                    if (total > 5_000_000) return null
                     out.write(buf, 0, n)
                 }
                 out.toString("UTF-8")
             }
+        } catch (_: Exception) {
+            return null
         } finally { c.disconnect() }
     }
 

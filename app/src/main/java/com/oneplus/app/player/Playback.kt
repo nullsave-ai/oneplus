@@ -161,19 +161,34 @@ class Playback(
     }
 
     private fun kindOf(url: String) = Util.inferContentType(Uri.parse(url))
-
     private fun src(url: String, type: Int): MediaSource {
-        val subConfig = res.subtitleUrl?.takeIf { it.isNotBlank() }?.let { subUri ->
-            val mime = if (subUri.contains(".vtt", true)) MimeTypes.TEXT_VTT else MimeTypes.APPLICATION_SUBRIP
-            MediaItem.SubtitleConfiguration.Builder(Uri.parse(subUri))
-                .setMimeType(mime)
-                .setLanguage("ar")
-                .setLabel("العربية")
-                .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
-                .build()
+        val subConfigs = mutableListOf<MediaItem.SubtitleConfiguration>()
+        if (res.subtitles.isNotEmpty()) {
+            for (sub in res.subtitles) {
+                val mime = if (sub.url.contains(".vtt", true)) MimeTypes.TEXT_VTT else MimeTypes.APPLICATION_SUBRIP
+                val isAr = sub.lang.equals("ar", true) || sub.name.contains("عرب")
+                val b = MediaItem.SubtitleConfiguration.Builder(Uri.parse(sub.url))
+                    .setMimeType(mime)
+                    .setLanguage(sub.lang)
+                    .setLabel(sub.name)
+                if (isAr) b.setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
+                subConfigs.add(b.build())
+            }
+        } else {
+            res.subtitleUrl?.takeIf { it.isNotBlank() }?.let { subUri ->
+                val mime = if (subUri.contains(".vtt", true)) MimeTypes.TEXT_VTT else MimeTypes.APPLICATION_SUBRIP
+                subConfigs.add(
+                    MediaItem.SubtitleConfiguration.Builder(Uri.parse(subUri))
+                        .setMimeType(mime)
+                        .setLanguage("ar")
+                        .setLabel("العربية")
+                        .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
+                        .build()
+                )
+            }
         }
         val item = MediaItem.Builder().setUri(url)
-            .apply { if (subConfig != null) setSubtitleConfigurations(listOf(subConfig)) }
+            .apply { if (subConfigs.isNotEmpty()) setSubtitleConfigurations(subConfigs) }
             .setMediaMetadata(MediaMetadata.Builder().setTitle(source.title).build()).build()
         val drm = drmProvider
         return when (type) {
@@ -307,7 +322,11 @@ class Playback(
             if (g.isEmpty()) return emptyList()
             val on = !params.disabledTrackTypes.contains(C.TRACK_TYPE_TEXT) && g.any { it.isSelected }
             return listOf(Opt(app.getString(R.string.track_off), null, !on) { setParams { setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true) } }) +
-                g.mapIndexed { n, t -> Opt(t.getTrackFormat(0).title(n), null, on && t.isSelected) { choose(t, listOf(0)) } }
+                g.mapIndexed { n, t ->
+                    val f = t.getTrackFormat(0)
+                    val title = f.label?.takeIf { it.isNotBlank() } ?: f.title(n)
+                    Opt(title, null, on && t.isSelected) { choose(t, listOf(0)) }
+                }
         }
 
     private companion object {

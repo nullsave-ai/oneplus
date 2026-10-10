@@ -73,6 +73,8 @@ fun OnePlusApp(
     vm: MainViewModel = viewModel { MainViewModel(app.repository) },
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
+    val liveSearchResults by vm.liveSearchResults.collectAsStateWithLifecycle()
+    val isSearchingLive by vm.isSearchingLive.collectAsStateWithLifecycle()
     val tv = LocalTvMode.current
     val look = LocalLook.current
     val ctx = LocalContext.current
@@ -133,12 +135,17 @@ fun OnePlusApp(
             homeList.canScrollBackward && info.visibleItemsInfo.any { it.key == "channels" && it.offset < info.viewportSize.height / 2 }
         }
     }
-    val source = remember(playKind, playId, playEp, state.base) {
+    val source = remember(playKind, playId, playEp, state.base, liveSearchResults) {
         when (playKind) {
-            1 -> byId[playId]?.let { m ->
-                val e = m.episodes.getOrNull(playEp)
-                if (e != null) PlaySource(e.url, "${m.title} - ${e.title}", live = false, cacheable = true)
-                else PlaySource(m.url, m.title, live = false, cacheable = true, startMs = playStart)
+            1 -> (byId[playId] ?: liveSearchResults.firstOrNull { it.id == playId })?.let { m ->
+                val e = m.episodes.getOrNull(playEp) ?: vm.getEpisode(playId, playEp)
+                if (e != null) {
+                    PlaySource(e.url, "${m.title} - ${e.title}", live = false, cacheable = true)
+                } else if (playEp >= 0) {
+                    PlaySource("cinema://stream?id=${m.id}&se=1&ep=${playEp + 1}", "${m.title} - الحلقة ${playEp + 1}", live = false, cacheable = true)
+                } else {
+                    PlaySource(m.url, m.title, live = false, cacheable = true, startMs = playStart)
+                }
             }
             2 -> state.base.channelsById[playId]?.let { PlaySource(it.url, it.name, live = true) }
             else -> null
@@ -168,8 +175,8 @@ fun OnePlusApp(
         val inGroup = state.base.byGroup[group].orEmpty()
         (inGroup.firstOrNull { it.id == lastChannel } ?: inGroup.firstOrNull())?.let { playInline(it.id) }
     }
-    LaunchedEffect(movieId, state.base) {
-        if (movieId >= 0 && byId.isNotEmpty() && movieId !in byId) {
+    LaunchedEffect(movieId, state.base, liveSearchResults) {
+        if (movieId >= 0 && byId.isNotEmpty() && movieId !in byId && liveSearchResults.none { it.id == movieId }) {
             detail.enter.snapTo(0f)
             movieId = -1
         }
@@ -238,12 +245,32 @@ fun OnePlusApp(
                 }
                 }
                 TvLayer(movieId >= 0 || lockOver) {
-                    MoviesHost(showMovies, Kind.entries[moviesKind], state.base.shelves[Kind.entries[moviesKind]].orEmpty(), portrait, { id -> movieId = id }) { showMovies = false }
+                    MoviesHost(
+                        open = showMovies,
+                        kind = Kind.entries[moviesKind],
+                        movies = state.base.shelves[Kind.entries[moviesKind]].orEmpty(),
+                        portrait = portrait,
+                        liveResults = liveSearchResults,
+                        isSearchingLive = isSearchingLive,
+                        onSearchLive = vm::searchLive,
+                        onLoadMore = { vm.loadMore(Kind.entries[moviesKind]) },
+                        onMovie = { id -> movieId = id },
+                        onClose = { showMovies = false },
+                    )
                 }
             }
             TvLayer(lockOver) {
                 MatchesHost(showMatches, matchesP, state.all.matches, wide, matchFocus) { showMatches = false }
-                MovieDetailHost(detail, state.all.movies, library, movieId, { movieId = it }, { id, ep -> playFull(1, id, ep) }, { movieId = -1 })
+                MovieDetailHost(
+                    state = detail,
+                    movies = (state.all.movies + liveSearchResults).distinctBy { it.id },
+                    lib = library,
+                    movieId = movieId,
+                    onOpen = { movieId = it },
+                    onPlay = { id, ep -> playFull(1, id, ep) },
+                    onEpisodesLoaded = vm::registerEpisodes,
+                    onClosed = { movieId = -1 },
+                )
             }
             val r = if (tab == 1) slot else null
             val inPlace = wantsInPlace && r != null

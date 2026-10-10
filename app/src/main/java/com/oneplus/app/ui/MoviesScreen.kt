@@ -15,6 +15,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.BasicTextField
@@ -34,12 +35,24 @@ import com.oneplus.app.R
 import com.oneplus.app.data.Kind
 import com.oneplus.app.data.Movie
 import com.oneplus.app.ui.system.*
+import kotlinx.coroutines.delay
 
 private val RatingSteps = listOf(0, 5, 6, 7, 8)
 private val SortLabels = listOf(R.string.sort_new, R.string.sort_rating, R.string.sort_name)
 
 @Composable
-fun MoviesHost(open: Boolean, kind: Kind, movies: List<Movie>, portrait: Boolean, onMovie: (Int) -> Unit, onClose: () -> Unit) {
+fun MoviesHost(
+    open: Boolean,
+    kind: Kind,
+    movies: List<Movie>,
+    portrait: Boolean,
+    liveResults: List<Movie> = emptyList(),
+    isSearchingLive: Boolean = false,
+    onSearchLive: (String) -> Unit = {},
+    onLoadMore: () -> Unit = {},
+    onMovie: (Int) -> Unit,
+    onClose: () -> Unit
+) {
     val motion = LocalTransition.current
     val p = remember { Animatable(if (open) 1f else 0f) }
     var visible by remember { mutableStateOf(open) }
@@ -56,11 +69,23 @@ fun MoviesHost(open: Boolean, kind: Kind, movies: List<Movie>, portrait: Boolean
             .graphicsLayer { if (motion == PageTransition.Look) { translationY = (1f - p.value) * size.height } else overMotion(motion, p.value) }
             .ambient()
             .pointerInput(Unit) { detectTapGestures { } }
-    ) { MoviesScreen(kind, movies, portrait, onMovie, onClose) }
+    ) {
+        MoviesScreen(kind, movies, portrait, liveResults, isSearchingLive, onSearchLive, onLoadMore, onMovie, onClose)
+    }
 }
 
 @Composable
-private fun MoviesScreen(kind: Kind, movies: List<Movie>, portrait: Boolean, onMovie: (Int) -> Unit, onClose: () -> Unit) {
+private fun MoviesScreen(
+    kind: Kind,
+    movies: List<Movie>,
+    portrait: Boolean,
+    liveResults: List<Movie>,
+    isSearchingLive: Boolean,
+    onSearchLive: (String) -> Unit,
+    onLoadMore: () -> Unit,
+    onMovie: (Int) -> Unit,
+    onClose: () -> Unit
+) {
     val c = LocalColors.current
     val tv = LocalTvMode.current
     var genre by rememberSaveable { mutableStateOf<String?>(null) }
@@ -72,26 +97,53 @@ private fun MoviesScreen(kind: Kind, movies: List<Movie>, portrait: Boolean, onM
     var searching by rememberSaveable { mutableStateOf(false) }
     val focus = remember { FocusRequester() }
     val fm = LocalFocusManager.current
-    val closeSearch = { fm.clearFocus(); q = ""; searching = false }
+    val closeSearch = { fm.clearFocus(); q = ""; searching = false; onSearchLive("") }
     BackHandler(searching, closeSearch)
     LaunchedEffect(searching) { if (searching) focus.requestFocus() }
 
+    LaunchedEffect(q, searching) {
+        if (searching && q.isNotBlank()) {
+            delay(350)
+            onSearchLive(q)
+        }
+    }
+
     val genres = remember(movies) { movies.flatMap { it.genres }.groupingBy { it }.eachCount().entries.sortedByDescending { it.value }.map { it.key } }
     val years = remember(movies) { movies.map { it.year }.distinct().sortedDescending() }
-    val shown = remember(movies, genre, year, minRating, sort, q) {
-        movies
-            .filter { m -> (q.isBlank() || m.title.contains(q.trim(), ignoreCase = true)) && (genre == null || genre in m.genres) && (year == 0 || m.year == year) && (minRating == 0 || m.rating >= minRating) }
-            .let { list ->
-                when (sort) {
-                    0 -> list.sortedByDescending { it.year }
-                    1 -> list.sortedByDescending { it.rating }
-                    else -> list.sortedBy { it.title }
+
+    val shown = remember(movies, liveResults, searching, genre, year, minRating, sort, q) {
+        if (searching && q.isNotBlank() && liveResults.isNotEmpty()) {
+            liveResults
+        } else {
+            movies
+                .filter { m -> (q.isBlank() || m.title.contains(q.trim(), ignoreCase = true)) && (genre == null || genre in m.genres) && (year == 0 || m.year == year) && (minRating == 0 || m.rating >= minRating) }
+                .let { list ->
+                    when (sort) {
+                        0 -> list.sortedByDescending { it.year }
+                        1 -> list.sortedByDescending { it.rating }
+                        else -> list.sortedBy { it.title }
+                    }
                 }
-            }
+        }
     }
+
     val extraFilters = (if (year != 0) 1 else 0) + (if (minRating != 0) 1 else 0) + (if (sort != 0) 1 else 0)
-    val reset = { genre = null; year = 0; minRating = 0; sort = 0; q = "" }
+    val reset = { genre = null; year = 0; minRating = 0; sort = 0; q = ""; onSearchLive("") }
     val bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 24.dp
+    val gridState = rememberLazyGridState()
+
+    LaunchedEffect(gridState, searching, q) {
+        snapshotFlow {
+            val info = gridState.layoutInfo
+            val total = info.totalItemsCount
+            val lastIdx = info.visibleItemsInfo.lastOrNull()?.index ?: 0
+            total > 0 && lastIdx >= total - 6
+        }.collect { nearEnd ->
+            if (nearEnd && (!searching || q.isBlank())) {
+                onLoadMore()
+            }
+        }
+    }
 
     Column(Modifier.fillMaxSize().padding(top = topInset()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 12.dp), Arrangement.spacedBy(8.dp), Alignment.CenterVertically) {
@@ -123,27 +175,29 @@ private fun MoviesScreen(kind: Kind, movies: List<Movie>, portrait: Boolean, onM
             }
         }
 
-        LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            item(key = "all") { OneChip(stringResource(R.string.filter_all), genre == null, { genre = null }) }
-            items(genres, key = { it }) { g -> OneChip(g, genre == g, { genre = g }) }
-        }
+        if (!searching) {
+            LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                item(key = "all") { OneChip(stringResource(R.string.filter_all), genre == null, { genre = null }) }
+                items(genres, key = { it }) { g -> OneChip(g, genre == g, { genre = g }) }
+            }
 
-        AnimatedVisibility(panel, enter = expandVertically(tween(220)) + fadeIn(tween(220)), exit = shrinkVertically(tween(180)) + fadeOut(tween(120))) {
-            Column(
-                Modifier.padding(horizontal = 16.dp).fillMaxWidth().glass(2, 22.dp).padding(vertical = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                FilterRow(R.string.filter_year) {
-                    item(key = "y0") { OneChip(stringResource(R.string.filter_all), year == 0, { year = 0 }) }
-                    items(years, key = { "y$it" }) { y -> OneChip(y.toString(), year == y, { year = y }) }
-                }
-                FilterRow(R.string.filter_rating) {
-                    items(RatingSteps, key = { "r$it" }) { r ->
-                        OneChip(if (r == 0) stringResource(R.string.filter_all) else "$r+", minRating == r, { minRating = r })
+            AnimatedVisibility(panel, enter = expandVertically(tween(220)) + fadeIn(tween(220)), exit = shrinkVertically(tween(180)) + fadeOut(tween(120))) {
+                Column(
+                    Modifier.padding(horizontal = 16.dp).fillMaxWidth().glass(2, 22.dp).padding(vertical = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    FilterRow(R.string.filter_year) {
+                        item(key = "y0") { OneChip(stringResource(R.string.filter_all), year == 0, { year = 0 }) }
+                        items(years, key = { "y$it" }) { y -> OneChip(y.toString(), year == y, { year = y }) }
                     }
-                }
-                FilterRow(R.string.filter_sort) {
-                    items(SortLabels.indices.toList(), key = { "s$it" }) { i -> OneChip(stringResource(SortLabels[i]), sort == i, { sort = i }) }
+                    FilterRow(R.string.filter_rating) {
+                        items(RatingSteps, key = { "r$it" }) { r ->
+                            OneChip(if (r == 0) stringResource(R.string.filter_all) else "$r+", minRating == r, { minRating = r })
+                        }
+                    }
+                    FilterRow(R.string.filter_sort) {
+                        items(SortLabels.indices.toList(), key = { "s$it" }) { i -> OneChip(stringResource(SortLabels[i]), sort == i, { sort = i }) }
+                    }
                 }
             }
         }
@@ -154,7 +208,9 @@ private fun MoviesScreen(kind: Kind, movies: List<Movie>, portrait: Boolean, onM
             OneText(stringResource(R.string.movies_empty), OneType.Body, c.dim)
             OneButton(stringResource(R.string.movies_reset), null, reset, Modifier.width(200.dp), primary = false)
         } else LazyVerticalGrid(
-            if (portrait && !tv) GridCells.Fixed(3) else GridCells.Adaptive(130.dp), Modifier.weight(1f).fillMaxWidth(),
+            if (portrait && !tv) GridCells.Fixed(3) else GridCells.Adaptive(130.dp),
+            Modifier.weight(1f).fillMaxWidth(),
+            state = gridState,
             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = bottom),
             horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
