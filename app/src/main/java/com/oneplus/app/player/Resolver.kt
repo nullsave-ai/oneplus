@@ -18,6 +18,7 @@ data class Resolved(
     val drm: Drm? = null,
     val variants: List<Variant> = emptyList(),
     val defaultVariant: Int = 0,
+    val subtitleUrl: String? = null,
 )
 
 object Resolver {

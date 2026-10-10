@@ -54,7 +54,7 @@ private fun SessionEffects(s: PlayerSession, parked: Boolean, onProgress: ((Long
         if (link == null || !s.wanted) return@LaunchedEffect
         s.playback = null
         s.resolveFailed = false
-        val res = if (s.attempt == 0) Resolved(link.url, s.source.live, link.headers, link.drm) else Resolver.resolve(link.url)?.copy(headers = link.headers)
+        val res = if (s.attempt == 0) Resolved(link.url, s.source.live, link.headers, link.drm, subtitleUrl = link.subtitleUrl) else Resolver.resolve(link.url)?.copy(headers = link.headers, subtitleUrl = link.subtitleUrl)
         if (res == null) { s.resolveFailed = true; return@LaunchedEffect }
         val cache = if (s.attempt == 0 && s.source.cacheable) withContext(Dispatchers.IO) { MediaCache.get(app) } else null
         s.playback = Playback(app, s.source, res, cache)

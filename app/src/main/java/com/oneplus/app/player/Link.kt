@@ -9,7 +9,7 @@ import java.util.UUID
 
 class Drm(val uuid: UUID, val licenseUrl: String?, val local: ByteArray?)
 
-class Link(val url: String, val headers: Map<String, String>, val drm: Drm?)
+class Link(val url: String, val headers: Map<String, String>, val drm: Drm?, val subtitleUrl: String? = null)
 
 private val Schemes = setOf("http", "https", "rtsp", "rtsps")
 
@@ -40,9 +40,9 @@ fun parseLink(raw: String): Link? {
         }
     }
     if (!isAllowed(base)) return null
-    val scheme = parts.scheme ?: if (parts.kid != null && parts.key != null) "clearkey" else return Link(base, parts.headers, null)
+    val scheme = parts.scheme ?: if (parts.kid != null && parts.key != null) "clearkey" else return Link(base, parts.headers, null, parts.subtitleUrl)
     val license = parts.license ?: "${parts.kid}:${parts.key}"
-    return Link(base, parts.headers, buildDrm(scheme, license) ?: return null)
+    return Link(base, parts.headers, buildDrm(scheme, license) ?: return null, parts.subtitleUrl)
 }
 
 private val BlockStart = Regex("^url\\s*:", RegexOption.IGNORE_CASE)
@@ -53,6 +53,7 @@ private class Parts {
     var license: String? = null
     var kid: String? = null
     var key: String? = null
+    var subtitleUrl: String? = null
 
     fun put(name: String, value: String) {
         val k = name.trim()
@@ -66,6 +67,7 @@ private class Parts {
             "drmlicense", "licensekey" -> license = v
             "clearkeyid" -> kid = v
             "clearkeyval", "clearkeyvalue" -> key = v
+            "subar", "sub", "subtitle", "caption" -> subtitleUrl = v
             else -> if (k.all { it.isLetterOrDigit() || it == '-' }) headers[k] = v
         }
     }

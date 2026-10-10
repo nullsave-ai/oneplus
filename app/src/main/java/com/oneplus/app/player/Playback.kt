@@ -16,6 +16,7 @@ import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
+import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Format
 import androidx.media3.common.TrackSelectionOverride
@@ -147,7 +148,11 @@ class Playback(
             )
             .setHandleAudioBecomingNoisy(true)
             .build()
-        params = player.trackSelectionParameters
+        params = player.trackSelectionParameters.buildUpon()
+            .setPreferredTextLanguage("ar")
+            .setSelectUndeterminedTextLanguage(true)
+            .build()
+        player.trackSelectionParameters = params
         player.addListener(this)
         player.setMediaSource(build(), if (live || source.startMs <= 0L) C.TIME_UNSET else source.startMs)
         player.prepare()
@@ -158,7 +163,17 @@ class Playback(
     private fun kindOf(url: String) = Util.inferContentType(Uri.parse(url))
 
     private fun src(url: String, type: Int): MediaSource {
+        val subConfig = res.subtitleUrl?.takeIf { it.isNotBlank() }?.let { subUri ->
+            val mime = if (subUri.contains(".vtt", true)) MimeTypes.TEXT_VTT else MimeTypes.APPLICATION_SUBRIP
+            MediaItem.SubtitleConfiguration.Builder(Uri.parse(subUri))
+                .setMimeType(mime)
+                .setLanguage("ar")
+                .setLabel("العربية")
+                .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
+                .build()
+        }
         val item = MediaItem.Builder().setUri(url)
+            .apply { if (subConfig != null) setSubtitleConfigurations(listOf(subConfig)) }
             .setMediaMetadata(MediaMetadata.Builder().setTitle(source.title).build()).build()
         val drm = drmProvider
         return when (type) {
