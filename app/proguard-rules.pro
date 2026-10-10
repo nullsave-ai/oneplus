@@ -8,3 +8,10 @@
 -keepclassmembers class * {
     @androidx.room.Dao *;
 }
+
+# Keep data models
+-keepclassmembers class com.oneplus.app.data.** { *; }
+
+# Media3 ExoPlayer
+-keepclassmembers class androidx.media3.** { *; }
+-dontwarn androidx.media3.**

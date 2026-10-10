@@ -36,7 +36,11 @@ fun TracksPanel(
             height = 30.dp, textStyle = Small,
         )
         Column(Modifier.weight(1f).tvAutoFocus().verticalScroll(rememberScrollState()), Arrangement.spacedBy(4.dp)) {
-            if (rows.isEmpty()) OneText(stringResource(R.string.track_none), Small, c.dim, Modifier.padding(6.dp))
+            if (tab == 0 && rows.isEmpty()) {
+                val h = pb.videoSize.height
+                if (h > 0) OneText(stringResource(R.string.quality_now) + ": ${h}p", Small, c.text, Modifier.padding(6.dp))
+                OneText(stringResource(R.string.quality_single), Small, c.dim, Modifier.padding(horizontal = 6.dp))
+            } else if (rows.isEmpty()) OneText(stringResource(R.string.track_none), Small, c.dim, Modifier.padding(6.dp))
             rows.forEach { OptionRow(it) }
             if (tab == 2) SubtitleStyleEditor(style, onStyle, onStyleDone)
         }

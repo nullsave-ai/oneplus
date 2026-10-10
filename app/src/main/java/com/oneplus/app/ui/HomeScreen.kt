@@ -52,7 +52,7 @@ fun HomeScreen(
                 if (shelf.isNotEmpty()) item(key = k.name) {
                     Block(k.title, { onAll(k) }) {
                         LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            items(shelf.take(10), key = { it.id }) { m -> Poster(m, Modifier.width(if (wide) 156.dp else 124.dp)) { onMovie(m.id) } }
+                            items(shelf.take(10), key = { "${it.id}_${it.title}" }, contentType = { "poster" }) { m -> Poster(m, Modifier.width(if (wide) 156.dp else 124.dp)) { onMovie(m.id) } }
                         }
                     }
                 }
@@ -83,7 +83,7 @@ private fun Block(@StringRes title: Int, onAll: (() -> Unit)? = null, content: @
 @Composable
 private fun ResumeRow(movies: List<Movie>, wide: Boolean, lib: Library, onMovie: (Int) -> Unit) {
     LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        items(movies, key = { it.id }) { m -> ResumeCard(m, lib.fraction(m.id), Modifier.width(if (wide) 210.dp else 168.dp)) { onMovie(m.id) } }
+        items(movies, key = { "${it.id}_${it.title}" }, contentType = { "resume" }) { m -> ResumeCard(m, lib.fraction(m.id), Modifier.width(if (wide) 210.dp else 168.dp)) { onMovie(m.id) } }
     }
 }
 
@@ -172,7 +172,7 @@ internal fun Poster(movie: Movie, modifier: Modifier, onClick: () -> Unit) {
 @Composable
 internal fun ChannelShelf(channels: List<Channel>, onChannel: (Int) -> Unit) {
     LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        items(channels.take(12), key = { it.id }) { ch -> ChannelTile(ch) { onChannel(ch.id) } }
+        items(channels.take(12), key = { "${it.id}_${it.name}" }, contentType = { "tile" }) { ch -> ChannelTile(ch) { onChannel(ch.id) } }
     }
 }
 

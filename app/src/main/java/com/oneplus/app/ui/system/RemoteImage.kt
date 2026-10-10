@@ -2,6 +2,7 @@ package com.oneplus.app.ui.system
 
 import android.content.ComponentCallbacks2
 import android.graphics.Bitmap
+import android.os.Build
 import android.graphics.BitmapFactory
 import android.util.LruCache
 import androidx.compose.foundation.Image
@@ -50,7 +51,11 @@ private object Images {
     private const val TouchMs = 600_000L
     private val TargetWidth = if (WeakDevice) 480 else 720
     private val gate = Semaphore(if (WeakDevice) 3 else 6)
-    private val config = if (WeakDevice) Bitmap.Config.RGB_565 else Bitmap.Config.ARGB_8888
+    private val config = when {
+        Build.VERSION.SDK_INT >= 26 -> Bitmap.Config.HARDWARE
+        WeakDevice -> Bitmap.Config.RGB_565
+        else -> Bitmap.Config.ARGB_8888
+    }
     private var swept = false
     private val inflight = ConcurrentHashMap<String, Mutex>()
 

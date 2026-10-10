@@ -49,7 +49,7 @@ fun ChannelsScreen(
                 Modifier.weight(1f).fillMaxHeight(), state = list,
                 contentPadding = PaddingValues(start = 16.dp, end = 8.dp, top = 12.dp, bottom = bottom),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
-            ) { items(shown, key = { it.id }) { ch -> ChannelRow(ch, ch.id == playingId) { onChannel(ch.id) } } }
+            ) { items(shown, key = { "${it.id}_${it.name}" }, contentType = { "row" }) { ch -> ChannelRow(ch, ch.id == playingId) { onChannel(ch.id) } } }
             LazyColumn(
                 Modifier.width(112.dp).fillMaxHeight(),
                 contentPadding = PaddingValues(start = 8.dp, end = 16.dp, top = 12.dp, bottom = bottom),

@@ -100,6 +100,8 @@
     <string name="track_auto">تلقائي</string>
     <string name="track_off">إيقاف</string>
     <string name="track_n">مسار</string>
+    <string name="quality_now">الجودة الحالية</string>
+    <string name="quality_single">هذا الرابط يبث بجودة واحدة فقط</string>
     <string name="track_none">غير متاح لهذا المحتوى</string>
     <string name="subs_style">تخصيص الترجمة</string>
     <string name="style_size">الحجم</string>

@@ -158,7 +158,7 @@ private fun MoviesScreen(kind: Kind, movies: List<Movie>, portrait: Boolean, onM
             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = bottom),
             horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            items(shown, key = { it.id }) { m -> Poster(m, Modifier.fillMaxWidth()) { onMovie(m.id) } }
+            items(shown, key = { "${it.id}_${it.title}" }, contentType = { "poster" }) { m -> Poster(m, Modifier.fillMaxWidth()) { onMovie(m.id) } }
         }
     }
 }

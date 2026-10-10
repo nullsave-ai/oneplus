@@ -127,10 +127,10 @@ fun PlayerScreen(
         if (!fullscreen) return@DisposableEffect onDispose { }
         val oldOrientation = activity?.requestedOrientation ?: ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
         activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-        bars?.let { it.immersive = true; it.apply() }
+        bars?.let { it.immersive = true; it.settle() }
         onDispose {
-            bars?.let { it.immersive = false; it.apply() }
             activity?.requestedOrientation = oldOrientation
+            bars?.let { it.immersive = false; it.settle() }
         }
     }
     val safe: Modifier = if (fullscreen) Modifier.windowInsetsPadding(WindowInsets.safeDrawing) else Modifier
@@ -430,11 +430,11 @@ fun PlayerScreen(
                                 OneText(fmt(dur), OneType.Caption, Color.White.copy(alpha = 0.7f))
                             }
                         } else Spacer(Modifier.weight(1f))
-                        if (texts.isNotEmpty()) GlassBtn({ open(2) }, bs) { OneIconView(OneIcon.Cc) { if (texts.drop(1).any { it.selected }) c.accent else Color.White } }
-                        if (audios.size > 1) GlassBtn({ open(1) }, bs) { OneIconView(OneIcon.Wave) { Color.White } }
-                        if (qualities.size > 1) Box(
-                            Modifier.height(bs).press { open(0) }.vGlass(bs / 2).padding(horizontal = 12.dp), Alignment.Center,
-                        ) { OneText(qualities.firstOrNull { it.selected }?.label ?: "", OneType.Caption, Color.White, maxLines = 1) }
+                        GlassBtn({ open(2) }, bs, Modifier.graphicsLayer { alpha = if (texts.isEmpty()) 0.45f else 1f }) { OneIconView(OneIcon.Cc) { if (texts.drop(1).any { it.selected }) c.accent else Color.White } }
+                        GlassBtn({ open(1) }, bs, Modifier.graphicsLayer { alpha = if (audios.size < 2) 0.45f else 1f }) { OneIconView(OneIcon.Wave) { Color.White } }
+                        Box(
+                            Modifier.height(bs).graphicsLayer { alpha = if (qualities.size < 2) 0.45f else 1f }.press { open(0) }.vGlass(bs / 2).padding(horizontal = 12.dp), Alignment.Center,
+                        ) { OneText(pb.qualityLabel, OneType.Caption, Color.White, maxLines = 1) }
                         if (fullscreen) GlassBtn({ fit = !fit; tick++ }, bs) { OneIconView(if (fit) OneIcon.Fit else OneIcon.Fill) { Color.White } }
                         if (onToggleFullscreen != null) GlassBtn({ onToggleFullscreen() }, bs, if (keysOn && pb.live && !fullscreen) Modifier.focusRequester(first) else Modifier) {
                             OneIconView(if (fullscreen) OneIcon.Shrink else OneIcon.Expand) { Color.White }

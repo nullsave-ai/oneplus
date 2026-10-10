@@ -22,7 +22,7 @@ internal fun SavedShelf(movies: List<Movie>, wide: Boolean, onOpen: (Int) -> Uni
             OneText("${movies.size}", OneType.Section, c.dim)
         }
         LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            items(movies, key = { it.id }) { m -> Poster(m, Modifier.width(if (wide) 156.dp else 124.dp)) { onOpen(m.id) } }
+            items(movies, key = { "${it.id}_${it.title}" }, contentType = { "poster" }) { m -> Poster(m, Modifier.width(if (wide) 156.dp else 124.dp)) { onOpen(m.id) } }
         }
     }
 }

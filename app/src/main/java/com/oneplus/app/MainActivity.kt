@@ -1,5 +1,6 @@
 package com.oneplus.app
 
+import android.content.res.Configuration
 import android.graphics.PixelFormat
 import android.os.Build
 import android.os.Bundle
@@ -57,6 +58,11 @@ class MainActivity : ComponentActivity() {
     override fun onTrimMemory(level: Int) {
         super.onTrimMemory(level)
         trimImages(level)
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        bars.settle()
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {

@@ -4,6 +4,10 @@ package com.oneplus.app.player
 
 import android.app.ActivityManager
 import android.content.Context
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
@@ -45,6 +49,9 @@ import androidx.media3.exoplayer.smoothstreaming.SsMediaSource
 import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
+import androidx.media3.exoplayer.trackselection.AdaptiveTrackSelection
+import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
+import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
 import com.oneplus.app.R
 import java.io.File
 import java.util.Locale
@@ -85,8 +92,8 @@ class Playback(
     private val http = DefaultHttpDataSource.Factory()
         .setUserAgent(res.headers.entries.firstOrNull { it.key.equals("user-agent", true) }?.value ?: "OnePlus/1.0")
         .setDefaultRequestProperties(res.headers.filterKeys { !it.equals("user-agent", true) && !it.equals("accept-encoding", true) })
-        .setConnectTimeoutMs(8_000)
-        .setReadTimeoutMs(10_000)
+        .setConnectTimeoutMs(10_000)
+        .setReadTimeoutMs(15_000)
         .setAllowCrossProtocolRedirects(true)
 
     private val drmProvider: DrmSessionManagerProvider? = res.drm?.let { d ->
@@ -102,6 +109,18 @@ class Playback(
     private var guess = 0
 
     private val handler = Handler(Looper.getMainLooper())
+    private val policy = DefaultLoadErrorHandlingPolicy(8)
+    private val cm = app.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+    private val net = object : ConnectivityManager.NetworkCallback() {
+        override fun onAvailable(network: Network) {
+            handler.post {
+                if (failed) retry() else if (player.playerError != null) { retries = 0; player.prepare() }
+            }
+        }
+    }
+    private val stalls = ArrayDeque<Long>()
+    private var wasReady = false
+    private val stepDown = Runnable { lower() }
     private var retries = 0
     private val unstick = Runnable { player.seekToDefaultPosition(); player.prepare() }
 
@@ -110,12 +129,19 @@ class Playback(
     init {
         val lowRam = (app.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager)?.isLowRamDevice == true
         val load = DefaultLoadControl.Builder()
-            .setBufferDurationsMs(if (lowRam) 10_000 else 15_000, if (lowRam) 20_000 else 30_000, 1_500, 3_000)
+            .setBufferDurationsMs(
+                if (lowRam) 12_000 else 20_000,
+                if (lowRam) 25_000 else if (live) 30_000 else 50_000,
+                if (lowRam) 2_000 else 2_500,
+                if (lowRam) 4_000 else 5_000,
+            )
             .setBackBuffer(if (live) 0 else 10_000, false)
             .setPrioritizeTimeOverSizeThresholds(true)
             .build()
-        player = ExoPlayer.Builder(app, DefaultRenderersFactory(app).setEnableDecoderFallback(true))
+        val selector = DefaultTrackSelector(app, AdaptiveTrackSelection.Factory(15_000, 25_000, 25_000, 0.7f))
+        player = ExoPlayer.Builder(app, DefaultRenderersFactory(app).setEnableDecoderFallback(true).forceEnableMediaCodecAsynchronousQueueing())
             .setLoadControl(load)
+            .setTrackSelector(selector)
             .setAudioAttributes(
                 AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MOVIE).build(), true,
             )
@@ -126,6 +152,7 @@ class Playback(
         player.setMediaSource(build(), if (live || source.startMs <= 0L) C.TIME_UNSET else source.startMs)
         player.prepare()
         player.playWhenReady = true
+        runCatching { cm?.registerNetworkCallback(NetworkRequest.Builder().addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET).build(), net) }
     }
 
     private fun kindOf(url: String) = Util.inferContentType(Uri.parse(url))
@@ -135,11 +162,11 @@ class Playback(
             .setMediaMetadata(MediaMetadata.Builder().setTitle(source.title).build()).build()
         val drm = drmProvider
         return when (type) {
-            C.CONTENT_TYPE_HLS -> HlsMediaSource.Factory(http).setAllowChunklessPreparation(true)
+            C.CONTENT_TYPE_HLS -> HlsMediaSource.Factory(http).setAllowChunklessPreparation(true).setLoadErrorHandlingPolicy(policy)
                 .apply { drm?.let { setDrmSessionManagerProvider(it) } }.createMediaSource(item)
-            C.CONTENT_TYPE_DASH -> DashMediaSource.Factory(http)
+            C.CONTENT_TYPE_DASH -> DashMediaSource.Factory(http).setLoadErrorHandlingPolicy(policy)
                 .apply { drm?.let { setDrmSessionManagerProvider(it) } }.createMediaSource(item)
-            C.CONTENT_TYPE_SS -> SsMediaSource.Factory(DefaultSsChunkSource.Factory(http), http)
+            C.CONTENT_TYPE_SS -> SsMediaSource.Factory(DefaultSsChunkSource.Factory(http), http).setLoadErrorHandlingPolicy(policy)
                 .apply { drm?.let { setDrmSessionManagerProvider(it) } }.createMediaSource(item)
             C.CONTENT_TYPE_RTSP -> RtspMediaSource.Factory()
                 .setUserAgent(res.headers.entries.firstOrNull { it.key.equals("user-agent", true) }?.value ?: "OnePlus/1.0")
@@ -149,7 +176,7 @@ class Playback(
                     CacheDataSource.Factory().setCache(cache).setUpstreamDataSourceFactory(http)
                         .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
                 } else http
-                ProgressiveMediaSource.Factory(factory).apply { drm?.let { setDrmSessionManagerProvider(it) } }.createMediaSource(item)
+                ProgressiveMediaSource.Factory(factory).setLoadErrorHandlingPolicy(policy).apply { drm?.let { setDrmSessionManagerProvider(it) } }.createMediaSource(item)
             }
         }
     }
@@ -181,7 +208,12 @@ class Playback(
 
     fun resumeLive() { if (live) { player.seekToDefaultPosition(); player.play() } }
 
+    private fun lower() {
+        if (!live && res.variants.size > 1 && variant + 1 < res.variants.size) pickVariant(variant + 1)
+    }
+
     fun release() {
+        runCatching { cm?.unregisterNetworkCallback(net) }
         handler.removeCallbacksAndMessages(null)
         player.removeListener(this)
         player.release()
@@ -216,20 +248,33 @@ class Playback(
 
     private fun mbps(bitrate: Int) = if (bitrate > 0) String.format(Locale.US, "%.1f", bitrate / 1e6) + " Mbps" else null
 
+    private val auto: Boolean get() = params.overrides.values.none { it.type == C.TRACK_TYPE_VIDEO }
+
+    private val shownHeight: Int get() = if (res.variants.size > 1) res.variants.getOrNull(variant)?.height ?: 0 else videoSize.height
+
+    val qualityLabel: String
+        get() {
+            val h = shownHeight
+            if (h <= 0) return app.getString(R.string.tab_quality)
+            return if (res.variants.size <= 1 && auto && qualities.size > 1) "${app.getString(R.string.track_auto)} · ${h}p" else "${h}p"
+        }
+
     val qualities: List<Opt>
         get() {
             if (res.variants.size > 1) return res.variants.mapIndexed { i, v -> Opt("${v.height}p", null, i == variant) { pickVariant(i) } }
             val best = tracks.groups.filter { it.type == C.TRACK_TYPE_VIDEO }
-                .flatMap { g -> (0 until g.length).filter { g.isTrackSupported(it) && g.getTrackFormat(it).height > 0 }.map { g to it } }
-                .groupBy { (g, i) -> g.getTrackFormat(i).height }
+                .flatMap { g -> (0 until g.length).filter { g.isTrackSupported(it) }.map { g to it } }
+                .filter { (g, i) -> g.getTrackFormat(i).let { it.height > 0 || it.bitrate > 0 } }
+                .groupBy { (g, i) -> g.getTrackFormat(i).let { if (it.height > 0) it.height else -(it.bitrate / 100_000) } }
                 .values.map { l -> l.maxBy { (g, i) -> g.getTrackFormat(i).bitrate } }
-                .sortedByDescending { (g, i) -> g.getTrackFormat(i).height }
+                .sortedByDescending { (g, i) -> g.getTrackFormat(i).let { if (it.height > 0) it.height.toLong() * 100_000_000 else it.bitrate.toLong() } }
             if (best.size < 2) return emptyList()
-            val auto = params.overrides.values.none { it.type == C.TRACK_TYPE_VIDEO }
-            return listOf(Opt(app.getString(R.string.track_auto), null, auto) { setParams { clearOverridesOfType(C.TRACK_TYPE_VIDEO) } }) +
+            val a = auto
+            val now = videoSize.height.takeIf { it > 0 }?.let { "${it}p" }
+            return listOf(Opt(app.getString(R.string.track_auto), now, a) { setParams { clearOverridesOfType(C.TRACK_TYPE_VIDEO) } }) +
                 best.map { (g, i) ->
                     val f = g.getTrackFormat(i)
-                    Opt("${f.height}p", mbps(f.bitrate), !auto && g.isTrackSelected(i)) { choose(g, listOf(i)) }
+                    Opt(if (f.height > 0) "${f.height}p" else mbps(f.bitrate) ?: "-", if (f.height > 0) mbps(f.bitrate) else null, !a && g.isTrackSelected(i)) { choose(g, listOf(i)) }
                 }
         }
 
@@ -268,6 +313,14 @@ class Playback(
         buffering = state == Player.STATE_BUFFERING
         ended = state == Player.STATE_ENDED
         if (state == Player.STATE_BUFFERING && live) handler.postDelayed(unstick, 15_000) else handler.removeCallbacks(unstick)
+        if (state == Player.STATE_BUFFERING && !live && res.variants.size > 1) handler.postDelayed(stepDown, 20_000) else handler.removeCallbacks(stepDown)
+        if (state == Player.STATE_BUFFERING && wasReady && player.playWhenReady && !live && res.variants.size > 1) {
+            val now = System.currentTimeMillis()
+            stalls.addLast(now)
+            while (stalls.isNotEmpty() && now - stalls.first() > 60_000) stalls.removeFirst()
+            if (stalls.size >= 3) { stalls.clear(); lower() }
+        }
+        wasReady = state == Player.STATE_READY
         if (state == Player.STATE_READY) retries = 0
         if (state == Player.STATE_READY && !player.currentTracks.isTypeSelected(C.TRACK_TYPE_VIDEO)) firstFrame = true
         refresh()
@@ -289,8 +342,8 @@ class Playback(
             }
             else -> {
                 val network = error.errorCode / 1000 == 2
-                if (retries < (if (live) 6 else if (network) 3 else 0)) {
-                    val wait = minOf(1_000L shl retries, 15_000L)
+                if (retries < (if (live) 12 else if (network) 8 else 0)) {
+                    val wait = minOf(1_000L shl minOf(retries, 4), 15_000L)
                     retries++
                     buffering = true
                     handler.postDelayed({ if (live) player.seekToDefaultPosition(); player.prepare() }, wait)

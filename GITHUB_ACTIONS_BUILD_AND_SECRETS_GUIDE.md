@@ -413,6 +413,11 @@ curl -I https://oneplus-0.web.app
 > [!TIP] تجنب مشاكل الكاش (Cache Invalidation) على هواتف المستخدمين:
 > عند تحديث `OnePlus.apk` أو `app_config.json`، تأكد دائماً من رفع رقم `"latest_version_code"` في `app_config.json` و`build.gradle.kts`، وتأكد من وجود ترويسة `Cache-Control: no-cache, no-store, must-revalidate` لضمان استقبال الأجهزة للتحديث فوراً وبدون تأخير.
 
+> [!NOTE] سياسة استضافة ملفات APK والتنفيذيات على Firebase (Spark Plan):
+> تمنع منصة Firebase Hosting على الخطة المجانية (Spark) رفع الملفات التنفيذية (`.apk` / `.exe`)، لذلك يتم رفع ملفات الويب (`index.html`) والكتالوجات على Firebase Hosting، بينما يتم توزيع وتحميل ملف الـ APK بأعلى سرعة وبدون قيود عبر رابط **GitHub Releases** المباشر:  
+> `https://github.com/nullsave-ai/oneplus/releases/latest/download/OnePlus.apk`  
+> وتم ضبط سكريبت `deploy_to_firebase.js` ليتجاهل ملفات الـ APK تلقائياً لمنع ظهور خطأ `404 Page Not Found`.
+
 ---
 
 **تم تحديث وتوثيق هذا الدليل الهندسي الشامل بنجاح ليكون المرجع المتكامل لمنظومة ONE+ v2.0 ولوحة التحكم السحابية.**
