@@ -229,6 +229,7 @@ object CinemaApi {
 
         val subType = d.optInt("subjectType", 1)
         val isSeries = isSeriesHint || subType == 2
+        val seriesTitle = d.optString("title").ifBlank { d.optString("postTitle") }.trim()
 
         val synopsis = d.optString("description")
             .ifBlank { d.optString("postTitle") }
@@ -272,8 +273,14 @@ object CinemaApi {
                     } else {
                         "الموسم $se - الحلقة $epNum"
                     }
-                    val epUrl = "cinema://stream?id=$subjectId&se=$se&ep=$epNum"
+                    val epUrl = "cinema://stream?id=$subjectId&se=$se&ep=$epNum&title=" + Uri.encode(seriesTitle)
                     episodes.add(Episode(epTitle, epUrl, se))
+                }
+            }
+            if (episodes.isEmpty() && seriesTitle.isNotBlank()) {
+                val wecimaFallback = fetchWeCimaSeriesEpisodes(seriesTitle)
+                if (wecimaFallback.isNotEmpty()) {
+                    episodes.addAll(wecimaFallback)
                 }
             }
         }
@@ -285,6 +292,38 @@ object CinemaApi {
             backdrop = backdrop,
             episodes = episodes
         )
+    }
+
+    private fun fetchWeCimaSeriesEpisodes(seriesTitle: String): List<Episode> {
+        val clean = seriesTitle.replace(Regex("""[\(\)\[\]]"""), " ").trim()
+        if (clean.isBlank()) return emptyList()
+        val res = getWeCima("$WECIMA_BASE?action=posts&search=" + Uri.encode(clean) + "&page=1&per_page=20") ?: return emptyList()
+        val posts = runCatching { JSONObject(res).optJSONArray("posts").objs() }.getOrNull().orEmpty()
+        val seriesSlug = posts.firstOrNull { it.optString("series_slug").isNotBlank() }?.optString("series_slug") ?: return emptyList()
+        val sJsonStr = getWeCima("$WECIMA_BASE?action=seasons&series_slug=" + Uri.encode(seriesSlug)) ?: return emptyList()
+        val seasons = runCatching {
+            if (sJsonStr.startsWith("[")) JSONArray(sJsonStr).objs() else JSONObject(sJsonStr).optJSONArray("data").objs()
+        }.getOrNull().orEmpty()
+
+        val episodes = mutableListOf<Episode>()
+        for ((sIdx, s) in seasons.withIndex()) {
+            val seNum = sIdx + 1
+            val seasonSlug = s.optString("slug")
+            if (seasonSlug.isBlank()) continue
+            val epJsonStr = getWeCima("$WECIMA_BASE?action=posts&season_slug=" + Uri.encode(seasonSlug) + "&page=1&per_page=100") ?: continue
+            val epPosts = runCatching { JSONObject(epJsonStr).optJSONArray("posts").objs() }.getOrNull().orEmpty()
+            for ((eIdx, ep) in epPosts.withIndex()) {
+                val epId = ep.optString("id")
+                val epReal = ep.optString("realid", epId).ifBlank { epId }
+                val epTitle = ep.optString("title")
+                val num = Regex("""(?:الحلقة|حلقة|ep|episode)\s*(\d+)""", RegexOption.IGNORE_CASE)
+                    .find(epTitle)?.groupValues?.get(1)?.toIntOrNull() ?: (eIdx + 1)
+                val displayTitle = "الموسم $seNum - الحلقة $num"
+                val epUrl = "wecima://stream?realid=$epReal&id=$epId"
+                episodes.add(Episode(displayTitle, epUrl, seNum))
+            }
+        }
+        return episodes
     }
 
     private fun mapUpstreamItem(item: JSONObject, kind: Kind): Movie? {

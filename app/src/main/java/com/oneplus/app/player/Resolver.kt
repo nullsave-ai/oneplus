@@ -60,11 +60,13 @@ object Resolver {
         val realId = u.getQueryParameter("realid") ?: u.getQueryParameter("id") ?: ""
         if (realId.isBlank()) return null
         val streamApiUrl = "https://wecima.bar/api.php?action=stream&realid=" + Uri.encode(realId)
-        val jsonStr = getWeCima(streamApiUrl) ?: return null
-        val j = runCatching { JSONObject(jsonStr) }.getOrNull() ?: return null
-        val streamUrl = j.optString("url").trim()
-        if (streamUrl.isBlank()) return null
-        val ua = j.optString("user_agent", "okhttp/4.12.0")
+        val jsonStr = getWeCima(streamApiUrl)
+        val j = runCatching { jsonStr?.let { JSONObject(it) } }.getOrNull()
+        var streamUrl = j?.optString("url")?.trim().orEmpty()
+        if (streamUrl.isBlank()) {
+            streamUrl = "https://govid.live/prem-$realId.m3u8"
+        }
+        val ua = j?.optString("user_agent")?.takeIf { it.isNotBlank() } ?: "okhttp/4.12.0"
         val headers = mapOf("User-Agent" to ua)
         return Resolved(
             url = streamUrl,
@@ -75,13 +77,11 @@ object Resolver {
 
     private fun resolveUpstream(u: Uri): Resolved? {
         var id = u.getQueryParameter("id") ?: u.getQueryParameter("subjectId") ?: ""
-        if (id.isBlank()) {
-            val titleParam = u.getQueryParameter("title")
-            if (!titleParam.isNullOrBlank()) {
-                val searchJson = get("https://h5.aoneroom.com/wefeed-h5-bff/mini/search?keyword=" + Uri.encode(titleParam))
-                val sj = runCatching { JSONObject(searchJson) }.getOrNull()
-                id = sj?.optJSONObject("data")?.optJSONArray("items")?.objs()?.firstOrNull()?.optString("subjectId").orEmpty()
-            }
+        var titleParam = u.getQueryParameter("title").orEmpty()
+        if (id.isBlank() && titleParam.isNotBlank()) {
+            val searchJson = get("https://h5.aoneroom.com/wefeed-h5-bff/mini/search?keyword=" + Uri.encode(titleParam))
+            val sj = runCatching { JSONObject(searchJson) }.getOrNull()
+            id = sj?.optJSONObject("data")?.optJSONArray("items")?.objs()?.firstOrNull()?.optString("subjectId").orEmpty()
         }
         if (id.isBlank()) {
             // If already a direct link with no id, return direct link
@@ -93,7 +93,8 @@ object Resolver {
         }
         val season = u.getQueryParameter("se")?.toIntOrNull() ?: u.getQueryParameter("season")?.toIntOrNull() ?: 1
         val episode = u.getQueryParameter("ep")?.toIntOrNull() ?: 1
-        val isSeries = u.host == "stream" && (u.getQueryParameter("se") != null || u.getQueryParameter("ep") != null) || u.getQueryParameter("season") != null
+        val isSeries = (u.host == "stream" && (u.getQueryParameter("se") != null || u.getQueryParameter("ep") != null)) ||
+                       u.getQueryParameter("season") != null
 
         val allSubs = mutableListOf<SubtitleTrack>()
         val variants = mutableListOf<Variant>()
@@ -127,10 +128,11 @@ object Resolver {
                     ?: list.firstOrNull()
 
                 if (targetEp != null) {
-                    primaryUrl = targetEp.optString("resourceLink").ifBlank { targetEp.optString("sourceUrl") }
-                    val epRes = targetEp.optInt("resolution", 0)
-                    if (epRes > 0 && primaryUrl.isNotBlank()) {
-                        variants.add(Variant(epRes, primaryUrl))
+                    val candidate = targetEp.optString("resourceLink").ifBlank { targetEp.optString("sourceUrl") }
+                    if (candidate.isNotBlank() && !candidate.contains("bcdnxw.hakunaymatata.com")) {
+                        primaryUrl = candidate
+                        val epRes = targetEp.optInt("resolution", 0)
+                        if (epRes > 0) variants.add(Variant(epRes, candidate))
                     }
                     val caps = targetEp.optJSONArray("extCaptions").objs()
                     for (cap in caps) {
@@ -145,10 +147,13 @@ object Resolver {
         if (!detailJson.isNullOrBlank()) {
             val j = runCatching { JSONObject(detailJson) }.getOrNull()
             val d = j?.optJSONObject("data")
+            if (titleParam.isBlank() && d != null) {
+                titleParam = d.optString("title").ifBlank { d.optString("postTitle") }
+            }
             val detectors = d?.optJSONArray("resourceDetectors").objs()
             for (detector in detectors) {
                 val dUrl = detector.optString("downloadUrl").trim()
-                if (dUrl.isNotBlank() && variants.none { it.url == dUrl }) {
+                if (dUrl.isNotBlank() && !dUrl.contains("bcdnxw.hakunaymatata.com") && variants.none { it.url == dUrl }) {
                     variants.add(Variant(1080, dUrl))
                     if (primaryUrl.isBlank()) primaryUrl = dUrl
                 }
@@ -156,7 +161,7 @@ object Resolver {
                 for (r in rList) {
                     val res = r.optInt("resolution", 0)
                     val rLink = r.optString("resourceLink").ifBlank { r.optString("sourceUrl") }.trim()
-                    if (res > 0 && rLink.isNotBlank() && variants.none { it.url == rLink }) {
+                    if (res > 0 && rLink.isNotBlank() && !rLink.contains("bcdnxw.hakunaymatata.com") && variants.none { it.url == rLink }) {
                         variants.add(Variant(res, rLink))
                     }
                     for (cap in r.optJSONArray("extCaptions").objs()) {
@@ -164,7 +169,7 @@ object Resolver {
                     }
                 }
                 if (primaryUrl.isBlank()) {
-                    primaryUrl = rList.firstOrNull()?.optString("resourceLink") ?: ""
+                    primaryUrl = rList.firstOrNull { !it.optString("resourceLink").contains("bcdnxw") }?.optString("resourceLink") ?: ""
                 }
                 for (cap in detector.optJSONArray("extCaptions").objs()) {
                     checkAndAddSub(cap.optString("lan"), cap.optString("lanName"), cap.optString("url"))
@@ -181,13 +186,22 @@ object Resolver {
                 for (item in list) {
                     val res = item.optInt("resolution", 0)
                     val rLink = item.optString("resourceLink").ifBlank { item.optString("sourceUrl") }.trim()
-                    if (res > 0 && rLink.isNotBlank() && variants.none { it.url == rLink }) {
+                    if (res > 0 && rLink.isNotBlank() && !rLink.contains("bcdnxw.hakunaymatata.com") && variants.none { it.url == rLink }) {
                         variants.add(Variant(res, rLink))
                     }
                     for (cap in item.optJSONArray("extCaptions").objs()) {
                         checkAndAddSub(cap.optString("lan"), cap.optString("lanName"), cap.optString("url"))
                     }
                 }
+            }
+        }
+
+        // Series fallback or when MovieBox has no working direct video stream:
+        if (primaryUrl.isBlank() || isSeries || primaryUrl.contains("bcdnxw.hakunaymatata.com")) {
+            val fallbackStream = resolveWeCimaFallback(titleParam, season, episode, isSeries)
+            if (!fallbackStream.isNullOrBlank()) {
+                primaryUrl = fallbackStream
+                variants.add(0, Variant(1080, fallbackStream))
             }
         }
 
@@ -216,6 +230,110 @@ object Resolver {
             subtitleUrl = arSubtitle,
             subtitles = filteredSubs
         )
+    }
+
+    private fun resolveWeCimaFallback(rawTitle: String, targetSe: Int, targetEp: Int, isSeries: Boolean): String? {
+        if (rawTitle.isBlank()) return null
+        val cleanTitle = rawTitle.replace(Regex("""[\(\)\[\]]"""), " ").trim()
+        if (cleanTitle.isBlank()) return null
+
+        var res = getWeCima("https://wecima.bar/api.php?action=posts&search=" + Uri.encode(cleanTitle) + "&page=1&per_page=20")
+        var posts = runCatching { res?.let { JSONObject(it).optJSONArray("posts").objs() } }.getOrNull().orEmpty()
+
+        if (posts.isEmpty()) {
+            val words = cleanTitle.split(Regex("""\s+""")).filter { it.isNotBlank() }
+            if (words.size > 2) {
+                res = getWeCima("https://wecima.bar/api.php?action=posts&search=" + Uri.encode(words.take(2).joinToString(" ")) + "&page=1&per_page=20")
+                posts = runCatching { res?.let { JSONObject(it).optJSONArray("posts").objs() } }.getOrNull().orEmpty()
+            }
+        }
+        if (posts.isEmpty()) return null
+
+        if (isSeries) {
+            val seriesPosts = posts.filter { it.optString("series_slug").isNotBlank() }
+            val seriesSlug = seriesPosts.firstOrNull()?.optString("series_slug")
+
+            var targetSeasonSlug: String? = null
+            if (!seriesSlug.isNullOrBlank()) {
+                val sJsonStr = getWeCima("https://wecima.bar/api.php?action=seasons&series_slug=" + Uri.encode(seriesSlug))
+                val seasons = runCatching {
+                    sJsonStr?.let { if (it.startsWith("[")) JSONArray(it).objs() else JSONObject(it).optJSONArray("data").objs() }
+                }.getOrNull().orEmpty()
+                if (seasons.isNotEmpty()) {
+                    val arabicOrdinals = listOf("الاول", "الثاني", "الثالث", "الرابع", "الخامس", "السادس", "السابع", "الثامن", "التاسع", "العاشر")
+                    val targetOrd = if (targetSe in 1..arabicOrdinals.size) arabicOrdinals[targetSe - 1] else null
+
+                    for (s in seasons) {
+                        val sName = s.optString("name")
+                        val sSlug = s.optString("slug")
+                        if (targetOrd != null && (sName.contains(targetOrd) || sSlug.contains(targetOrd))) {
+                            targetSeasonSlug = sSlug
+                            break
+                        }
+                        if (sSlug.contains("الموسم-$targetSe") || sName.contains("الموسم $targetSe") || sSlug.contains("season-$targetSe", ignoreCase = true)) {
+                            targetSeasonSlug = sSlug
+                            break
+                        }
+                    }
+                    if (targetSeasonSlug == null) {
+                        val idx = (targetSe - 1).coerceIn(0, seasons.size - 1)
+                        targetSeasonSlug = seasons[idx].optString("slug")
+                    }
+                } else {
+                    targetSeasonSlug = seriesPosts.firstOrNull()?.optString("season_slug")
+                }
+            } else {
+                targetSeasonSlug = posts.firstOrNull { it.optString("season_slug").isNotBlank() }?.optString("season_slug")
+            }
+
+            if (!targetSeasonSlug.isNullOrBlank()) {
+                val epJsonStr = getWeCima("https://wecima.bar/api.php?action=posts&season_slug=" + Uri.encode(targetSeasonSlug) + "&page=1&per_page=100")
+                val epPosts = runCatching { epJsonStr?.let { JSONObject(it).optJSONArray("posts").objs() } }.getOrNull().orEmpty()
+                var matchedEp: JSONObject? = null
+                for (ep in epPosts) {
+                    val epTitle = ep.optString("title")
+                    val num = Regex("""(?:الحلقة|حلقة|ep|episode)\s*(\d+)""", RegexOption.IGNORE_CASE)
+                        .find(epTitle)?.groupValues?.get(1)?.toIntOrNull()
+                        ?: ep.optJSONObject("meta")?.optString("number")?.filter { it.isDigit() }?.toIntOrNull()
+                    if (num == targetEp) {
+                        matchedEp = ep
+                        break
+                    }
+                }
+                if (matchedEp == null && epPosts.isNotEmpty()) {
+                    matchedEp = epPosts.firstOrNull()
+                }
+
+                if (matchedEp != null) {
+                    val epReal = matchedEp.optString("realid").ifBlank { matchedEp.optString("id") }
+                    val streamStr = getWeCima("https://wecima.bar/api.php?action=stream&realid=" + Uri.encode(epReal))
+                    val streamUrl = runCatching { streamStr?.let { JSONObject(it).optString("url") } }.getOrNull()?.trim().orEmpty()
+                    return streamUrl.ifBlank { "https://govid.live/prem-$epReal.m3u8" }
+                }
+            }
+
+            for (p in posts) {
+                val pTitle = p.optString("title")
+                val num = Regex("""(?:الحلقة|حلقة|ep|episode)\s*(\d+)""", RegexOption.IGNORE_CASE)
+                    .find(pTitle)?.groupValues?.get(1)?.toIntOrNull()
+                if (num == targetEp) {
+                    val pReal = p.optString("realid").ifBlank { p.optString("id") }
+                    val streamStr = getWeCima("https://wecima.bar/api.php?action=stream&realid=" + Uri.encode(pReal))
+                    val streamUrl = runCatching { streamStr?.let { JSONObject(it).optString("url") } }.getOrNull()?.trim().orEmpty()
+                    return streamUrl.ifBlank { "https://govid.live/prem-$pReal.m3u8" }
+                }
+            }
+        } else {
+            val targetPost = posts.firstOrNull { it.optString("series_slug").isBlank() } ?: posts.firstOrNull()
+            if (targetPost != null) {
+                val realId = targetPost.optString("realid").ifBlank { targetPost.optString("id") }
+                val streamStr = getWeCima("https://wecima.bar/api.php?action=stream&realid=" + Uri.encode(realId))
+                val streamUrl = runCatching { streamStr?.let { JSONObject(it).optString("url") } }.getOrNull()?.trim().orEmpty()
+                return streamUrl.ifBlank { "https://govid.live/prem-$realId.m3u8" }
+            }
+        }
+
+        return null
     }
 
     private fun cleanName(name: String): String {
