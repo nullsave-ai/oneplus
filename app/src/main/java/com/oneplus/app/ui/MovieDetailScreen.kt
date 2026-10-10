@@ -142,7 +142,18 @@ private fun MovieDetail(m: Movie, all: List<Movie>, lib: Library, onBack: () -> 
     var liveDetails by remember(m.id) { mutableStateOf<com.oneplus.app.data.MovieDetailData?>(null) }
     LaunchedEffect(m.id) {
         val target = if (m.url.isNotBlank()) m.url else "cinema://detail?id=${m.id}"
-        val isSeries = m.kind == com.oneplus.app.data.Kind.Series || m.kind == com.oneplus.app.data.Kind.ArabicSeries || m.kind == com.oneplus.app.data.Kind.WesternSeries || m.episodes.isNotEmpty()
+        val isSeries = m.kind in listOf(
+            com.oneplus.app.data.Kind.Series,
+            com.oneplus.app.data.Kind.ArabicSeries,
+            com.oneplus.app.data.Kind.WesternSeries,
+            com.oneplus.app.data.Kind.Anime,
+            com.oneplus.app.data.Kind.KidsAnimation
+        ) || m.episodes.isNotEmpty() ||
+        m.title.contains("الموسم", ignoreCase = true) ||
+        m.title.contains("Season", ignoreCase = true) ||
+        m.title.contains("مسلسل", ignoreCase = true) ||
+        m.title.contains("انمي", ignoreCase = true) ||
+        m.title.contains("أنمي", ignoreCase = true)
         val d = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
             com.oneplus.app.data.CinemaApi.fetchDetails(target, isSeries)
         }
@@ -166,6 +177,17 @@ private fun MovieDetail(m: Movie, all: List<Movie>, lib: Library, onBack: () -> 
         )
     }
 
+    val isSeriesItem = m.kind in listOf(
+        com.oneplus.app.data.Kind.Series,
+        com.oneplus.app.data.Kind.ArabicSeries,
+        com.oneplus.app.data.Kind.WesternSeries,
+        com.oneplus.app.data.Kind.Anime,
+        com.oneplus.app.data.Kind.KidsAnimation
+    ) || currentEpisodes.isNotEmpty() ||
+    m.title.contains("الموسم", ignoreCase = true) ||
+    m.title.contains("Season", ignoreCase = true) ||
+    m.title.contains("مسلسل", ignoreCase = true)
+
     Box(Modifier.fillMaxSize()) {
         Column(
             Modifier.fillMaxSize().verticalScroll(scroll)
@@ -175,7 +197,7 @@ private fun MovieDetail(m: Movie, all: List<Movie>, lib: Library, onBack: () -> 
             Box(Modifier.fillMaxWidth(), Alignment.TopCenter) {
                 Column(Modifier.widthIn(max = 720.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(24.dp)) {
                     Row(Modifier.padding(horizontal = 20.dp), Arrangement.spacedBy(12.dp)) {
-                        OneButton(stringResource(if (lib.resumeMs(m.id) > 0L) R.string.movie_resume else R.string.movie_play), OneIcon.Play, { onPlay(m.id, if (currentEpisodes.isEmpty()) -1 else 0) }, Modifier.weight(1.4f).tvAutoFocus())
+                        OneButton(stringResource(if (lib.resumeMs(m.id) > 0L) R.string.movie_resume else R.string.movie_play), OneIcon.Play, { onPlay(m.id, if (currentEpisodes.isEmpty() && !isSeriesItem) -1 else 0) }, Modifier.weight(1.4f).tvAutoFocus())
                         OneButton(
                             stringResource(R.string.movie_list), if (added) OneIcon.Check else OneIcon.Plus,
                             { lib.toggle(m.id) }, Modifier.weight(1f), primary = false,

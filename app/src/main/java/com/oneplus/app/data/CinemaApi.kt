@@ -66,9 +66,21 @@ object CinemaApi {
                 fetchUpstream("2", "", page, safePerPage, kind)
             }
             Kind.Anime -> {
-                fetchUpstream("1", "&genre=Anime", page, safePerPage, kind)
+                fetchAnime(page, safePerPage)
             }
         }
+    }
+
+    private fun fetchAnime(page: Int, limit: Int): List<Movie> {
+        val movies = fetchUpstream("1", "&genre=Anime", page, limit, Kind.Anime)
+        val series = fetchUpstream("2", "&genre=Anime", page, limit, Kind.Anime)
+        val combined = mutableListOf<Movie>()
+        val maxLen = maxOf(series.size, movies.size)
+        for (i in 0 until maxLen) {
+            if (i < series.size) combined.add(series[i])
+            if (i < movies.size) combined.add(movies[i])
+        }
+        return combined.distinctBy { it.id }
     }
 
     private fun fetchTrending(page: Int, limit: Int): List<Movie> {
@@ -228,8 +240,13 @@ object CinemaApi {
         val d = j.optJSONObject("data") ?: return null
 
         val subType = d.optInt("subjectType", 1)
-        val isSeries = isSeriesHint || subType == 2
         val seriesTitle = d.optString("title").ifBlank { d.optString("postTitle") }.trim()
+        val isSeries = isSeriesHint || subType == 2 ||
+                       seriesTitle.contains("الموسم", ignoreCase = true) ||
+                       seriesTitle.contains("Season", ignoreCase = true) ||
+                       seriesTitle.contains("مسلسل", ignoreCase = true) ||
+                       seriesTitle.contains("انمي", ignoreCase = true) ||
+                       seriesTitle.contains("أنمي", ignoreCase = true)
 
         val synopsis = d.optString("description")
             .ifBlank { d.optString("postTitle") }
@@ -259,7 +276,7 @@ object CinemaApi {
 
         val episodes = mutableListOf<Episode>()
         if (isSeries) {
-            val epStr = get("$BASE/subject-resource?subjectId=" + Uri.encode(subjectId) + "&page=1&perPage=100")
+            val epStr = get("$BASE/subject-resource?subjectId=" + Uri.encode(subjectId) + "&page=1&perPage=40")
             if (!epStr.isNullOrBlank()) {
                 val epJ = runCatching { JSONObject(epStr) }.getOrNull()
                 val list = epJ?.optJSONObject("data")?.optJSONArray("list").objs()
@@ -294,19 +311,41 @@ object CinemaApi {
         )
     }
 
+    private fun cleanSeriesTitle(raw: String): String {
+        return raw.replace(Regex("""\[.*?\]|\(.*?\)|(?i)\b(season\s*\d+|part\s*\d+|الموسم\s*\d+)\b"""), " ")
+            .replace(Regex("""\s+"""), " ")
+            .trim()
+    }
+
     private fun fetchWeCimaSeriesEpisodes(seriesTitle: String): List<Episode> {
-        val clean = seriesTitle.replace(Regex("""[\(\)\[\]]"""), " ").trim()
+        val clean = cleanSeriesTitle(seriesTitle)
         if (clean.isBlank()) return emptyList()
-        val res = getWeCima("$WECIMA_BASE?action=posts&search=" + Uri.encode(clean) + "&page=1&per_page=20") ?: return emptyList()
-        val posts = runCatching { JSONObject(res).optJSONArray("posts").objs() }.getOrNull().orEmpty()
-        val seriesSlug = posts.firstOrNull { it.optString("series_slug").isNotBlank() }?.optString("series_slug") ?: return emptyList()
+
+        val queries = mutableListOf(clean)
+        if (clean.contains(":")) queries.add(clean.substringBefore(":").trim())
+        if (clean.contains("-")) queries.add(clean.substringBefore("-").trim())
+        val words = clean.split(Regex("""\s+""")).filter { it.isNotBlank() }
+        if (words.size > 2) queries.add(words.take(2).joinToString(" "))
+
+        var posts: List<JSONObject> = emptyList()
+        for (q in queries) {
+            val res = getWeCima("$WECIMA_BASE?action=posts&search=" + Uri.encode(q) + "&page=1&per_page=20")
+            posts = runCatching { JSONObject(res ?: "").optJSONArray("posts").objs() }.getOrNull().orEmpty()
+            if (posts.isNotEmpty()) break
+        }
+        if (posts.isEmpty()) return emptyList()
+
+        val seriesPosts = posts.filter { it.optString("series_slug").isNotBlank() }
+        val seriesSlug = seriesPosts.firstOrNull()?.optString("series_slug") ?: posts.firstOrNull()?.optString("series_slug").orEmpty()
+        if (seriesSlug.isBlank()) return emptyList()
+
         val sJsonStr = getWeCima("$WECIMA_BASE?action=seasons&series_slug=" + Uri.encode(seriesSlug)) ?: return emptyList()
         val seasons = runCatching {
             if (sJsonStr.startsWith("[")) JSONArray(sJsonStr).objs() else JSONObject(sJsonStr).optJSONArray("data").objs()
         }.getOrNull().orEmpty()
 
         val episodes = mutableListOf<Episode>()
-        for ((sIdx, s) in seasons.withIndex()) {
+        for ((sIdx, s) in seasons.take(6).withIndex()) {
             val seNum = sIdx + 1
             val seasonSlug = s.optString("slug")
             if (seasonSlug.isBlank()) continue
@@ -317,9 +356,9 @@ object CinemaApi {
                 val epReal = ep.optString("realid", epId).ifBlank { epId }
                 val epTitle = ep.optString("title")
                 val num = Regex("""(?:الحلقة|حلقة|ep|episode)\s*(\d+)""", RegexOption.IGNORE_CASE)
-                    .find(epTitle)?.groupValues?.get(1)?.toIntOrNull() ?: (eIdx + 1)
+                    .find(epTitle)?.groupValues?.get(1)?.toIntOrNull() ?: (epPosts.size - eIdx)
                 val displayTitle = "الموسم $seNum - الحلقة $num"
-                val epUrl = "wecima://stream?realid=$epReal&id=$epId"
+                val epUrl = "wecima://stream?realid=$epReal&id=$epId&title=" + Uri.encode(seriesTitle)
                 episodes.add(Episode(displayTitle, epUrl, seNum))
             }
         }

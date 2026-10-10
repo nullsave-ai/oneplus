@@ -140,18 +140,38 @@ fun OnePlusApp(
         when (playKind) {
             1 -> (byId[playId] ?: liveSearchResults.firstOrNull { it.id == playId })?.let { m ->
                 val e = m.episodes.getOrNull(playEp) ?: vm.getEpisode(playId, playEp)
+                val isSeriesKind = m.kind in listOf(
+                    com.oneplus.app.data.Kind.Series,
+                    com.oneplus.app.data.Kind.ArabicSeries,
+                    com.oneplus.app.data.Kind.WesternSeries,
+                    com.oneplus.app.data.Kind.Anime,
+                    com.oneplus.app.data.Kind.KidsAnimation
+                ) || m.episodes.isNotEmpty() ||
+                m.title.contains("الموسم", ignoreCase = true) ||
+                m.title.contains("Season", ignoreCase = true) ||
+                m.title.contains("مسلسل", ignoreCase = true)
+
                 if (e != null) {
                     PlaySource(e.url, "${m.title} - ${e.title}", live = false, cacheable = true)
                 } else if (playEp >= 0) {
                     val parsedSid = runCatching { Uri.parse(m.url).getQueryParameter("id") ?: Uri.parse(m.url).getQueryParameter("subjectId") }.getOrNull()
-                    val targetId = if (!parsedSid.isNullOrBlank()) parsedSid else m.url
+                    val targetId = if (!parsedSid.isNullOrBlank()) parsedSid else m.id.toString()
                     if (m.url.startsWith("wecima://")) {
-                        PlaySource("wecima://stream?realid=$targetId", "${m.title} - الحلقة ${playEp + 1}", live = false, cacheable = true)
+                        PlaySource("wecima://stream?realid=$targetId&title=" + Uri.encode(m.title), "${m.title} - الحلقة ${playEp + 1}", live = false, cacheable = true)
                     } else {
-                        PlaySource("cinema://stream?id=$targetId&se=1&ep=${playEp + 1}", "${m.title} - الحلقة ${playEp + 1}", live = false, cacheable = true)
+                        PlaySource("cinema://stream?id=$targetId&se=1&ep=${playEp + 1}&title=" + Uri.encode(m.title), "${m.title} - الحلقة ${playEp + 1}", live = false, cacheable = true)
+                    }
+                } else if (isSeriesKind) {
+                    val parsedSid = runCatching { Uri.parse(m.url).getQueryParameter("id") ?: Uri.parse(m.url).getQueryParameter("subjectId") }.getOrNull()
+                    val targetId = if (!parsedSid.isNullOrBlank()) parsedSid else m.id.toString()
+                    if (m.url.startsWith("wecima://")) {
+                        PlaySource("wecima://stream?realid=$targetId&title=" + Uri.encode(m.title), "${m.title} - الحلقة 1", live = false, cacheable = true)
+                    } else {
+                        PlaySource("cinema://stream?id=$targetId&se=1&ep=1&title=" + Uri.encode(m.title), "${m.title} - الحلقة 1", live = false, cacheable = true)
                     }
                 } else {
-                    PlaySource(m.url, m.title, live = false, cacheable = true, startMs = playStart)
+                    val targetUrl = if (m.url.isNotBlank() && !m.url.startsWith("cinema://detail")) m.url else "cinema://stream?id=${m.id}&title=" + Uri.encode(m.title)
+                    PlaySource(targetUrl, m.title, live = false, cacheable = true, startMs = playStart)
                 }
             }
             2 -> state.base.channelsById[playId]?.let { PlaySource(it.url, it.name, live = true) }

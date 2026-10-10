@@ -232,29 +232,38 @@ object Resolver {
         )
     }
 
+    private fun cleanTitleForSearch(raw: String): String {
+        return raw.replace(Regex("""\[.*?\]|\(.*?\)|(?i)\b(season\s*\d+|part\s*\d+|الموسم\s*\d+)\b"""), " ")
+            .replace(Regex("""\s+"""), " ")
+            .trim()
+    }
+
     private fun resolveWeCimaFallback(rawTitle: String, targetSe: Int, targetEp: Int, isSeries: Boolean): String? {
         if (rawTitle.isBlank()) return null
-        val cleanTitle = rawTitle.replace(Regex("""[\(\)\[\]]"""), " ").trim()
+        val cleanTitle = cleanTitleForSearch(rawTitle)
         if (cleanTitle.isBlank()) return null
 
-        var res = getWeCima("https://wecima.bar/api.php?action=posts&search=" + Uri.encode(cleanTitle) + "&page=1&per_page=20")
-        var posts = runCatching { res?.let { JSONObject(it).optJSONArray("posts").objs() } }.getOrNull().orEmpty()
+        val queries = mutableListOf<String>()
+        queries.add(cleanTitle)
+        if (cleanTitle.contains(":")) queries.add(cleanTitle.substringBefore(":").trim())
+        if (cleanTitle.contains("-")) queries.add(cleanTitle.substringBefore("-").trim())
+        val words = cleanTitle.split(Regex("""\s+""")).filter { it.isNotBlank() }
+        if (words.size > 2) queries.add(words.take(2).joinToString(" "))
 
-        if (posts.isEmpty()) {
-            val words = cleanTitle.split(Regex("""\s+""")).filter { it.isNotBlank() }
-            if (words.size > 2) {
-                res = getWeCima("https://wecima.bar/api.php?action=posts&search=" + Uri.encode(words.take(2).joinToString(" ")) + "&page=1&per_page=20")
-                posts = runCatching { res?.let { JSONObject(it).optJSONArray("posts").objs() } }.getOrNull().orEmpty()
-            }
+        var posts: List<JSONObject> = emptyList()
+        for (q in queries.distinct()) {
+            val res = getWeCima("https://wecima.bar/api.php?action=posts&search=" + Uri.encode(q) + "&page=1&per_page=20")
+            posts = runCatching { res?.let { JSONObject(it).optJSONArray("posts").objs() } }.getOrNull().orEmpty()
+            if (posts.isNotEmpty()) break
         }
         if (posts.isEmpty()) return null
 
         if (isSeries) {
             val seriesPosts = posts.filter { it.optString("series_slug").isNotBlank() }
-            val seriesSlug = seriesPosts.firstOrNull()?.optString("series_slug")
+            val seriesSlug = seriesPosts.firstOrNull()?.optString("series_slug") ?: posts.firstOrNull()?.optString("series_slug").orEmpty()
 
             var targetSeasonSlug: String? = null
-            if (!seriesSlug.isNullOrBlank()) {
+            if (seriesSlug.isNotBlank()) {
                 val sJsonStr = getWeCima("https://wecima.bar/api.php?action=seasons&series_slug=" + Uri.encode(seriesSlug))
                 val seasons = runCatching {
                     sJsonStr?.let { if (it.startsWith("[")) JSONArray(it).objs() else JSONObject(it).optJSONArray("data").objs() }
@@ -301,14 +310,16 @@ object Resolver {
                     }
                 }
                 if (matchedEp == null && epPosts.isNotEmpty()) {
-                    matchedEp = epPosts.firstOrNull()
+                    // WeCima lists episodes descending, so last is episode 1
+                    matchedEp = if (targetEp == 1) epPosts.lastOrNull() else epPosts.firstOrNull()
                 }
 
                 if (matchedEp != null) {
                     val epReal = matchedEp.optString("realid").ifBlank { matchedEp.optString("id") }
                     val streamStr = getWeCima("https://wecima.bar/api.php?action=stream&realid=" + Uri.encode(epReal))
                     val streamUrl = runCatching { streamStr?.let { JSONObject(it).optString("url") } }.getOrNull()?.trim().orEmpty()
-                    return streamUrl.ifBlank { "https://govid.live/prem-$epReal.m3u8" }
+                    if (streamUrl.isNotBlank()) return streamUrl
+                    return "https://govid.live/prem-$epReal.m3u8"
                 }
             }
 
@@ -320,7 +331,8 @@ object Resolver {
                     val pReal = p.optString("realid").ifBlank { p.optString("id") }
                     val streamStr = getWeCima("https://wecima.bar/api.php?action=stream&realid=" + Uri.encode(pReal))
                     val streamUrl = runCatching { streamStr?.let { JSONObject(it).optString("url") } }.getOrNull()?.trim().orEmpty()
-                    return streamUrl.ifBlank { "https://govid.live/prem-$pReal.m3u8" }
+                    if (streamUrl.isNotBlank()) return streamUrl
+                    return "https://govid.live/prem-$pReal.m3u8"
                 }
             }
         } else {
@@ -329,7 +341,8 @@ object Resolver {
                 val realId = targetPost.optString("realid").ifBlank { targetPost.optString("id") }
                 val streamStr = getWeCima("https://wecima.bar/api.php?action=stream&realid=" + Uri.encode(realId))
                 val streamUrl = runCatching { streamStr?.let { JSONObject(it).optString("url") } }.getOrNull()?.trim().orEmpty()
-                return streamUrl.ifBlank { "https://govid.live/prem-$realId.m3u8" }
+                if (streamUrl.isNotBlank()) return streamUrl
+                return "https://govid.live/prem-$realId.m3u8"
             }
         }
 

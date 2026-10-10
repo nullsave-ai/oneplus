@@ -204,14 +204,8 @@ class Playback(
         val drm = drmProvider
         return when (type) {
             C.CONTENT_TYPE_HLS -> {
-                val base = HlsMediaSource.Factory(http).setAllowChunklessPreparation(true).setLoadErrorHandlingPolicy(policy)
+                HlsMediaSource.Factory(http).setAllowChunklessPreparation(true).setLoadErrorHandlingPolicy(policy)
                     .apply { drm?.let { setDrmSessionManagerProvider(it) } }.createMediaSource(item)
-                if (subConfigs.isNotEmpty()) {
-                    val subSources = subConfigs.take(2).map { subConfig ->
-                        SingleSampleMediaSource.Factory(http).setLoadErrorHandlingPolicy(policy).createMediaSource(subConfig, C.TIME_UNSET)
-                    }
-                    MergingMediaSource(base, *subSources.toTypedArray())
-                } else base
             }
             C.CONTENT_TYPE_DASH -> DashMediaSource.Factory(http).setLoadErrorHandlingPolicy(policy)
                 .apply { drm?.let { setDrmSessionManagerProvider(it) } }.createMediaSource(item)
