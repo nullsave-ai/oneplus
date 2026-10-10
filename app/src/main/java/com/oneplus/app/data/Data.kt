@@ -7,7 +7,18 @@ import kotlinx.coroutines.flow.flowOf
 
 data class Match(val id: Int, val time: String, val live: Boolean, val status: String, val home: String,
                  val away: String, val competition: String, val channel: String, val day: Int = 0)
-enum class Kind(@StringRes val title: Int) { Film(R.string.sec_movies), Series(R.string.sec_series), Anime(R.string.sec_anime) }
+enum class Kind(@StringRes val title: Int) {
+    NewUpdates(R.string.sec_new_updates),
+    Trending(R.string.sec_trending),
+    Top100(R.string.sec_top100),
+    ArabicSeries(R.string.sec_arabic_series),
+    ArabicMovies(R.string.sec_arabic_movies),
+    WesternSeries(R.string.sec_western_series),
+    KidsAnimation(R.string.sec_kids_animation),
+    Film(R.string.sec_movies),
+    Series(R.string.sec_series),
+    Anime(R.string.sec_anime),
+}
 data class Episode(val title: String, val url: String, val season: Int = 1)
 data class Movie(val id: Int, val title: String, val year: Int, val rating: Float, val durationMin: Int,
                  val genres: List<String>, val synopsis: String, val director: String, val cast: List<String>,

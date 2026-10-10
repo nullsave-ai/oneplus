@@ -28,13 +28,19 @@ object CinemaApi {
     }
 
     fun fetchList(kind: Kind, page: Int, limit: Int = 24): List<Movie> {
-        val channelId = when (kind) {
-            Kind.Film -> "1"
-            Kind.Series -> "2"
-            Kind.Anime -> "1"
+        val (channelId, extraParams) = when (kind) {
+            Kind.NewUpdates -> "1" to "&sort=new"
+            Kind.Trending -> "1" to "&sort=hot"
+            Kind.Top100 -> "1" to "&sort=score"
+            Kind.ArabicSeries -> "2" to "&country=arabic"
+            Kind.ArabicMovies -> "1" to "&country=arabic"
+            Kind.WesternSeries -> "2" to "&sort=hot"
+            Kind.KidsAnimation -> "1" to "&genre=animation"
+            Kind.Film -> "1" to ""
+            Kind.Series -> "2" to ""
+            Kind.Anime -> "1" to "&genre=animation"
         }
-        val postParams = "channelId=$channelId&subjectType=$channelId&page=$page&perPage=$limit" +
-                (if (kind == Kind.Anime) "&genre=animation" else "")
+        val postParams = "channelId=$channelId&subjectType=$channelId&page=$page&perPage=$limit$extraParams"
         val jsonStr = post("$BASE/subject-list", postParams) ?: return emptyList()
         val j = runCatching { JSONObject(jsonStr) }.getOrNull() ?: return emptyList()
         val items = j.optJSONObject("data")?.optJSONArray("items").objs()
@@ -54,10 +60,13 @@ object CinemaApi {
         }
     }
 
-    fun fetchDetails(subjectId: String, isSeries: Boolean): MovieDetailData? {
+    fun fetchDetails(subjectId: String, isSeriesHint: Boolean = false): MovieDetailData? {
         val detailStr = get("$BASE/subject_detail?subjectId=" + Uri.encode(subjectId)) ?: return null
         val j = runCatching { JSONObject(detailStr) }.getOrNull() ?: return null
         val d = j.optJSONObject("data") ?: return null
+
+        val subType = d.optInt("subjectType", 1)
+        val isSeries = isSeriesHint || subType == 2
 
         val synopsis = d.optString("description")
             .ifBlank { d.optString("postTitle") }
@@ -139,7 +148,7 @@ object CinemaApi {
             .ifEmpty { listOf("دراما") }
 
         val cover = item.optJSONObject("cover")?.optString("url").orEmpty()
-        val id = (sid.hashCode() and 0x7FFFFFFF)
+        val id = ((sid + ":" + kind.name).hashCode() and 0x7FFFFFFF)
 
         return Movie(
             id = id,

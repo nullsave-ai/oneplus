@@ -143,8 +143,9 @@ private fun MovieDetail(m: Movie, all: List<Movie>, lib: Library, onBack: () -> 
     LaunchedEffect(m.id) {
         val sid = runCatching { android.net.Uri.parse(m.url).getQueryParameter("id") }.getOrNull()
         if (!sid.isNullOrBlank()) {
+            val isSeries = m.kind == com.oneplus.app.data.Kind.Series || m.kind == com.oneplus.app.data.Kind.ArabicSeries || m.kind == com.oneplus.app.data.Kind.WesternSeries || m.episodes.isNotEmpty()
             val d = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                com.oneplus.app.data.CinemaApi.fetchDetails(sid, m.kind == com.oneplus.app.data.Kind.Series)
+                com.oneplus.app.data.CinemaApi.fetchDetails(sid, isSeries)
             }
             liveDetails = d
             if (d != null && d.episodes.isNotEmpty()) {

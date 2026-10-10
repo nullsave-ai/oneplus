@@ -36,6 +36,40 @@ class MainViewModel(private val repo: HomeRepository) : ViewModel() {
     val isSearchingLive = MutableStateFlow(false)
     private val dynamicEpisodes = ConcurrentHashMap<Int, List<Episode>>()
 
+    init {
+        preloadDynamicSections()
+    }
+
+    private fun preloadDynamicSections() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val sections = listOf(
+                Kind.NewUpdates,
+                Kind.Trending,
+                Kind.Top100,
+                Kind.ArabicSeries,
+                Kind.ArabicMovies,
+                Kind.WesternSeries,
+                Kind.KidsAnimation,
+                Kind.Film,
+                Kind.Series,
+                Kind.Anime
+            )
+            for (k in sections) {
+                launch {
+                    try {
+                        val items = CinemaApi.fetchList(k, 1, 18)
+                        if (items.isNotEmpty()) {
+                            extraMovies.update { cur ->
+                                val existing = cur[k].orEmpty()
+                                cur + (k to (existing + items).distinctBy { it.id })
+                            }
+                        }
+                    } catch (_: Exception) {}
+                }
+            }
+        }
+    }
+
     val state: StateFlow<UiState> = combine(repo.data.map { Catalog(it) }, extraMovies, query) { base, extra, q ->
         val extraList = extra.values.flatten()
         val mergedMovies = if (extraList.isEmpty()) {

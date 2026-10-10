@@ -8,6 +8,13 @@
     <string name="sec_series">المسلسلات</string>
     <string name="sec_anime">الأنمي</string>
     <string name="sec_channels">القنوات</string>
+    <string name="sec_new_updates">تحديثات اليوم الجديدة</string>
+    <string name="sec_trending">الأفلام الأكثر مشاهدة</string>
+    <string name="sec_top100">أفضل 100 فيلم يجب مشاهدتها</string>
+    <string name="sec_arabic_series">مسلسلات عربية ورمضان</string>
+    <string name="sec_arabic_movies">أفلام عربية</string>
+    <string name="sec_western_series">أفضل المسلسلات العالمية</string>
+    <string name="sec_kids_animation">أفلام ورسوم متحركة للأطفال</string>
     <string name="search_hint">ابحث</string>
     <string name="settings_effects">تأثيرات الزجاج</string>
     <string name="settings_version">الإصدار</string>
