@@ -11,8 +11,8 @@ android {
         applicationId = "com.oneplus.app"
         minSdk = 21
         targetSdk = 35
-        versionCode = 17
-        versionName = "3.6"
+        versionCode = 18
+        versionName = "3.7"
         resourceConfigurations += "ar"
     }
     buildTypes {

@@ -105,8 +105,10 @@ object Resolver {
             val isAr = lan.equals("ar", true) || lan.equals("ara", true) ||
                        lanName.contains("عرب") || lanName.contains("اَلْعَرَبِيَّةُ") ||
                        lanName.equals("Arabic", true)
-            val cleanLabel = if (isAr) "العربية [MovieBox]" else cleanName(lanName)
-            val track = SubtitleTrack(cleanLabel, if (isAr) "ar" else lan, sUrl)
+            val isEn = lan.equals("en", true) || lanName.equals("English", true)
+            if (!isAr && !isEn) return // Only attach Arabic and English to avoid ExoPlayer subtitle stall
+            val cleanLabel = if (isAr) "العربية [MovieBox]" else "English [MovieBox]"
+            val track = SubtitleTrack(cleanLabel, if (isAr) "ar" else "en", sUrl)
             if (allSubs.none { it.url == sUrl }) {
                 if (isAr) allSubs.add(0, track) else allSubs.add(track)
             }
@@ -138,49 +140,81 @@ object Resolver {
             }
         }
 
-        if (primaryUrl.isBlank() || variants.isEmpty()) {
-            val detailJson = get("https://h5.aoneroom.com/wefeed-h5-bff/mini/subject_detail?subjectId=" + Uri.encode(id))
-            if (!detailJson.isNullOrBlank()) {
-                val j = runCatching { JSONObject(detailJson) }.getOrNull()
-                val d = j?.optJSONObject("data")
-                val detectors = d?.optJSONArray("resourceDetectors").objs()
-                for (detector in detectors) {
-                    val rList = detector.optJSONArray("resolutionList").objs()
-                    for (r in rList) {
-                        val res = r.optInt("resolution", 0)
-                        val rLink = r.optString("resourceLink").ifBlank { r.optString("sourceUrl") }
-                        if (res > 0 && rLink.isNotBlank()) {
-                            variants.add(Variant(res, rLink))
-                        }
-                        for (cap in r.optJSONArray("extCaptions").objs()) {
-                            checkAndAddSub(cap.optString("lan"), cap.optString("lanName"), cap.optString("url"))
-                        }
+        // Fetch subject_detail (which contains high-speed 1080p, 480p, 360p direct MP4 streams)
+        val detailJson = get("https://h5.aoneroom.com/wefeed-h5-bff/mini/subject_detail?subjectId=" + Uri.encode(id))
+        if (!detailJson.isNullOrBlank()) {
+            val j = runCatching { JSONObject(detailJson) }.getOrNull()
+            val d = j?.optJSONObject("data")
+            val detectors = d?.optJSONArray("resourceDetectors").objs()
+            for (detector in detectors) {
+                val dUrl = detector.optString("downloadUrl").trim()
+                if (dUrl.isNotBlank() && variants.none { it.url == dUrl }) {
+                    variants.add(Variant(1080, dUrl))
+                    if (primaryUrl.isBlank()) primaryUrl = dUrl
+                }
+                val rList = detector.optJSONArray("resolutionList").objs()
+                for (r in rList) {
+                    val res = r.optInt("resolution", 0)
+                    val rLink = r.optString("resourceLink").ifBlank { r.optString("sourceUrl") }.trim()
+                    if (res > 0 && rLink.isNotBlank() && variants.none { it.url == rLink }) {
+                        variants.add(Variant(res, rLink))
                     }
-                    if (primaryUrl.isBlank()) {
-                        primaryUrl = detector.optString("downloadUrl").ifBlank {
-                            rList.firstOrNull()?.optString("resourceLink") ?: ""
-                        }
+                    for (cap in r.optJSONArray("extCaptions").objs()) {
+                        checkAndAddSub(cap.optString("lan"), cap.optString("lanName"), cap.optString("url"))
                     }
-                    for (cap in detector.optJSONArray("extCaptions").objs()) {
+                }
+                if (primaryUrl.isBlank()) {
+                    primaryUrl = rList.firstOrNull()?.optString("resourceLink") ?: ""
+                }
+                for (cap in detector.optJSONArray("extCaptions").objs()) {
+                    checkAndAddSub(cap.optString("lan"), cap.optString("lanName"), cap.optString("url"))
+                }
+            }
+        }
+
+        // For movies, also check subject-resource for any extra resolutions or captions
+        if (!isSeries) {
+            val resJson = get("https://h5.aoneroom.com/wefeed-h5-bff/mini/subject-resource?subjectId=" + Uri.encode(id) + "&page=1&perPage=50")
+            if (!resJson.isNullOrBlank()) {
+                val j = runCatching { JSONObject(resJson) }.getOrNull()
+                val list = j?.optJSONObject("data")?.optJSONArray("list").objs()
+                for (item in list) {
+                    val res = item.optInt("resolution", 0)
+                    val rLink = item.optString("resourceLink").ifBlank { item.optString("sourceUrl") }.trim()
+                    if (res > 0 && rLink.isNotBlank() && variants.none { it.url == rLink }) {
+                        variants.add(Variant(res, rLink))
+                    }
+                    for (cap in item.optJSONArray("extCaptions").objs()) {
                         checkAndAddSub(cap.optString("lan"), cap.optString("lanName"), cap.optString("url"))
                     }
                 }
             }
         }
 
-        if (primaryUrl.isBlank() && variants.isEmpty()) return null
+        if (primaryUrl.isBlank() && variants.isEmpty()) {
+            // Safety HLS stream fallback
+            val fallbackUrl = "https://govid.live/prem-$id.m3u8"
+            return Resolved(
+                url = fallbackUrl,
+                headers = mapOf("User-Agent" to "okhttp/4.12.0"),
+                subtitleUrl = arSubtitle,
+                subtitles = allSubs.distinctBy { it.url }
+            )
+        }
 
         val sortedVariants = variants.distinctBy { it.height }.sortedByDescending { it.height }
         val defVar = sortedVariants.indexOfFirst { it.height <= 1080 }.coerceAtLeast(0)
         val finalUrl = sortedVariants.getOrNull(defVar)?.url ?: primaryUrl
 
+        val filteredSubs = (allSubs.filter { it.lang == "ar" } + allSubs.filter { it.lang == "en" }.take(1)).distinctBy { it.url }
+
         return Resolved(
             url = finalUrl,
-            headers = mapOf("User-Agent" to "Mozilla/5.0 (Linux; Android 15; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36"),
+            headers = mapOf("User-Agent" to "okhttp/4.12.0"),
             variants = sortedVariants,
             defaultVariant = defVar,
             subtitleUrl = arSubtitle,
-            subtitles = allSubs.distinctBy { it.lang + it.name }
+            subtitles = filteredSubs
         )
     }
 

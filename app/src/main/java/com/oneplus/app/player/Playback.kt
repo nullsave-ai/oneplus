@@ -93,10 +93,22 @@ class Playback(
     private var variant by mutableIntStateOf(res.defaultVariant)
 
     private val http = DefaultHttpDataSource.Factory()
-        .setUserAgent(res.headers.entries.firstOrNull { it.key.equals("user-agent", true) }?.value ?: "OnePlus/1.0")
-        .setDefaultRequestProperties(res.headers.filterKeys { !it.equals("user-agent", true) && !it.equals("accept-encoding", true) })
-        .setConnectTimeoutMs(10_000)
-        .setReadTimeoutMs(15_000)
+        .setUserAgent(
+            if (res.url.contains("hakunaymatata") || res.url.contains("aoneroom") || res.url.contains("shalltry")) {
+                "okhttp/4.12.0"
+            } else {
+                res.headers.entries.firstOrNull { it.key.equals("user-agent", true) }?.value ?: "okhttp/4.12.0"
+            }
+        )
+        .setDefaultRequestProperties(
+            res.headers.filterKeys { k ->
+                !k.equals("user-agent", true) &&
+                !k.equals("accept-encoding", true) &&
+                !( (res.url.contains("hakunaymatata") || res.url.contains("aoneroom")) && (k.equals("referer", true) || k.equals("origin", true)) )
+            }
+        )
+        .setConnectTimeoutMs(12_000)
+        .setReadTimeoutMs(18_000)
         .setAllowCrossProtocolRedirects(true)
 
     private val drmProvider: DrmSessionManagerProvider? = res.drm?.let { d ->
@@ -112,7 +124,7 @@ class Playback(
     private var guess = 0
 
     private val handler = Handler(Looper.getMainLooper())
-    private val policy = DefaultLoadErrorHandlingPolicy(8)
+    private val policy = DefaultLoadErrorHandlingPolicy(3)
     private val cm = app.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
     private val net = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) {
@@ -166,9 +178,11 @@ class Playback(
     private fun src(url: String, type: Int): MediaSource {
         val subConfigs = mutableListOf<MediaItem.SubtitleConfiguration>()
         val effectiveSubs = if (res.subtitles.isNotEmpty()) {
-            res.subtitles
+            val arList = res.subtitles.filter { it.lang.equals("ar", true) || it.name.contains("عرب") || it.name.contains("العربية") }
+            val enList = res.subtitles.filter { it.lang.equals("en", true) || it.name.contains("English", true) }
+            (arList + enList.take(1)).take(2)
         } else if (!res.subtitleUrl.isNullOrBlank()) {
-            listOf(SubtitleTrack("العربية", "ar", res.subtitleUrl))
+            listOf(SubtitleTrack("العربية [MovieBox]", "ar", res.subtitleUrl))
         } else {
             emptyList()
         }
@@ -180,7 +194,7 @@ class Playback(
                 .setMimeType(mime)
                 .setLanguage(if (isAr) "ar" else sub.lang)
                 .setLabel(sub.name)
-            if (isAr) b.setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
+            if (isAr) b.setSelectionFlags(C.SELECTION_FLAG_DEFAULT or C.SELECTION_FLAG_FORCED)
             subConfigs.add(b.build())
         }
 
